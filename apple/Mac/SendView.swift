@@ -67,6 +67,9 @@ struct SendView: View {
             .accessibilityLabel("Settings")
             .hoverHint("Settings (⌘,)")
             .keyboardShortcut(",")
+            // Sit closer to the top edge: about 30% less space above the gear.
+            .frame(maxHeight: .infinity, alignment: .top)
+            .offset(y: -12)
         }
     }
 
