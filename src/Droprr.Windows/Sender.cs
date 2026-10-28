@@ -31,6 +31,34 @@ static class Sender
     public static async Task SendTextAsync(Peer peer, string token, string text, CancellationToken cancel = default) =>
         await PostAsync(peer, token, JsonContent.Create(new { type = TextType(text), content = text }), cancel);
 
+    // Introduces this PC to a computer peer (POST /pair), handing it `acceptToken` to use when calling this PC.
+    // Returns the device token the peer minted for this PC, or null if pairing failed.
+    public static async Task<string?> PairAsync(Peer peer, string token, string deviceName, string host, int port,
+        string acceptToken, CancellationToken cancel = default)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint(peer, "pair"))
+            {
+                Content = JsonContent.Create(new { name = deviceName, platform = "windows", host, port, token = acceptToken }),
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await Http.SendAsync(request, timeout.Token);
+            if (!response.IsSuccessStatusCode)
+                return null;
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
+            return json.RootElement.TryGetProperty("token", out var minted) && minted.GetString() is { Length: > 0 } value
+                ? value
+                : null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException)
+        {
+            return null;
+        }
+    }
+
     // Returns the peer's platform from /ping, or null if it can't be reached.
     public static async Task<string?> PingAsync(Peer peer, string token, CancellationToken cancel = default)
     {

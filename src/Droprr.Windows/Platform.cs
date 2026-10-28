@@ -61,7 +61,12 @@ static class ClipboardHelper
         ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".heic", ".heif",
     };
 
-    public static bool TrySetText(string text) => TrySet(text);
+    public static bool TrySetText(string text)
+    {
+        var data = new System.Windows.DataObject();
+        data.SetText(text);
+        return TrySet(data);
+    }
 
     // Files go on as a drop list marked "copy", so pasting in Explorer or a chat app pastes the files. If one
     // of them is an image Windows can decode (HEIC needs Microsoft's HEIF extension), it goes on as a picture
@@ -93,9 +98,13 @@ static class ClipboardHelper
         }
     }
 
-    // The clipboard can be briefly locked by another app, so retry a few times.
-    static bool TrySet(object data)
+    // The clipboard can be briefly locked by another app, so retry a few times. Everything Droprr puts there
+    // (received items, the token) is kept out of clipboard history, cloud clipboard, and clipboard monitors.
+    static bool TrySet(System.Windows.DataObject data)
     {
+        data.SetData("ExcludeClipboardContentFromMonitorProcessing", new MemoryStream(new byte[] { 0 }));
+        data.SetData("CanIncludeInClipboardHistory", new MemoryStream(BitConverter.GetBytes(0)));
+        data.SetData("CanUploadToCloudClipboard", new MemoryStream(BitConverter.GetBytes(0)));
         for (var attempt = 0; attempt < 5; attempt++)
         {
             try

@@ -108,9 +108,9 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
     // Ask desktops what they are, so phones (which never answer) are the only ones queued.
     async System.Threading.Tasks.Task LearnPlatformsAsync()
     {
-        foreach (var peer in _settings.Peers.Where(p => p.Platform.Length == 0 && p.Host.Length > 0).ToList())
+        foreach (var peer in _settings.Peers.Where(p => p.Platform.Length == 0 && p.Host.Length > 0 && p.Token.Length > 0).ToList())
         {
-            var platform = await Sender.PingAsync(peer, TokenFor(peer));
+            var platform = await Sender.PingAsync(peer, peer.Token);
             if (string.IsNullOrEmpty(platform))
                 continue;
             peer.Platform = platform;
@@ -122,8 +122,6 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         }
         PeerBox.Items.Refresh();
     }
-
-    string TokenFor(Peer peer) => string.IsNullOrEmpty(peer.Token) ? _settings.Token : peer.Token;
 
     internal void AddPaths(IEnumerable<string> paths)
     {
@@ -197,6 +195,12 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             ShowStatus(InfoBarSeverity.Informational, "Pick a device first.");
             return;
         }
+        // This PC's own token is never sent to a peer, so an unpaired computer can't be sent to.
+        if (!peer.IsPaired)
+        {
+            ShowStatus(InfoBarSeverity.Warning, $"{peer.Name} isn't paired. Scan its code or enter its token in Settings.");
+            return;
+        }
         var text = MessageText.Text.Trim();
         if (_files.Count == 0 && text.Length == 0)
         {
@@ -231,9 +235,9 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             else
             {
                 if (paths.Count > 0)
-                    await Sender.SendFilesAsync(peer, TokenFor(peer), paths, progress);
+                    await Sender.SendFilesAsync(peer, peer.Token, paths, progress);
                 if (text.Length > 0)
-                    await Sender.SendTextAsync(peer, TokenFor(peer), text);
+                    await Sender.SendTextAsync(peer, peer.Token, text);
                 ShowStatus(InfoBarSeverity.Success, $"Sent to {peer.Name}.");
             }
             _files.Clear();

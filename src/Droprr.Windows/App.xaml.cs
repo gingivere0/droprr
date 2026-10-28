@@ -217,7 +217,7 @@ public partial class App : Application
         var known = Settings.FindPeer(device);
         if (known is { IsPhone: true })
             return;
-        SavePeer(new PairRequest(device, "ios", null, null));
+        SavePeer(new PairRequest(device, "ios", null, null, null, null));
         if (known is null)
             _tray?.Notify("New device", $"{device} checked in and can now receive from this PC.");
     }
@@ -258,9 +258,48 @@ public partial class App : Application
                 peer.Host = request.Host;
             if (request.Port is { } port)
                 peer.Port = port;
+            // Pairing again replaces the device token, so the previous one stops working.
+            if (request.AcceptToken is not null)
+                peer.AcceptToken = request.AcceptToken;
+            // The token this PC sends to the peer: from the caller for computers; phones can't be called.
+            if (peer.IsPhone)
+                peer.Token = "";
+            else if (request.SendToken is not null)
+                peer.Token = request.SendToken;
         });
         SettingsSaved?.Invoke();
         return Settings.FindPeer(request.Name)!;
+    }
+
+    // Pairs with computers just added or given a new token in Settings: mints a device token for each, calls
+    // its POST /pair with the token the user entered, and from then on uses the token it returns. If that
+    // fails (for example, an older app), the entered token keeps working.
+    internal async Task PairWithComputersAsync(IEnumerable<string> names)
+    {
+        var host = PairWindow.MagicDnsName() ?? TailscaleNetwork.FindAddresses().FirstOrDefault()?.ToString();
+        if (host is null)
+            return;
+        foreach (var name in names)
+        {
+            if (Settings.FindPeer(name) is not { IsPhone: false } peer || peer.Token.Length == 0 || peer.Host.Length == 0)
+                continue;
+            var minted = SettingsStore.NewToken();
+            // Accept the new token before asking, since the computer may call back right away.
+            Settings = SettingsStore.Update(s => { if (s.FindPeer(name) is { } p) p.AcceptToken = minted; });
+            var returned = await Sender.PairAsync(peer, peer.Token, Settings.DeviceName, host, Settings.Port, minted);
+            Settings = SettingsStore.Update(s =>
+            {
+                if (s.FindPeer(name) is not { } p)
+                    return;
+                if (returned is null)
+                    p.AcceptToken = "";
+                else
+                    p.Token = returned;
+            });
+            SettingsSaved?.Invoke();
+            _tray?.Notify(returned is null ? $"Couldn't pair with {name}" : $"{name} paired",
+                returned is null ? "Using the token you entered instead." : "Each of you can now send to the other.");
+        }
     }
 
     // There's one Send window: opening it again adds any files to it and brings it to the front.
@@ -314,10 +353,11 @@ public partial class App : Application
             _receiver = null;
         }
 
-        var receiver = new ReceiverServer(Settings);
+        var receiver = new ReceiverServer(() => Settings);
         receiver.ItemReceived += item => Dispatcher.BeginInvoke(() => OnItemReceived(item));
         receiver.InboxPolled += device => Dispatcher.BeginInvoke(() => OnInboxPolled(device));
-        receiver.PairRequested += request => Dispatcher.BeginInvoke(() => OnPairRequested(request));
+        // Saved before /pair responds, so the caller can use its new token immediately.
+        receiver.PairRequested += request => Dispatcher.Invoke(() => OnPairRequested(request));
         receiver.ReceiveProgress += progress => Dispatcher.BeginInvoke(() => OnReceiveProgress(progress));
         try
         {
@@ -338,7 +378,10 @@ public partial class App : Application
     void OnItemReceived(ReceivedItem item)
     {
         if (item.Kind is ItemKind.Text or ItemKind.Url)
-            ClipboardHelper.TrySetText(item.Content!);
+        {
+            if (Settings.CopyTextToClipboard)
+                ClipboardHelper.TrySetText(item.Content!);
+        }
         else if (Settings.CopyFilesToClipboard && item.Path is not null)
             QueueFileForClipboard(item.Path);
 
@@ -351,8 +394,8 @@ public partial class App : Application
         {
             ItemKind.File when Settings.CopyFilesToClipboard => "File received and copied",
             ItemKind.File => "File received",
-            ItemKind.Url => "Link received and copied",
-            _ => "Text received and copied",
+            ItemKind.Url => Settings.CopyTextToClipboard ? "Link received and copied" : "Link received",
+            _ => Settings.CopyTextToClipboard ? "Text received and copied" : "Text received",
         };
         _tray?.Notify(title, item.Display, item);
     }

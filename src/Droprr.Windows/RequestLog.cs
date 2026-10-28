@@ -19,6 +19,16 @@ static class RequestLog
         var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {request.Method} {request.Path} -> {context.Response.StatusCode} " +
                    $"type={request.ContentType ?? "-"} length={request.ContentLength?.ToString() ?? "-"} " +
                    $"agent={request.Headers.UserAgent}{Environment.NewLine}";
+        Append(line);
+    }
+
+    // The detail behind a 500, which the response itself never includes.
+    public static void WriteError(HttpContext context, Exception error) =>
+        Append($"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {context.Request.Method} {context.Request.Path} failed: " +
+               $"{error.GetType().Name}: {error.Message.ReplaceLineEndings(" ")}{Environment.NewLine}");
+
+    static void Append(string line)
+    {
         try
         {
             lock (Gate)

@@ -21,8 +21,12 @@ sealed partial class ReceiverServer
     async Task<IResult> HandleSendAsync(HttpContext context)
     {
         var request = context.Request;
-        var folder = _settings.ResolveSaveFolder();
+        var folder = Settings.ResolveSaveFolder();
         Directory.CreateDirectory(folder);
+
+        // Refuse up front rather than fill the drive: keep at least 1 GB free after a body of known size.
+        if (request.ContentLength is { } length && FreeSpace(folder) is { } free && free - length < MinimumFreeBytes)
+            return Error("not enough disk space", StatusCodes.Status507InsufficientStorage);
 
         // Report progress for the whole request body, whatever its format.
         var transfer = Guid.NewGuid();
@@ -44,6 +48,33 @@ sealed partial class ReceiverServer
         finally
         {
             ReceiveProgress?.Invoke(new TransferProgress(transfer, received, total, Done: true));
+        }
+    }
+
+    const long MinimumFreeBytes = 1L << 30;
+
+    static long? FreeSpace(string folder)
+    {
+        try
+        {
+            return new DriveInfo(Path.GetPathRoot(Path.GetFullPath(folder))!).AvailableFreeSpace;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    // Mark of the Web: tells Windows (SmartScreen, Office, and others) the file came from another machine.
+    static void MarkFromInternet(string path)
+    {
+        try
+        {
+            File.WriteAllText(path + ":Zone.Identifier", "[ZoneTransfer]\r\nZoneId=3\r\n");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+        {
+            // Not every file system has alternate data streams (FAT32, some network drives).
         }
     }
 
@@ -146,6 +177,7 @@ sealed partial class ReceiverServer
             try { File.Delete(path); } catch { /* best effort cleanup of a partial file */ }
             throw;
         }
+        MarkFromInternet(path);
         return new ReceivedItem(ItemKind.File, Path.GetFileName(path), path, null);
     }
 
@@ -211,16 +243,21 @@ sealed partial class ReceiverServer
                 var (stream, path) = FileNames.CreateUnique(folder, $"Text {stamp}.txt");
                 using (var writer = new StreamWriter(stream, new UTF8Encoding(false)))
                     writer.Write(content);
+                MarkFromInternet(path);
                 return new ReceivedItem(ItemKind.Text, content, path, content);
             }
             case "url":
             {
                 content = content.Trim();
-                if (content.Contains('\n') || content.Contains('\r') || !Uri.TryCreate(content, UriKind.Absolute, out _))
+                if (content.Contains('\n') || content.Contains('\r') || !Uri.TryCreate(content, UriKind.Absolute, out var uri))
                     throw new InvalidDataException("content is not an absolute URL");
+                // Links are http and https only; anything else (file:, javascript:, ...) is kept as plain text.
+                if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+                    return SaveText(folder, "text", content);
                 var (stream, path) = FileNames.CreateUnique(folder, $"Link {stamp}.url");
                 using (var writer = new StreamWriter(stream, new UTF8Encoding(false)))
                     writer.Write($"[InternetShortcut]\r\nURL={content}\r\n");
+                MarkFromInternet(path);
                 return new ReceivedItem(ItemKind.Url, content, path, content);
             }
             default:

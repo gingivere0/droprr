@@ -17,11 +17,13 @@ namespace Droprr;
 
 sealed class TrayIcon : IDisposable
 {
-    // Received files with these extensions are shown in Explorer instead of being run on a click.
-    static readonly HashSet<string> RunnableExtensions = new(StringComparer.OrdinalIgnoreCase)
+    // Received files of these types open directly on a click; anything else is shown in Explorer instead.
+    static readonly HashSet<string> OpenableExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".exe", ".com", ".bat", ".cmd", ".msi", ".msix", ".appx", ".ps1", ".psm1", ".vbs", ".vbe", ".js", ".jse",
-        ".wsf", ".wsh", ".scr", ".pif", ".cpl", ".hta", ".lnk", ".url", ".reg", ".jar", ".application",
+        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".heic", ".heif",
+        ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi",
+        ".mp3", ".m4a", ".wav", ".flac", ".aac", ".ogg",
+        ".pdf", ".txt", ".md", ".csv",
     };
 
     readonly Forms.NotifyIcon _icon;
@@ -181,10 +183,10 @@ sealed class TrayIcon : IDisposable
         switch (item.Kind)
         {
             case ItemKind.File when item.Path is not null && File.Exists(item.Path):
-                if (RunnableExtensions.Contains(Path.GetExtension(item.Path)))
-                    Launch("explorer.exe", $"/select,\"{item.Path}\"");
-                else
+                if (OpenableExtensions.Contains(Path.GetExtension(item.Path)))
                     Process.Start(new ProcessStartInfo(item.Path) { UseShellExecute = true });
+                else
+                    Launch("explorer.exe", $"/select,\"{item.Path}\"");
                 break;
             case ItemKind.Url when Uri.TryCreate(item.Content, UriKind.Absolute, out var uri)
                                    && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps):

@@ -6,11 +6,11 @@ Droprr sends files, photos, text, and links between your own Windows PC, Mac, an
 
 - **Tailscale only.** Every device runs Tailscale on the same tailnet. Droprr accepts connections only from Tailscale addresses (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) and from the device itself, never from your LAN or the internet. Tailscale encrypts the traffic.
 - **One port.** Each computer listens on port `53318` by default (changeable in Settings).
-- **A token per computer.** Every request carries that computer's secret token. Pairing hands the token to your phone with a QR code, so you rarely type it.
+- **Tokens per device.** Every request carries a secret token. Each computer has a main token (in its QR code and Settings), and pairing gives every device its own token, so removing a device in Settings cuts it off without affecting the others. A device never sends its own main token to anyone. On Windows, tokens are stored encrypted for your Windows account.
 - **Phones collect.** An iPhone can't accept connections in the background, so anything sent to it waits on the sending computer for up to 7 days. The phone collects it when the app opens.
 - **An open protocol.** It's a small HTTP API, described in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
-Received items land in a `Droprr` folder in Downloads. Text and links also go straight to the clipboard, and a setting copies files and images too.
+Received items land in a `Droprr` folder in Downloads. Text and links also go to the clipboard (kept out of clipboard history and cloud clipboard), and a setting copies files and images too. On Windows, received files are marked as coming from another computer (Mark of the Web), only common media, document, and text files open with a click (anything else is shown in Explorer), and only `http` and `https` links ever open.
 
 ## Features
 
@@ -64,7 +64,7 @@ See [apple/README.md](apple/README.md) for details.
 
 The phone saves that computer's address and token, and the computer adds the phone to its devices, so each can send to the other. The QR code contains the token, so show it only to your own phone.
 
-To send between two computers, add each one in the other's Settings with its Tailscale name and its token.
+To send between two computers, add the other computer in Settings with its Tailscale name and the token from its Settings. When you save, Windows pairs with it: each side gets its own token for the other. A computer listed without a token shows "Not paired" and can't be sent to.
 
 ## iPhone shortcuts (optional)
 

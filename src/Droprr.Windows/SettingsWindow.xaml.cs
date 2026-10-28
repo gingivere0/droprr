@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
@@ -14,6 +15,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
     readonly App _app;
     readonly AppSettings _settings;
     readonly ObservableCollection<Peer> _peers;
+    readonly Dictionary<string, string> _originalTokens;
     bool _tokenVisible;
 
     internal SettingsWindow(App app)
@@ -31,7 +33,10 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         StartWithWindowsBox.IsChecked = StartWithWindows.IsEnabled;
         StartMenuBox.IsChecked = _settings.AddToStartMenu;
         CopyFilesBox.IsChecked = _settings.CopyFilesToClipboard;
+        CopyTextBox.IsChecked = _settings.CopyTextToClipboard;
         _peers = new ObservableCollection<Peer>(_settings.Peers);
+        _originalTokens = _settings.Peers.GroupBy(p => p.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Token, StringComparer.OrdinalIgnoreCase);
         PeerGrid.ItemsSource = _peers;
         ShowToken();
 
@@ -80,7 +85,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         };
         if (await box.ShowDialogAsync() != Wpf.Ui.Controls.MessageBoxResult.Primary)
             return;
-        _settings.Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        _settings.Token = SettingsStore.NewToken();
         _tokenVisible = true;
         ShowToken();
     }
@@ -151,9 +156,16 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         _settings.DeviceName = DeviceName.Text.Trim();
         _settings.Port = port;
         _settings.SaveFolder = string.IsNullOrWhiteSpace(SaveFolder.Text) ? null : SaveFolder.Text.Trim();
+        // Computers that are new or have a new token get paired properly once saved (see App.PairWithComputersAsync).
+        var toPair = _peers
+            .Where(p => !p.IsPhone && p.Token.Length > 0 && p.Host.Length > 0)
+            .Where(p => _originalTokens.TryGetValue(p.Name.Trim(), out var before) ? before != p.Token : true)
+            .Select(p => p.Name)
+            .ToList();
         _settings.Peers = _peers.ToList();
         _settings.AddToStartMenu = StartMenuBox.IsChecked == true;
         _settings.CopyFilesToClipboard = CopyFilesBox.IsChecked == true;
+        _settings.CopyTextToClipboard = CopyTextBox.IsChecked == true;
         try
         {
             SettingsStore.Save(_settings);
@@ -167,5 +179,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         }
         Close();
         await _app.ReloadAsync();
+        if (toPair.Count > 0)
+            await _app.PairWithComputersAsync(toPair);
     }
 }

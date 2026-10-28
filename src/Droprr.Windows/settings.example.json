@@ -1,17 +1,26 @@
 {
   // %APPDATA%\Droprr\settings.json. Droprr creates it with a random token on first run, and everything
   // here can be changed in the Settings window, so you rarely need to edit it by hand.
+  //
+  // Every token is stored encrypted for your Windows account (DPAPI), as "dpapi:<base64>". A plain token
+  // typed here is encrypted the next time Droprr starts. An encrypted file can't be read by another
+  // Windows user or PC, so copying it elsewhere means pairing again.
   "deviceName": "My PC",
   "port": 53318,
+  // The main token: in the pairing QR code and Settings. Never sent to other devices.
   "token": "REPLACE_WITH_A_LONG_RANDOM_TOKEN",
   // Leave null to save into Downloads\Droprr.
   "saveFolder": null,
-  // Text and links always go to the clipboard; true also copies received files (and images as pictures).
+  // Copy received text and links to the clipboard (kept out of clipboard history and cloud clipboard).
+  "copyTextToClipboard": true,
+  // Also copy received files (and images as pictures).
   "copyFilesToClipboard": false,
   // A Start menu shortcut, which is what makes Droprr show up in Windows Search.
   "addToStartMenu": true,
   // Devices this PC can send to. "host" is a Tailscale (MagicDNS) name or 100.x address.
-  // "token" is the receiving device's token; leave it empty if it matches yours.
+  // "token" is what this PC sends when calling the device: the token pairing gave it, or one you entered
+  // (empty for phones, and for computers that aren't paired yet).
+  // "acceptToken" is the device token this PC gave the device when it paired, and accepts from it.
   // "platform" is "windows", "macos", or "ios", learned from the device when it pairs or answers /ping.
   // Phones ("ios") need no host: items for them wait on this PC until the phone collects them.
   "peers": [
@@ -19,7 +28,8 @@
       "name": "My Mac",
       "host": "my-mac",
       "port": 53318,
-      "token": "",
+      "token": "REPLACE_WITH_THE_TOKEN_FROM_PAIRING",
+      "acceptToken": "",
       "platform": "macos"
     },
     {
@@ -27,6 +37,7 @@
       "host": "",
       "port": 53318,
       "token": "",
+      "acceptToken": "",
       "platform": "ios"
     }
   ]

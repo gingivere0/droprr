@@ -50,11 +50,20 @@
                         <ui:Button Content="Browse…" Margin="8,0,0,0" AutomationProperties.Name="Browse for a save folder" Click="OnBrowse" />
                     </StackPanel>
                 </ui:CardControl>
+                <ui:CardControl Icon="{ui:SymbolIcon ClipboardText24}" Margin="0,0,0,4">
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <TextBlock Text="Copy received text and links to the clipboard" />
+                            <TextBlock Text="Kept out of clipboard history and cloud clipboard" Style="{StaticResource Caption}" />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <ui:ToggleSwitch x:Name="CopyTextBox" AutomationProperties.Name="Copy received text and links to the clipboard" />
+                </ui:CardControl>
                 <ui:CardControl Icon="{ui:SymbolIcon Clipboard24}" Margin="0,0,0,4">
                     <ui:CardControl.Header>
                         <StackPanel>
                             <TextBlock Text="Auto-copy received items to clipboard" />
-                            <TextBlock Text="Text and links are always copied. This also copies files, and images as pictures."
+                            <TextBlock Text="Also copies received files, and images as pictures."
                                        Style="{StaticResource Caption}" />
                         </StackPanel>
                     </ui:CardControl.Header>

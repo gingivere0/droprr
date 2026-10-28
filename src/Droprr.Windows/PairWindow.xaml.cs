@@ -91,7 +91,7 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // This PC's MagicDNS name from `tailscale status --json`, or null if Tailscale's CLI isn't available.
-    static string? MagicDnsName()
+    internal static string? MagicDnsName()
     {
         var cli = new[]
         {
