@@ -400,7 +400,12 @@ private struct ReceivedTab: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
         }
-        .quickLookPreview($preview)
+        .sheet(item: Binding(get: { preview.map(PreviewFile.init) }, set: { preview = $0?.url })) { file in
+            // A sheet instead of .quickLookPreview so photos and videos can be flicked down to close.
+            QuickLookSheet(url: file.url)
+                .ignoresSafeArea()
+                .presentationDragIndicator(.visible)
+        }
         .overlay(alignment: .bottom) {
             if let toast {
                 Label(toast, systemImage: "checkmark.circle.fill")
@@ -490,5 +495,35 @@ private struct ReceivedTab: View {
             try? await Task.sleep(for: .seconds(1.5))
             if toast == message { toast = nil }
         }
+    }
+}
+
+private struct PreviewFile: Identifiable {
+    let url: URL
+    var id: URL { url }
+}
+
+/// Quick Look inside a navigation bar (for Done and Share), shown in a swipe-to-dismiss sheet.
+private struct QuickLookSheet: UIViewControllerRepresentable {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UINavigationController {
+        let preview = QLPreviewController()
+        preview.dataSource = context.coordinator
+        let close = dismiss
+        preview.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { _ in close() })
+        return UINavigationController(rootViewController: preview)
+    }
+
+    func updateUIViewController(_ controller: UINavigationController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(url: url) }
+
+    final class Coordinator: NSObject, QLPreviewControllerDataSource {
+        let url: URL
+        init(url: URL) { self.url = url }
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { url as NSURL }
     }
 }
