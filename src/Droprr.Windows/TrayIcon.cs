@@ -116,8 +116,8 @@ sealed class TrayIcon : IDisposable
         var at = _menu.Items.IndexOf(_pending) + 1;
         foreach (var (peer, _) in pending)
         {
-            var label = pending.Count == 1 ? "Clear waiting items…" : $"Clear items waiting for {peer}…";
-            var clear = MenuEntry(label, "", () => _app.ConfirmAndClearWaiting(peer));
+            var label = pending.Count == 1 ? "Clear waiting items" : $"Clear items waiting for {peer}";
+            var clear = MenuEntry(label, "", () => _app.ClearWaiting(peer));
             _clearItems.Add(clear);
             _menu.Items.Insert(at++, clear);
         }

@@ -209,21 +209,11 @@ public partial class App : Application
             _tray?.Notify("New device", $"{device} checked in and can now receive from this PC.");
     }
 
-    // Asks first, then removes everything waiting for the phone (files too) and updates the tray at once.
-    internal bool ConfirmAndClearWaiting(string peer, Window? owner = null)
+    // Removes everything waiting for the phone (files too) and updates the tray at once.
+    internal void ClearWaiting(string peer)
     {
-        var count = Outbox.List(peer).Count;
-        if (count == 0)
-            return false;
-        var question = $"Clear {count} item{(count == 1 ? "" : "s")} waiting for {peer}?";
-        var answer = owner is null
-            ? MessageBox.Show(question, "Droprr", MessageBoxButton.OKCancel, MessageBoxImage.Question)
-            : MessageBox.Show(owner, question, "Droprr", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-        if (answer != MessageBoxResult.OK)
-            return false;
         Outbox.Clear(peer);
         _tray?.SetPending(Outbox.PendingByPeer());
-        return true;
     }
 
     // A device scanned this PC's pairing QR and introduced itself, so pairing works in both directions.

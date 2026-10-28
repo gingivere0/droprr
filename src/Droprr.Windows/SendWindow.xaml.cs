@@ -69,8 +69,8 @@ public partial class SendWindow : Window
     {
         if (PeerBox.SelectedItem is not Peer { IsPhone: true } phone)
             return;
-        if (((App)Application.Current).ConfirmAndClearWaiting(phone.Name, this))
-            ShowPeers();
+        ((App)Application.Current).ClearWaiting(phone.Name);
+        ShowPeers();
     }
 
     void OnSettingsSaved()
