@@ -108,7 +108,7 @@ extension ReceivedItem {
 }
 
 #if os(macOS)
-/// Shows a small hint after the pointer rests on a view for a few seconds. Used instead of `.help`,
+/// Shows a small hint after the pointer rests on a view for a second. Used instead of `.help`,
 /// whose tooltips don't appear reliably in a menu bar panel.
 private struct HoverHint: ViewModifier {
     var text: String
@@ -140,7 +140,7 @@ private struct HoverHint: ViewModifier {
 }
 
 extension View {
-    func hoverHint(_ text: String, after delay: Duration = .seconds(3)) -> some View {
+    func hoverHint(_ text: String, after delay: Duration = .seconds(1)) -> some View {
         modifier(HoverHint(text: text, delay: delay))
     }
 }
