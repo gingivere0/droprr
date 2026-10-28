@@ -52,7 +52,18 @@ public partial class App : Application
         // When taking over from an older build, let it finish exiting and release the lock and port first.
         await Task.Run(() => LiveUpdate.WaitForReplaced(e.Args));
 
-        _instanceMutex = new Mutex(true, @"Local\Droprr.Tray", out var isFirstInstance);
+        // Ownership decides, not whether the lock exists: a handle left open by another launch keeps it
+        // existing after the old tray exits, and an exited owner leaves it abandoned, which counts as free.
+        _instanceMutex = new Mutex(false, @"Local\Droprr.Tray");
+        bool isFirstInstance;
+        try
+        {
+            isFirstInstance = _instanceMutex.WaitOne(0);
+        }
+        catch (AbandonedMutexException)
+        {
+            isFirstInstance = true;
+        }
         if (!isFirstInstance)
         {
             // Already running: hand this launch to it (open Send, with any Send To files), then exit quietly.
