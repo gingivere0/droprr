@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -9,9 +8,9 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Microsoft.Win32;
 
 namespace Droprr;
 
@@ -109,42 +108,54 @@ static class ClipboardHelper
 
 static class AppIcon
 {
-    // Drawn at runtime so the repo needs no binary icon file.
-    public static Icon Create()
+    // Artwork from file-swap-icon-pack/windows, embedded so tray and windows match the exe.
+    static Stream Open(string name) => typeof(AppIcon).Assembly.GetManifestResourceStream($"Droprr.{name}")!;
+
+    // Monochrome tray artwork: black on a light taskbar, white on a dark one, at the small-icon size for the current DPI.
+    public static Icon CreateTrayIcon()
     {
-        using var bitmap = new Bitmap(32, 32);
-        using (var g = Graphics.FromImage(bitmap))
-        {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            using var background = new SolidBrush(System.Drawing.Color.FromArgb(37, 99, 235));
-            g.FillEllipse(background, 1, 1, 30, 30);
-            using var pen = new System.Drawing.Pen(System.Drawing.Color.White, 3.5f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
-            g.DrawLine(pen, 16, 8, 16, 23);
-            g.DrawLine(pen, 10, 17, 16, 23);
-            g.DrawLine(pen, 22, 17, 16, 23);
-        }
-        var handle = bitmap.GetHicon();
-        try
-        {
-            using var temporary = Icon.FromHandle(handle);
-            return (Icon)temporary.Clone();
-        }
-        finally
-        {
-            DestroyIcon(handle);
-        }
+        using var stream = Open(TaskbarIsLight() ? "tray-black.ico" : "tray-white.ico");
+        return new Icon(stream, System.Windows.Forms.SystemInformation.SmallIconSize);
+    }
+
+    static bool TaskbarIsLight()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+        return key?.GetValue("SystemUsesLightTheme") is 1;
     }
 
     static ImageSource? _imageSource;
 
-    public static ImageSource ImageSource => _imageSource ??= CreateImageSource();
+    public static ImageSource ImageSource => _imageSource ??= LoadImageSource();
 
-    static ImageSource CreateImageSource()
+    static ImageSource LoadImageSource()
     {
-        using var icon = Create();
-        return Imaging.CreateBitmapSourceFromHIcon(icon.Handle, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+        using var stream = Open("app.ico");
+        var decoder = new IconBitmapDecoder(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+        return decoder.Frames[0];
+    }
+}
+
+static class StartWithWindows
+{
+    const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    const string ValueName = "Droprr";
+
+    public static bool IsEnabled
+    {
+        get
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RunKey);
+            return key?.GetValue(ValueName) is string;
+        }
     }
 
-    [DllImport("user32.dll")]
-    static extern bool DestroyIcon(IntPtr handle);
+    public static void Set(bool enabled)
+    {
+        using var key = Registry.CurrentUser.CreateSubKey(RunKey);
+        if (enabled && Environment.ProcessPath is { } exe)
+            key.SetValue(ValueName, $"\"{exe}\"");
+        else
+            key.DeleteValue(ValueName, throwOnMissingValue: false);
+    }
 }

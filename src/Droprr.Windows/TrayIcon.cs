@@ -3,13 +3,21 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace Droprr;
 
 sealed class TrayIcon : IDisposable
 {
-    readonly App _app;
+    // Received files with these extensions are shown in Explorer instead of being run on a click.
+    static readonly HashSet<string> RunnableExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".exe", ".com", ".bat", ".cmd", ".msi", ".msix", ".appx", ".ps1", ".psm1", ".vbs", ".vbe", ".js", ".jse",
+        ".wsf", ".wsh", ".scr", ".pif", ".cpl", ".hta", ".lnk", ".url", ".reg", ".jar", ".application",
+    };
+
     readonly NotifyIcon _icon;
     readonly ToolStripMenuItem _status;
     readonly ToolStripMenuItem _recentMenu;
@@ -20,7 +28,6 @@ sealed class TrayIcon : IDisposable
 
     public TrayIcon(App app)
     {
-        _app = app;
         _status = new ToolStripMenuItem("Starting…") { Enabled = false };
         _recentMenu = new ToolStripMenuItem("Recent");
 
@@ -32,24 +39,19 @@ sealed class TrayIcon : IDisposable
         menu.Items.Add(_recentMenu);
         menu.Items.Add("Open Droprr folder", null, (_, _) => OpenFolder(app.Settings.ResolveSaveFolder()));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Copy token", null, (_, _) => ClipboardHelper.TrySetText(app.Settings.Token));
-        menu.Items.Add("Edit settings", null, (_, _) => Launch("notepad.exe", $"\"{SettingsStore.FilePath}\""));
-        menu.Items.Add("Reload settings", null, async (_, _) => await app.ReloadAsync());
+        menu.Items.Add("Settings…", null, (_, _) => app.ShowSettings());
         menu.Items.Add("Exit", null, (_, _) => app.ExitApp());
 
         _icon = new NotifyIcon
         {
-            Icon = AppIcon.Create(),
+            Icon = AppIcon.CreateTrayIcon(),
             Text = "Droprr",
             ContextMenuStrip = menu,
             Visible = true,
         };
         _icon.DoubleClick += (_, _) => app.ShowSendWindow([]);
-        _icon.BalloonTipClicked += (_, _) =>
-        {
-            if (_lastNotified is not null)
-                Open(_lastNotified);
-        };
+        SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+        _icon.BalloonTipClicked += (_, _) => OnNotificationClicked();
         UpdateRecent([]);
     }
 
@@ -75,7 +77,7 @@ sealed class TrayIcon : IDisposable
     public void Notify(string title, string text, ReceivedItem? item = null)
     {
         _lastNotified = item;
-        _icon.ShowBalloonTip(4000, title, Truncate(text, 200), ToolTipIcon.Info);
+        _icon.ShowBalloonTip(4000, title, Truncate(text, 200), ToolTipIcon.None);
     }
 
     public void UpdateRecent(IReadOnlyList<ReceivedItem> items)
@@ -94,13 +96,30 @@ sealed class TrayIcon : IDisposable
         }
     }
 
-    // Files are shown in Explorer, links open in the browser, and text goes back on the clipboard.
+    // Files open, links open in the browser, and text (already on the clipboard) brings up the Recent menu.
+    void OnNotificationClicked()
+    {
+        if (_lastNotified is null)
+            return;
+        if (_lastNotified.Kind == ItemKind.Text)
+        {
+            // NotifyIcon has no public way to open its menu, so use the method a right-click calls.
+            typeof(NotifyIcon).GetMethod("ShowContextMenu", BindingFlags.Instance | BindingFlags.NonPublic)?.Invoke(_icon, null);
+            _recentMenu.ShowDropDown();
+            return;
+        }
+        Open(_lastNotified);
+    }
+
     static void Open(ReceivedItem item)
     {
         switch (item.Kind)
         {
             case ItemKind.File when item.Path is not null && File.Exists(item.Path):
-                Launch("explorer.exe", $"/select,\"{item.Path}\"");
+                if (RunnableExtensions.Contains(Path.GetExtension(item.Path)))
+                    Launch("explorer.exe", $"/select,\"{item.Path}\"");
+                else
+                    Process.Start(new ProcessStartInfo(item.Path) { UseShellExecute = true });
                 break;
             case ItemKind.Url when Uri.TryCreate(item.Content, UriKind.Absolute, out var uri)
                                    && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps):
@@ -124,8 +143,19 @@ sealed class TrayIcon : IDisposable
 
     static string Truncate(string text, int max) => text.Length <= max ? text : text[..(max - 1)] + "…";
 
+    // Switching between light and dark mode swaps the black and white tray artwork.
+    void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category != UserPreferenceCategory.General)
+            return;
+        var old = _icon.Icon;
+        _icon.Icon = AppIcon.CreateTrayIcon();
+        old?.Dispose();
+    }
+
     public void Dispose()
     {
+        SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _icon.Visible = false;
         _icon.Dispose();
     }

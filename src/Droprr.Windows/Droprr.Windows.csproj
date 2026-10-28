@@ -9,7 +9,11 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>Droprr</AssemblyName>
     <RootNamespace>Droprr</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
+    <IconPack>..\..\file-swap-icon-pack\windows\</IconPack>
+    <ApplicationIcon>$(IconPack)app.ico</ApplicationIcon>
+    <!-- WPF's Fluent theme (ThemeMode) is still marked experimental. -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +21,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="$(IconPack)app.ico" LogicalName="Droprr.app.ico" />
+    <EmbeddedResource Include="$(IconPack)tray\black.ico" LogicalName="Droprr.tray-black.ico" />
+    <EmbeddedResource Include="$(IconPack)tray\white.ico" LogicalName="Droprr.tray-white.ico" />
     <None Include="settings.example.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

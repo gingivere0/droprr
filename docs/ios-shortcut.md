@@ -49,6 +49,27 @@ To also send text and links, wrap the basic shortcut in an **If** that checks wh
 
 On the PC, text and links are copied to the clipboard and saved in `Downloads\Droprr`.
 
+## Get from PC: pick up items sent to the phone
+
+The PC holds anything you send to your iPhone until this shortcut runs (for up to 7 days). Create a new shortcut named **Get from PC**. It doesn't need the Share Sheet.
+
+Pick a name for your phone, such as `iPhone`, and always use the same one. The first time the shortcut runs, the PC adds a device with that name, and it appears in the PC's Send window.
+
+1. **List:** add a **URL** action and type `http://<pc>:53318/inbox?for=iPhone` by hand. Add **Get Contents of URL** with that URL, Method **GET**, and the header `Authorization` = `Bearer <token>`.
+2. **Items:** add **Get Dictionary Value**: get **Value** for `items` in **Contents of URL**.
+3. **Loop:** add **Repeat with Each** over **Dictionary Value**. Inside the loop:
+   1. Add **Get Dictionary Value** for `id` in **Repeat Item**, then **Set Variable** `Item ID` to it.
+   2. Add **Get Dictionary Value** for `type` in **Repeat Item**.
+   3. Add **If** **Dictionary Value** *is* `file`:
+      - Add a **URL** action: type `http://<pc>:53318/inbox/` and then insert the **Item ID** variable.
+      - Add **Get Contents of URL** with that URL, Method **GET**, and the same `Authorization` header.
+      - Add **Save File** with **Contents of URL** (or **Save to Photo Album** if you mostly send photos).
+   4. In **Otherwise**: add **Get Dictionary Value** for `content` in **Repeat Item**, then **Copy to Clipboard**. For links, you can use **Open URLs** instead.
+   5. After **End If**, add a **URL** action with `http://<pc>:53318/inbox/` plus **Item ID**, then **Get Contents of URL** with Method **DELETE** and the same header. This tells the PC the item arrived, so it's removed from the queue.
+4. **Done (optional):** after **End Repeat**, add **Show Notification** with the text `Got everything from PC`.
+
+To get items without thinking about it, add a Personal Automation in the Shortcuts app (for example, when you arrive home or connect to a Wi-Fi network) that runs **Get from PC**.
+
 ## Troubleshooting
 
 - **"The request timed out":** the phone can't reach Droprr. Usually the URL is missing the port: it must be `http://<pc>:53318/send`, not `http://<pc>`. Test with `http://<pc>:53318/ping` in Safari. If that times out too, check that Tailscale is on for both devices, that Droprr is running, and that the firewall rule exists.

@@ -2,8 +2,9 @@
 
 Droprr sends files, text, and links between your own devices over [Tailscale](https://tailscale.com): a Windows PC and an iPhone today, with a Mac app planned.
 
-- **Windows:** a tray app that receives items, saves them to `Downloads\Droprr`, copies text and links to the clipboard, and shows a notification. It can also send to other Droprr devices from a window or from Explorer's **Send to** menu.
-- **iPhone:** a Share Sheet shortcut. See [docs/ios-shortcut.md](docs/ios-shortcut.md).
+- **Windows:** a tray app that receives items, saves them to `Downloads\Droprr`, copies text and links to the clipboard, and shows a notification. It sends to other devices from its Send window or from Explorer's **Send to** menu, and holds items for your iPhone until the phone picks them up.
+- **iPhone:** a "Send to PC" Share Sheet shortcut, and a "Get from PC" shortcut that picks up anything waiting. See [docs/ios-shortcut.md](docs/ios-shortcut.md).
+- **Icons:** the shared artwork for every platform is in [file-swap-icon-pack](file-swap-icon-pack/README.md).
 - **Protocol:** a small authenticated HTTP API. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ## Windows setup
@@ -30,12 +31,15 @@ New-NetFirewallRule -DisplayName "Droprr (Tailscale)" -Direction Inbound -Protoc
 
 ### Settings
 
-Right-click the tray icon and choose **Edit settings**, then **Reload settings** after you save.
+Right-click the tray icon and choose **Settings…**. There you can:
 
-- `deviceName`: the name other devices see.
-- `port`: the port to listen on.
-- `token`: the shared secret every request must send. Keep it private.
-- `saveFolder`: where received items go. `null` means `Downloads\Droprr`.
-- `peers`: devices this PC can send to, by Tailscale hostname.
+- rename this PC, change the port, and pick where received items are saved,
+- turn on **Start Droprr when I sign in to Windows**,
+- show, copy, or replace the token every device needs, and
+- add, edit, or remove devices. Computers are listed by Tailscale host name; turn on **iPhone** for phones.
 
-`settings.json` is ignored by git. Never commit real tokens or hostnames.
+Everything is stored in `%APPDATA%\Droprr\settings.json` (see [settings.example.json](src/Droprr.Windows/settings.example.json)). That file is ignored by git: never commit real tokens or host names.
+
+### Sending to your iPhone
+
+A phone can't accept incoming connections, so items you send to an iPhone wait on the PC (in `%APPDATA%\Droprr\outbox`) until the phone runs **Get from PC**, for up to 7 days. The tray shows how many are waiting. The first time your phone runs Get from PC, it's added to your devices automatically.

@@ -8,12 +8,22 @@
   "saveFolder": null,
   // Devices this PC can send to, by Tailscale (MagicDNS) hostname.
   // "token" is the receiving device's token; leave it empty if it matches yours.
+  // "platform" is learned from the device ("windows", "macos", or "ios"). Phones
+  // ("ios") need no host: items for them wait until they run "Get from PC".
   "peers": [
     {
       "name": "My Mac",
       "host": "my-mac",
       "port": 53318,
-      "token": ""
+      "token": "",
+      "platform": "macos"
+    },
+    {
+      "name": "iPhone",
+      "host": "",
+      "port": 53318,
+      "token": "",
+      "platform": "ios"
     }
   ]
 }

@@ -13,6 +13,10 @@ namespace Droprr;
 public partial class App : Application
 {
     const int MaxRecent = 10;
+    const long LargeTransferBytes = 8 * 1024 * 1024;
+
+    readonly Dictionary<Guid, ReceiveProgressWindow> _receiving = new();
+    SettingsWindow? _settingsWindow;
 
     readonly List<ReceivedItem> _recent = new();
     Mutex? _instanceMutex;
@@ -47,6 +51,13 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Contains("--settings"))
+        {
+            ShowSettings();
+            _settingsWindow!.Closed += (_, _) => Shutdown();
+            return;
+        }
+
         _instanceMutex = new Mutex(true, @"Local\Droprr.Tray", out var isFirstInstance);
         if (!isFirstInstance)
         {
@@ -56,6 +67,8 @@ public partial class App : Application
         }
 
         try { SendToMenu.Register(); } catch { /* the Send To entry is a convenience; keep running without it */ }
+        // Keep the sign-in entry pointing at this exe if Droprr was moved or rebuilt elsewhere.
+        try { if (StartWithWindows.IsEnabled) StartWithWindows.Set(true); } catch { /* not fatal */ }
 
         _tray = new TrayIcon(this);
         WatchOutbox();
@@ -92,6 +105,39 @@ public partial class App : Application
         _tray?.SetPending(Outbox.PendingByPeer());
     }
 
+    // Large or unknown-size transfers get a progress window; small ones finish before it would be useful.
+    void OnReceiveProgress(TransferProgress progress)
+    {
+        _receiving.TryGetValue(progress.Id, out var window);
+        if (progress.Done)
+        {
+            window?.Close();
+            _receiving.Remove(progress.Id);
+            return;
+        }
+        if (window is null)
+        {
+            if (progress.Total is { } total && total < LargeTransferBytes)
+                return;
+            window = new ReceiveProgressWindow();
+            _receiving[progress.Id] = window;
+            window.Show();
+        }
+        window.Update(progress);
+    }
+
+    internal void ShowSettings()
+    {
+        if (_settingsWindow is { IsLoaded: true })
+        {
+            _settingsWindow.Activate();
+            return;
+        }
+        _settingsWindow = new SettingsWindow(this);
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
+    }
+
     // A phone that checks in under an unknown name becomes an iPhone peer, so the Send window offers it.
     void OnInboxPolled(string device)
     {
@@ -111,7 +157,7 @@ public partial class App : Application
 
     internal void ShowSendWindow(IEnumerable<string> files, bool exitOnClose = false)
     {
-        var window = new SendWindow(Settings, files);
+        var window = new SendWindow(SettingsStore.Load(), files);
         if (exitOnClose)
             window.Closed += (_, _) => Shutdown();
         window.Show();
@@ -129,7 +175,9 @@ public partial class App : Application
             _tray?.Notify("Settings error", ex.Message);
             return;
         }
-        await StartReceiverAsync();
+        // Only the tray instance runs the receiver; a standalone --settings window just saves.
+        if (_tray is not null)
+            await StartReceiverAsync();
     }
 
     internal async Task StartReceiverAsync()
@@ -143,6 +191,7 @@ public partial class App : Application
         var receiver = new ReceiverServer(Settings);
         receiver.ItemReceived += item => Dispatcher.BeginInvoke(() => OnItemReceived(item));
         receiver.InboxPolled += device => Dispatcher.BeginInvoke(() => OnInboxPolled(device));
+        receiver.ReceiveProgress += progress => Dispatcher.BeginInvoke(() => OnReceiveProgress(progress));
         try
         {
             await receiver.StartAsync();
