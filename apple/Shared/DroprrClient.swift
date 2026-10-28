@@ -111,6 +111,7 @@ struct DroprrClient {
     }
 
     private func makeRequest(path: String, method: String) throws -> URLRequest {
+        let token = peer.token.flatMap { $0.isEmpty ? nil : $0 } ?? self.token
         guard !token.isEmpty else { throw DroprrError.noToken }
         guard let base = peer.baseURL, let url = URL(string: base.absoluteString + path) else { throw DroprrError.badPeer }
         var request = URLRequest(url: url)

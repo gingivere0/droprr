@@ -234,8 +234,10 @@ private struct PeerEditor: View {
                             .keyboardType(.URL)
                             #endif
                         TextField("Port", value: $peer.port, format: .number.grouping(.never))
+                        SecureField("Its token (if different from yours)", text: Binding(
+                            get: { peer.token ?? "" }, set: { peer.token = $0.isEmpty ? nil : $0 }))
                     } footer: {
-                        Text("Find the name in the Tailscale app, for example my-pc.")
+                        Text("Find the name in the Tailscale app, for example my-pc. Scanning a device's pairing QR code fills all of this in.")
                     }
                 } else {
                     Section {

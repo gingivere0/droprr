@@ -88,6 +88,10 @@ struct PanelView: View {
                 try? FileManager.default.createDirectory(at: MacModel.inbox, withIntermediateDirectories: true)
                 NSWorkspace.shared.open(MacModel.inbox)
             }
+            FooterButton(symbol: "qrcode", help: "Pair a phone by scanning a QR code") {
+                openWindow(id: "pair")
+                bringToFront()
+            }
             FooterButton(symbol: "gearshape", help: "Settings: devices, pairing token, launch at login", action: showSettings)
             Spacer()
             FooterButton(symbol: "power", help: "Quit Droprr") { NSApp.terminate(nil) }

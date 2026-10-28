@@ -16,6 +16,8 @@ struct Peer: Codable, Identifiable, Hashable {
     var platform: String?
     /// The name the device reports in /ping, which it also uses for /inbox?for=.
     var remoteName: String?
+    /// This device's own token, from its pairing QR code. When nil, the shared token in Settings is used.
+    var token: String?
 
     var isPhone: Bool {
         get { platform == "ios" }

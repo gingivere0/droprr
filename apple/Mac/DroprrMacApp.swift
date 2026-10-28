@@ -20,6 +20,11 @@ struct DroprrMacApp: App {
         }
         .windowResizability(.contentSize)
 
+        Window("Pair a Phone", id: "pair") {
+            PairView(model: model)
+        }
+        .windowResizability(.contentSize)
+
         Settings {
             MacSettingsView(model: model)
                 .onChange(of: model.settings.port) { model.restartIfNeeded() }

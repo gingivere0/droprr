@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Bindable var model: PhoneModel
+    @State private var scanning = false
 
     var body: some View {
         TabView {
@@ -14,10 +15,38 @@ struct ContentView: View {
                 .tabItem { Label("Received", systemImage: "tray.and.arrow.down.fill") }
                 .badge(model.newItems.count)
             NavigationStack {
-                SettingsForm(settings: model.settings).navigationTitle("Settings")
+                SettingsForm(settings: model.settings)
+                    .navigationTitle("Settings")
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button { scanning = true } label: { Label("Scan Pairing Code", systemImage: "qrcode.viewfinder") }
+                        }
+                    }
             }
             .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
+        .environment(\.startPairing, { scanning = true })
+        .sheet(isPresented: $scanning) {
+            PairingScannerSheet { model.pair(with: $0) }
+        }
+        .alert("Pairing", isPresented: Binding(
+            get: { model.pairingMessage != nil && !scanning },
+            set: { if !$0 { model.pairingMessage = nil } })) {
+            Button("OK") { model.pairingMessage = nil }
+        } message: {
+            Text(model.pairingMessage ?? "")
+        }
+    }
+}
+
+private struct StartPairingKey: EnvironmentKey {
+    static let defaultValue: () -> Void = {}
+}
+
+extension EnvironmentValues {
+    var startPairing: () -> Void {
+        get { self[StartPairingKey.self] }
+        set { self[StartPairingKey.self] = newValue }
     }
 }
 
@@ -313,13 +342,24 @@ private struct PressableStyle: ButtonStyle {
 }
 
 private struct EmptyDevicesCard: View {
+    @Environment(\.startPairing) private var startPairing
+
     var body: some View {
         VStack(spacing: 14) {
             LogoBadge(size: 64)
             Text("Welcome to Droprr").font(.title2.weight(.bold))
-            Text("Open Settings, paste the pairing token from your PC or Mac, and add each computer by its Tailscale name.")
+            Text("On your PC or Mac, open Droprr and choose Pair a Phone. Then scan the code.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
+            Button(action: startPairing) {
+                Label("Scan Pairing Code", systemImage: "qrcode.viewfinder")
+                    .font(.headline)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 12)
+                    .foregroundStyle(.white)
+                    .background(Theme.gradient, in: Capsule())
+            }
+            .buttonStyle(PressableStyle())
         }
         .frame(maxWidth: .infinity)
         .padding(28)

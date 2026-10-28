@@ -11,6 +11,8 @@ struct DroprrPhoneApp: App {
         WindowGroup {
             ContentView(model: model)
                 .tint(Theme.start)
+                // Scanning the pairing QR code with the Camera app opens droprr://pair?…
+                .onOpenURL { url in model.pair(with: url.absoluteString) }
         }
         .onChange(of: scenePhase) { _, phase in
             // Desktops always queue items for a phone, so collect them each time the app comes forward.
@@ -107,12 +109,46 @@ final class PhoneModel {
         if let data = try? JSONEncoder().encode(history) { try? data.write(to: Self.historyURL, options: .atomic) }
     }
 
+    // MARK: Pairing
+
+    /// Shown as an alert after a QR code is scanned.
+    var pairingMessage: String?
+
+    func pair(with code: String) {
+        let info: PairingInfo
+        switch PairingInfo.parse(code) {
+        case .success(let parsed): info = parsed
+        case .failure(.newerVersion):
+            pairingMessage = "This pairing code is from a newer version of Droprr. Update the app on this iPhone and try again."
+            return
+        case .failure:
+            pairingMessage = "That isn't a Droprr pairing code."
+            return
+        }
+        let peer = settings.apply(info)
+        pairingMessage = "Checking \(peer.name)…"
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        Task {
+            do {
+                let ping = try await DroprrClient(peer: peer, token: settings.token).ping()
+                if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) {
+                    settings.peers[i].platform = ping.platform
+                    settings.peers[i].remoteName = ping.name
+                }
+                pairingMessage = "Paired with \(ping.name). You can send to it now."
+                await collectInbox()
+            } catch {
+                pairingMessage = "Added \(peer.name), but it didn't answer: \(error.localizedDescription). Check that Tailscale is on for both devices."
+            }
+        }
+    }
+
     // MARK: Inbox
 
     /// Pulls items each desktop is holding for this phone (GET /inbox), then acknowledges them.
     func collectInbox() async {
         let desktops = settings.peers.filter { !$0.isPhone }
-        guard !collecting, !desktops.isEmpty, !settings.token.isEmpty else { return }
+        guard !collecting, !desktops.isEmpty else { return }
         collecting = true
         defer { collecting = false }
         var count = 0

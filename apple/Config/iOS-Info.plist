@@ -9,6 +9,19 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Droprr uses the camera to scan a pairing QR code from your computer.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Droprr pairing</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>droprr</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Droprr sends and receives files with your other devices.</string>
 	<key>UIFileSharingEnabled</key>
