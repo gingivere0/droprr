@@ -56,14 +56,51 @@ static class KnownFolders
 
 static class ClipboardHelper
 {
+    static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".heic", ".heif",
+    };
+
+    public static bool TrySetText(string text) => TrySet(text);
+
+    // Files go on as a drop list marked "copy", so pasting in Explorer or a chat app pastes the files. If one
+    // of them is an image Windows can decode (HEIC needs Microsoft's HEIF extension), it goes on as a picture
+    // too, so pasting into Paint or a chat box gives the image.
+    public static bool TrySetFiles(IReadOnlyList<string> paths)
+    {
+        var data = new System.Windows.DataObject();
+        var drop = new System.Collections.Specialized.StringCollection();
+        drop.AddRange(paths.ToArray());
+        data.SetFileDropList(drop);
+        data.SetData("Preferred DropEffect", new MemoryStream(BitConverter.GetBytes((int)System.Windows.DragDropEffects.Copy)));
+        if (paths.Where(p => ImageExtensions.Contains(Path.GetExtension(p))).Select(LoadImage).FirstOrDefault(i => i is not null) is { } image)
+            data.SetImage(image);
+        return TrySet(data);
+    }
+
+    static BitmapSource? LoadImage(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            var frame = BitmapFrame.Create(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+            frame.Freeze();
+            return frame;
+        }
+        catch (Exception ex) when (ex is NotSupportedException or FileFormatException or IOException or ArgumentException or COMException)
+        {
+            return null;
+        }
+    }
+
     // The clipboard can be briefly locked by another app, so retry a few times.
-    public static bool TrySetText(string text)
+    static bool TrySet(object data)
     {
         for (var attempt = 0; attempt < 5; attempt++)
         {
             try
             {
-                System.Windows.Clipboard.SetDataObject(text, copy: true);
+                System.Windows.Clipboard.SetDataObject(data, copy: true);
                 return true;
             }
             catch (COMException)

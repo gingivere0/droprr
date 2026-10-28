@@ -27,6 +27,8 @@ public partial class App : Application
     DispatcherTimer? _outboxRefresh;
     DispatcherTimer? _outboxPurge;
     DispatcherTimer? _updateCheck;
+    DispatcherTimer? _clipboardBatch;
+    readonly List<string> _clipboardFiles = new();
     FileSystemWatcher? _outboxWatcher;
 
     internal AppSettings Settings { get; private set; } = null!;
@@ -299,6 +301,8 @@ public partial class App : Application
     {
         if (item.Kind is ItemKind.Text or ItemKind.Url)
             ClipboardHelper.TrySetText(item.Content!);
+        else if (Settings.CopyFilesToClipboard && item.Path is not null)
+            QueueFileForClipboard(item.Path);
 
         _recent.Insert(0, item);
         if (_recent.Count > MaxRecent)
@@ -307,11 +311,27 @@ public partial class App : Application
 
         var title = item.Kind switch
         {
+            ItemKind.File when Settings.CopyFilesToClipboard => "File received and copied",
             ItemKind.File => "File received",
             ItemKind.Url => "Link received and copied",
             _ => "Text received and copied",
         };
         _tray?.Notify(title, item.Display, item);
+    }
+
+    // Files from one request are announced one after another once all of them are on disk, so gather them
+    // briefly and put them on the clipboard together.
+    void QueueFileForClipboard(string path)
+    {
+        _clipboardFiles.Add(path);
+        _clipboardBatch ??= new DispatcherTimer(TimeSpan.FromMilliseconds(400), DispatcherPriority.Normal, (_, _) =>
+        {
+            _clipboardBatch!.Stop();
+            ClipboardHelper.TrySetFiles(_clipboardFiles.ToList());
+            _clipboardFiles.Clear();
+        }, Dispatcher);
+        _clipboardBatch.Stop();
+        _clipboardBatch.Start();
     }
 
     // Tailscale's address can appear or change after startup (sign-in, reconnect), so rebind when it does.

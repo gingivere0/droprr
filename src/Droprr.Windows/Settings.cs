@@ -40,6 +40,9 @@ public sealed class AppSettings
     public string Token { get; set; } = "";
     public string? SaveFolder { get; set; }
 
+    // Text and links are always copied; this adds received files (and images as pictures).
+    public bool CopyFilesToClipboard { get; set; }
+
     // A Start menu shortcut, which is what makes Droprr show up in Windows Search.
     public bool AddToStartMenu { get; set; } = true;
     public List<Peer> Peers { get; set; } = new();
