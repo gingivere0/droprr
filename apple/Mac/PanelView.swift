@@ -44,23 +44,32 @@ struct PanelView: View {
         .animation(.default, value: model.lastSendResult)
     }
 
+    /// Clicking the logo and status opens the Send window.
     private var header: some View {
-        HStack(spacing: 10) {
-            LogoBadge(size: 34)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Droprr").font(.headline)
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(model.isListening ? Color.green : Color.orange)
-                        .frame(width: 7, height: 7)
-                    Text(model.isListening ? "Ready to receive" : model.status)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+        Button {
+            openWindow(id: "send")
+            bringToFront()
+        } label: {
+            HStack(spacing: 10) {
+                LogoBadge(size: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Droprr").font(.headline)
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(model.isListening ? Color.green : Color.orange)
+                            .frame(width: 7, height: 7)
+                        Text(model.isListening ? "Ready to receive" : model.status)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
+                Spacer()
             }
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .buttonStyle(HoverButtonStyle(.plain))
+        .hoverHint("Open the Send window")
     }
 
     private var emptyDevices: some View {
