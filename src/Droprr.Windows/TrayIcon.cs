@@ -48,7 +48,12 @@ sealed class TrayIcon : IDisposable
             ContextMenuStrip = menu,
             Visible = true,
         };
-        _icon.DoubleClick += (_, _) => app.ShowSendWindow([]);
+        // A left click opens the same menu as a right click.
+        _icon.MouseClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+                ShowMenu();
+        };
         _icon.BalloonTipClicked += (_, _) => OnNotificationClicked();
         UpdateRecent([]);
     }
@@ -101,13 +106,17 @@ sealed class TrayIcon : IDisposable
             return;
         if (_lastNotified.Kind == ItemKind.Text)
         {
-            // NotifyIcon has no public way to open its menu, so use the method a right-click calls.
-            typeof(NotifyIcon).GetMethod("ShowContextMenu", BindingFlags.Instance | BindingFlags.NonPublic)?.Invoke(_icon, null);
+            ShowMenu();
             _recentMenu.ShowDropDown();
             return;
         }
         Open(_lastNotified);
     }
+
+    // NotifyIcon has no public way to open its menu, so use the method a right click calls.
+    // It also positions the menu and gives it focus so it closes when you click elsewhere.
+    void ShowMenu() =>
+        typeof(NotifyIcon).GetMethod("ShowContextMenu", BindingFlags.Instance | BindingFlags.NonPublic)?.Invoke(_icon, null);
 
     static void Open(ReceivedItem item)
     {
