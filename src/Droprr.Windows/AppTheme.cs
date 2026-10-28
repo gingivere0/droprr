@@ -81,13 +81,9 @@ static class AppTheme
 
         SetBrush("SuccessFillBrush", dark ? ThemeCatalog.SuccessFill.Dark : ThemeCatalog.SuccessFill.Light);
 
-        AppIcon.SetColors(LogoColorsFor(_theme, dark));
+        AppIcon.SetTheme(_theme.Id);
         SetBrush("SuccessTextBrush", dark ? ThemeCatalog.SuccessText.Dark : ThemeCatalog.SuccessText.Light);
     }
-
-    // Which colors replace the logo's purple and red in each theme. Graphite & Lime keeps the original logo.
-    // Every theme keeps it for now, until the design system defines the mapping.
-    static LogoColors? LogoColorsFor(ThemeDef theme, bool dark) => null;
 
     static void SetBrush(string key, Color color, double opacity = 1)
     {

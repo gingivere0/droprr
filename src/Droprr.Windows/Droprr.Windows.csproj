@@ -26,6 +26,12 @@
     <EmbeddedResource Include="$(IconPack)app.ico" LogicalName="Droprr.app.ico" />
     <!-- The design system's tokens; ThemeCatalog reads the Bento themes from it. -->
     <EmbeddedResource Include="..\..\design-system\droprr\tokens.json" LogicalName="Droprr.tokens.json" />
+    <!-- Each theme's logo (Graphite & Lime uses app.ico, the original art). -->
+    <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\sunset\logo-1024.png" LogicalName="Droprr.logo.sunset.png" />
+    <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\cherry\logo-1024.png" LogicalName="Droprr.logo.cherry.png" />
+    <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\roseGold\logo-1024.png" LogicalName="Droprr.logo.roseGold.png" />
+    <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\sage\logo-1024.png" LogicalName="Droprr.logo.sage.png" />
+    <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\oliveMustard\logo-1024.png" LogicalName="Droprr.logo.oliveMustard.png" />
     <None Include="settings.example.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
