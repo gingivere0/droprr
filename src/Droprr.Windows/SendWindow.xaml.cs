@@ -16,7 +16,7 @@ public sealed record FileEntry(string FullPath)
 
 public partial class SendWindow : Window
 {
-    readonly AppSettings _settings;
+    AppSettings _settings;
     readonly ObservableCollection<FileEntry> _files = new();
 
     public SendWindow(AppSettings settings, IEnumerable<string> files)
@@ -29,14 +29,32 @@ public partial class SendWindow : Window
         _files.CollectionChanged += (_, _) => DropHint.Visibility = _files.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         AddPaths(files);
 
-        PeerBox.ItemsSource = settings.Peers;
-        if (settings.Peers.Count > 0)
-            PeerBox.SelectedIndex = 0;
-        else
-            Status.Text = "No devices yet. Add one in Settings (tray menu), or run \"Get from PC\" on your iPhone once.";
-
+        ShowPeers();
         Loaded += async (_, _) => await LearnPlatformsAsync();
+
+        // Pick up devices added or changed in Settings while this window is open.
+        if (Application.Current is App app)
+        {
+            app.SettingsSaved += OnSettingsSaved;
+            Closed += (_, _) => app.SettingsSaved -= OnSettingsSaved;
+        }
     }
+
+    void ShowPeers()
+    {
+        var selected = (PeerBox.SelectedItem as Peer)?.Name;
+        PeerBox.ItemsSource = _settings.Peers;
+        PeerBox.SelectedItem = _settings.Peers.FirstOrDefault(p => p.Name == selected) ?? _settings.Peers.FirstOrDefault();
+        EmptyState.Visibility = _settings.Peers.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    void OnSettingsSaved()
+    {
+        _settings = SettingsStore.Load();
+        ShowPeers();
+    }
+
+    void OnSettings(object sender, RoutedEventArgs e) => ((App)Application.Current).ShowSettings();
 
     // Ask desktops what they are, so phones (which never answer) are the only ones queued.
     async System.Threading.Tasks.Task LearnPlatformsAsync()

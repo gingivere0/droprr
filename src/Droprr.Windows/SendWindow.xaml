@@ -16,7 +16,13 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="Send to" Margin="0,0,0,6" Opacity="0.8" />
+        <DockPanel Grid.Row="0" Margin="0,0,0,6">
+            <Button DockPanel.Dock="Right" Click="OnSettings" ToolTip="Settings" Padding="8,4"
+                    AutomationProperties.Name="Settings">
+                <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" />
+            </Button>
+            <TextBlock Text="Send to" Opacity="0.8" VerticalAlignment="Bottom" />
+        </DockPanel>
         <ComboBox Grid.Row="1" x:Name="PeerBox" Margin="0,0,0,16" SelectionChanged="OnPeerChanged">
             <ComboBox.ItemTemplate>
                 <DataTemplate>
@@ -57,6 +63,11 @@
 
         <StackPanel Grid.Row="7" Margin="0,12,0,0">
             <ProgressBar x:Name="Progress" Height="4" Visibility="Collapsed" Margin="0,0,0,8" />
+            <TextBlock x:Name="EmptyState" TextWrapping="Wrap" Margin="0,0,0,4" Visibility="Collapsed">
+                No devices yet.
+                <Hyperlink Click="OnSettings">Open Settings</Hyperlink>
+                to add one, or run "Get from PC" on your iPhone once.
+            </TextBlock>
             <TextBlock x:Name="Status" TextWrapping="Wrap" />
         </StackPanel>
     </Grid>

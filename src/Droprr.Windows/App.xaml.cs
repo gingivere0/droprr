@@ -174,6 +174,9 @@ public partial class App : Application
         window.Activate();
     }
 
+    // Raised on the UI thread after Settings saves, so open windows can refresh.
+    internal event Action? SettingsSaved;
+
     internal async Task ReloadAsync()
     {
         try
@@ -185,6 +188,7 @@ public partial class App : Application
             _tray?.Notify("Settings error", ex.Message);
             return;
         }
+        SettingsSaved?.Invoke();
         // Only the tray instance runs the receiver; a standalone --settings window just saves.
         if (_tray is not null)
             await StartReceiverAsync();
