@@ -85,66 +85,77 @@ struct MacShareView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
-            HStack(spacing: Space.md) {
-                LogoBadge(size: 32)
-                VStack(alignment: .leading, spacing: Space.xs) {
-                    Text("Send with Droprr").font(.headline)
-                    Text(model.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            VStack(alignment: .leading, spacing: Space.md) {
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Kicker("Droprr")
+                        Text("Send").font(Atelier.serif(28))
+                    }
+                    Spacer()
+                    LogoBadge(size: 28).padding(.bottom, 4)
                 }
-                Spacer()
+                Text(model.summary).font(.system(size: 12)).foregroundStyle(Atelier.muted).lineLimit(2)
+                Hairline()
             }
 
             if model.settings.peers.isEmpty {
                 Text("Open Droprr from the menu bar and add a device first.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Atelier.muted)
             } else {
-                VStack(spacing: Space.sm) {
-                    ForEach(model.settings.peers) { peer in
-                        let isSelected = peer.id == selected?.id
-                        Button { selectedID = peer.id } label: {
-                            HStack(spacing: Space.md) {
-                                GlyphCircle(symbol: model.sentTo == peer.id ? "checkmark" : Theme.symbol(for: peer),
-                                            size: 32, filled: isSelected)
-                                VStack(alignment: .leading, spacing: 0) {
-                                    Text(peer.name).font(.headline).lineLimit(1)
-                                    Text(Theme.platformName(peer.platform)).font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Kicker("Send to")
+                    VStack(spacing: 0) {
+                        ForEach(model.settings.peers) { peer in
+                            let isSelected = peer.id == selected?.id
+                            Button { selectedID = peer.id } label: {
+                                HStack(spacing: Space.md) {
+                                    Image(systemName: model.sentTo == peer.id ? "checkmark" : Theme.symbol(for: peer))
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(isSelected ? Atelier.ink : Atelier.muted)
+                                        .frame(width: 18)
+                                    Text(peer.name).font(Atelier.serif(16)).lineLimit(1)
+                                    Text(Theme.platformName(peer.platform)).font(.system(size: 11)).foregroundStyle(Atelier.muted)
+                                    Spacer()
+                                    if isSelected { Circle().fill(Theme.end).frame(width: 6, height: 6) }
                                 }
-                                Spacer()
-                                if isSelected {
-                                    Image(systemName: "checkmark").foregroundStyle(Theme.accentText).fontWeight(.semibold)
-                                }
+                                .padding(.vertical, 10)
+                                .padding(.horizontal, Space.xs)
+                                .background(isSelected ? Theme.secondaryTint.opacity(0.6) : .clear)
+                                .overlay(alignment: .bottom) { Hairline() }
+                                .contentShape(Rectangle())
                             }
-                            .padding(Space.sm)
-                            .background(isSelected ? AnyShapeStyle(Theme.accentTint) : AnyShapeStyle(.clear),
-                                        in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
-                            .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
                     }
                 }
             }
 
             SendStatusView(message: model.status, progress: model.progress)
 
-            HStack(spacing: Space.sm) {
+            HStack(spacing: Space.lg) {
                 Spacer()
                 Button("Cancel") { model.cancel() }
-                    .buttonStyle(HoverButtonStyle(.bordered))
+                    .buttonStyle(AtelierLinkStyle())
                     .keyboardShortcut(.cancelAction)
                 Button {
                     guard let peer = selected else { return }
                     Task { await model.send(to: peer) }
                 } label: {
-                    Label("Send", systemImage: "paperplane.fill").fontWeight(.semibold)
+                    HStack(spacing: Space.sm) {
+                        Text("Send")
+                        Image(systemName: "arrow.right").foregroundStyle(Theme.end)
+                    }
                 }
-                .buttonStyle(HoverButtonStyle(.prominent))
+                .buttonStyle(AtelierPrimaryStyle())
                 .keyboardShortcut(.defaultAction)
                 .disabled(selected == nil || model.loading || model.sending || model.payloads.isEmpty)
             }
         }
-        .padding(Space.lg)
+        .foregroundStyle(Atelier.ink)
+        .padding(22)
         .frame(width: 380)
+        .background(Atelier.paper)
         .motion(Motion.standard, value: model.status)
     }
 }

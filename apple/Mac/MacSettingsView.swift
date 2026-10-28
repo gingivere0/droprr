@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Mac Settings as a set of cards: this Mac, devices, receiving, and security.
+/// Mac Settings: this Mac, appearance, devices, receiving and the token, separated by hairlines.
 struct MacSettingsView: View {
     @Bindable var model: MacModel
     @Environment(\.openWindow) private var openWindow
@@ -13,20 +13,31 @@ struct MacSettingsView: View {
 
     /// The cards without the scroll view (also used for debug snapshots).
     var content: some View {
-        VStack(alignment: .leading, spacing: Space.md) {
+        VStack(alignment: .leading, spacing: 30) {
+            VStack(alignment: .leading, spacing: Space.lg) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Kicker("Droprr")
+                    Text("Settings").font(Atelier.serif(38))
+                }
+                Hairline()
+            }
             thisMac
             appearance
             devices
             receiving
             security
         }
-        .padding(Space.xl)
+        .padding(.horizontal, 36)
+        .padding(.top, Space.lg)
+        .padding(.bottom, 36)
+        .foregroundStyle(Atelier.ink)
+        .toggleStyle(AtelierToggleStyle())
     }
 
     var body: some View {
         ScrollView { content }
         .frame(width: 580, height: 680)
-        .background { Theme.surface.ignoresSafeArea() }
+        .background { Atelier.paper.ignoresSafeArea() }
         .seamlessWindow()
         .sheet(item: $editing) { peer in
             PeerEditor(peer: peer, isNew: !settings.peers.contains { $0.id == peer.id },
@@ -62,112 +73,112 @@ struct MacSettingsView: View {
         }
     }
 
-    // MARK: Cards
+    // MARK: Sections
 
     private var thisMac: some View {
-        HStack(spacing: Space.lg) {
-            GradientTile(symbol: "laptopcomputer", size: 64, glowing: true)
+        HStack(alignment: .center, spacing: Space.lg) {
             VStack(alignment: .leading, spacing: Space.sm) {
+                Kicker("This Mac")
                 TextField("Device name", text: Binding(get: { settings.deviceName }, set: { settings.deviceName = $0 }))
                     .textFieldStyle(.plain)
-                    .font(.title2.weight(.bold))
+                    .font(Atelier.serif(26))
                     .accessibilityLabel("Device name")
-                HStack(spacing: Space.sm) {
-                    Pill(text: model.isListening ? "Ready to receive" : "Not receiving",
-                         symbol: model.isListening ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
-                         color: model.isListening ? .green : .orange)
-                    Pill(text: "Port \(String(settings.port))", symbol: "network")
+                HStack(spacing: 7) {
+                    StatusDot(on: model.isListening)
+                    Text(model.isListening ? "Ready to receive" : "Not receiving")
                 }
+                .font(.system(size: 12))
+                .foregroundStyle(Atelier.muted)
             }
             Spacer()
             Button {
                 openWindow(id: "pair")
                 bringToFront()
             } label: {
-                Label("Pair a Phone", systemImage: "qrcode").fontWeight(.semibold)
+                HStack(spacing: Space.sm) {
+                    Image(systemName: "qrcode").foregroundStyle(Theme.end)
+                    Text("Pair a phone")
+                }
             }
-            .buttonStyle(HoverButtonStyle(.prominent))
-            .shadow(color: Theme.start.opacity(0.3), radius: 8, y: 3)
+            .buttonStyle(AtelierPrimaryStyle())
             .hoverHint("Show a QR code for your iPhone to scan")
         }
-        .card()
     }
 
     private var appearance: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            CardHeader(symbol: "paintpalette.fill", color: Theme.start, glyph: Theme.onAccent, title: "Appearance",
-                       subtitle: "Color theme. Light and dark follow your Mac.")
+            SectionHeader(title: "Theme", detail: "Light and dark follow your Mac.")
             ThemePicker(settings: settings)
         }
-        .card()
     }
 
     private var devices: some View {
-        VStack(alignment: .leading, spacing: Space.md) {
-            CardHeader(symbol: "point.3.connected.trianglepath.dotted", color: Theme.start, glyph: Theme.onAccent, title: "Devices",
-                       subtitle: settings.peers.isEmpty ? "None yet" : "\(settings.peers.count) paired") {
-                Button { editing = Peer(name: "", host: "") } label: {
-                    Label("Add Device", systemImage: "plus")
-                }
-                .buttonStyle(HoverButtonStyle(.bordered, compact: true))
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(title: "Devices", detail: settings.peers.isEmpty ? "None yet" : "\(settings.peers.count) paired") {
+                Button("Add device") { editing = Peer(name: "", host: "") }
+                    .buttonStyle(AtelierLinkStyle())
             }
+            .padding(.bottom, Space.md)
             if settings.peers.isEmpty {
+                Hairline()
                 Text("Pair your iPhone with the QR code above, or add your PC by its Tailscale name.")
-                    .font(.callout).foregroundStyle(.secondary)
+                    .font(.system(size: 12)).foregroundStyle(Atelier.muted)
+                    .padding(.vertical, Space.md)
             }
             ForEach(settings.peers) { peer in
-                Divider()
+                Hairline()
                 DeviceRow(peer: peer, result: pingResults[peer.id],
                           onTest: { Task { await ping(peer) } },
                           onEdit: { editing = peer },
                           onRemove: { removing = peer })
+                    .padding(.vertical, Space.md)
             }
+            Hairline()
         }
-        .card()
     }
 
     private var receiving: some View {
-        VStack(alignment: .leading, spacing: Space.md) {
-            CardHeader(symbol: "tray.and.arrow.down.fill", color: Theme.secondaryText, glyph: Theme.tile, title: "Receiving",
-                       subtitle: "Files go to Downloads › Droprr") {
-                Button("Open Folder") {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(title: "Receiving", detail: "Files go to Downloads › Droprr") {
+                Button("Open folder") {
                     try? FileManager.default.createDirectory(at: MacModel.inbox, withIntermediateDirectories: true)
                     NSWorkspace.shared.open(MacModel.inbox)
                 }
-                .buttonStyle(HoverButtonStyle(.bordered, compact: true))
+                .buttonStyle(AtelierLinkStyle())
             }
-            Divider()
-            OptionRow(title: "Copy received text and links to the clipboard",
-                      detail: "Paste them right away. Clipboard managers are asked not to keep them.") {
-                Toggle("", isOn: Binding(get: { settings.copyTextAndLinks }, set: { settings.copyTextAndLinks = $0 }))
+            .padding(.bottom, Space.md)
+            AtelierRow(title: "Copy received text and links",
+                       detail: "Clipboard managers are asked not to keep them.") {
+                Toggle("Copy received text and links", isOn: Binding(get: { settings.copyTextAndLinks }, set: { settings.copyTextAndLinks = $0 }))
+                    .labelsHidden()
             }
-            Divider()
-            OptionRow(title: "Auto-copy received items to clipboard",
-                      detail: "Copies everything as it arrives, including files and images.") {
-                Toggle("", isOn: Binding(get: { settings.autoCopy }, set: { settings.autoCopy = $0 }))
+            AtelierRow(title: "Copy everything received",
+                       detail: "Includes files and images, as they arrive.") {
+                Toggle("Copy everything received", isOn: Binding(get: { settings.autoCopy }, set: { settings.autoCopy = $0 }))
+                    .labelsHidden()
             }
-            Divider()
-            OptionRow(title: "Open Droprr at login", detail: "Keep receiving without opening the app.") {
-                Toggle("", isOn: Binding(get: { model.launchAtLogin }, set: { model.launchAtLogin = $0 }))
+            AtelierRow(title: "Open at login", detail: "Keep receiving without opening the app.") {
+                Toggle("Open at login", isOn: Binding(get: { model.launchAtLogin }, set: { model.launchAtLogin = $0 }))
+                    .labelsHidden()
             }
-            Divider()
-            OptionRow(title: "Port", detail: "Other devices send here. 53318 is the default.") {
+            AtelierRow(title: "Port", detail: "Other devices send here. 53318 is the default.") {
                 TextField("", value: Binding(get: { settings.port }, set: { settings.port = $0 }),
                           format: .number.grouping(.never))
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13).monospacedDigit())
                     .multilineTextAlignment(.trailing)
                     .frame(width: 72)
                     .onSubmit { model.restartIfNeeded() }
                     .accessibilityLabel("Port")
             }
+            Hairline()
         }
-        .card()
     }
 
     private var security: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            CardHeader(symbol: "lock.fill", color: .gray, title: "This Mac's token",
-                       subtitle: "Devices need it to send here. The Pair a Phone code includes it.")
-            HStack(spacing: Space.sm) {
+            SectionHeader(title: "Token", detail: "Devices need it to send here. The pairing code includes it.")
+            HStack(spacing: Space.md) {
                 Group {
                     if showToken {
                         TextField("Token", text: Binding(get: { settings.token }, set: { settings.token = $0 }))
@@ -175,22 +186,24 @@ struct MacSettingsView: View {
                         SecureField("Token", text: Binding(get: { settings.token }, set: { settings.token = $0 }))
                     }
                 }
-                .textFieldStyle(.roundedBorder)
-                .font(.body.monospaced())
+                .textFieldStyle(.plain)
+                .font(.system(size: 13).monospaced())
+                .padding(.vertical, 6)
+                .overlay(alignment: .bottom) { Hairline() }
                 .accessibilityLabel("Token")
                 Button { showToken.toggle() } label: { Image(systemName: showToken ? "eye.slash" : "eye") }
                     .buttonStyle(HoverButtonStyle(.plain))
+                    .foregroundStyle(Atelier.muted)
                     .accessibilityLabel(showToken ? "Hide token" : "Show token")
                     .hoverHint(showToken ? "Hide the token" : "Show the token")
                 Button("Copy") { Clipboard.copy(text: settings.token) }
-                    .buttonStyle(HoverButtonStyle(.bordered, compact: true))
+                    .buttonStyle(AtelierLinkStyle())
                     .disabled(settings.token.isEmpty)
-                Button("Generate New") { settings.token = DroprrSettings.generateToken() }
-                    .buttonStyle(HoverButtonStyle(.bordered, compact: true))
+                Button("New token") { settings.token = DroprrSettings.generateToken() }
+                    .buttonStyle(AtelierLinkStyle())
                     .hoverHint("Paired devices will need to pair again")
             }
         }
-        .card()
     }
 
     private func ping(_ peer: Peer) async {
@@ -216,40 +229,46 @@ private struct DeviceRow: View {
     var onRemove: () -> Void
 
     var body: some View {
-        HStack(spacing: Space.md) {
-            GradientTile(symbol: Theme.symbol(for: peer), size: 36)
-            VStack(alignment: .leading, spacing: Space.xs) {
-                HStack(spacing: Space.sm) {
-                    Text(peer.name).font(.headline)
-                    Pill(text: Theme.platformName(peer.platform))
+        HStack(alignment: .firstTextBaseline, spacing: Space.md) {
+            Image(systemName: Theme.symbol(for: peer))
+                .font(.system(size: 14))
+                .foregroundStyle(Atelier.muted)
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
+                    Text(peer.name).font(Atelier.serif(18))
+                    Text(Theme.platformName(peer.platform).uppercased())
+                        .font(.system(size: 9.5, weight: .semibold)).tracking(1.4)
+                        .foregroundStyle(Atelier.muted)
                 }
                 Group {
                     if peer.isPhone {
-                        Text("Collects items when Droprr opens on it").font(.caption)
+                        Text("Collects items when Droprr opens on it").font(.system(size: 11))
                     } else {
-                        Text("\(peer.host):\(String(peer.port))").font(.caption.monospaced())
+                        Text("\(peer.host):\(String(peer.port))").font(.system(size: 11).monospaced())
                     }
                 }
-                .foregroundStyle(.secondary).lineLimit(1)
+                .foregroundStyle(Atelier.muted).lineLimit(1)
                 status
                 if !peer.isPaired {
                     Label("Not paired: scan its code or enter its token", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption2).foregroundStyle(.orange)
+                        .font(.system(size: 11)).foregroundStyle(.orange)
                 }
             }
             Spacer()
             if !peer.isPhone {
                 Button("Test", action: onTest)
-                    .buttonStyle(HoverButtonStyle(.bordered, compact: true))
+                    .buttonStyle(AtelierLinkStyle())
                     .hoverHint("Check that \(peer.name) answers")
             }
             Button(action: onEdit) { Image(systemName: "pencil") }
                 .buttonStyle(HoverButtonStyle(.plain))
+                .foregroundStyle(Atelier.muted)
                 .accessibilityLabel("Edit \(peer.name)")
                 .hoverHint("Edit or rename")
             Button(action: onRemove) { Image(systemName: "trash") }
                 .buttonStyle(HoverButtonStyle(.plain))
-                .foregroundStyle(.red)
+                .foregroundStyle(Atelier.muted)
                 .accessibilityLabel("Remove \(peer.name)")
                 .hoverHint("Remove this device")
         }
@@ -261,29 +280,34 @@ private struct DeviceRow: View {
 
     @ViewBuilder private var status: some View {
         switch result {
-        case .checking: Label("Checking…", systemImage: "ellipsis").font(.caption2).foregroundStyle(.secondary)
-        case .ok(let text): Label(text, systemImage: "checkmark.circle.fill").font(.caption2).foregroundStyle(.green)
-        case .failed(let text): Label(text, systemImage: "exclamationmark.triangle.fill").font(.caption2).foregroundStyle(.orange)
+        case .checking: Label("Checking…", systemImage: "ellipsis").font(.system(size: 11)).foregroundStyle(Atelier.muted)
+        case .ok(let text): Label(text, systemImage: "checkmark").font(.system(size: 11)).foregroundStyle(Theme.successText)
+        case .failed(let text): Label(text, systemImage: "exclamationmark.triangle.fill").font(.system(size: 11)).foregroundStyle(.orange)
         case nil: EmptyView()
         }
     }
 }
 
-/// A settings line: title and explanation on the left, a control on the right.
-private struct OptionRow<Control: View>: View {
+/// A section label in spaced capitals, a short note, and an optional action on the right.
+private struct SectionHeader<Accessory: View>: View {
     var title: String
-    var detail: String
-    @ViewBuilder var control: () -> Control
+    var detail: String?
+    @ViewBuilder var accessory: () -> Accessory
+
+    init(title: String, detail: String? = nil, @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() }) {
+        self.title = title
+        self.detail = detail
+        self.accessory = accessory
+    }
 
     var body: some View {
-        HStack(spacing: Space.md) {
-            VStack(alignment: .leading, spacing: Space.xs) {
-                Text(title)
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 4) {
+                Kicker(title)
+                if let detail { Text(detail).font(.system(size: 12)).foregroundStyle(Atelier.muted) }
             }
             Spacer()
-            control().labelsHidden().toggleStyle(.switch)
+            accessory()
         }
-        .accessibilityElement(children: .combine)
     }
 }

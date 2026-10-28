@@ -76,7 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     static func hideTitleBar(_ window: NSWindow) {
         guard window.styleMask.contains(.titled), !(window is NSPanel) else { return }
-        window.backgroundColor = NSColor(Theme.surface)
+        window.backgroundColor = NSColor(Atelier.paper)
         if window.titlebarAppearsTransparent && window.titleVisibility == .hidden
             && window.styleMask.contains(.fullSizeContentView) && window.toolbar == nil { return }
         window.titlebarAppearsTransparent = true
@@ -86,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.toolbar = nil
         window.isMovableByWindowBackground = true
         // Match the theme surface so nothing of the default window color peeks out at the edges.
-        window.backgroundColor = NSColor(Theme.surface)
+        window.backgroundColor = NSColor(Atelier.paper)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

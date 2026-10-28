@@ -11,17 +11,20 @@ struct PanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
             header
+            Hairline()
 
             if model.settings.peers.isEmpty {
                 emptyDevices
             } else {
-                sectionTitle("Send to")
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: Space.md), GridItem(.flexible(), spacing: Space.md)], spacing: Space.md) {
-                    ForEach(model.settings.peers) { peer in
-                        DeviceTile(peer: peer, waiting: model.waiting(for: peer),
-                                   onClipboard: { Task { await model.sendClipboard(to: peer) } },
-                                   onFiles: { model.chooseFiles(for: peer) },
-                                   onClearWaiting: { model.clearWaiting(for: peer) })
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Kicker("Send to")
+                    VStack(spacing: 0) {
+                        ForEach(model.settings.peers) { peer in
+                            DeviceTile(peer: peer, waiting: model.waiting(for: peer),
+                                       onClipboard: { Task { await model.sendClipboard(to: peer) } },
+                                       onFiles: { model.chooseFiles(for: peer) },
+                                       onClearWaiting: { model.clearWaiting(for: peer) })
+                        }
                     }
                 }
             }
@@ -29,24 +32,28 @@ struct PanelView: View {
             SendStatusView(message: model.lastSendResult, progress: model.progress)
 
             if !model.recent.isEmpty {
-                sectionTitle("Received")
-                VStack(spacing: Space.xs) {
-                    ForEach(model.recent) { item in
-                        RecentRow(item: item, onOpen: { model.open(item) }, onRemove: { model.removeRecent(item) })
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Kicker("Received")
+                    VStack(spacing: 0) {
+                        ForEach(model.recent) { item in
+                            RecentRow(item: item, onOpen: { model.open(item) }, onRemove: { model.removeRecent(item) })
+                        }
                     }
                 }
             }
 
-            Divider()
+            Hairline()
             footer
         }
-        .padding(Space.lg)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 20)
         .frame(width: 340)
-        .background(Theme.surface)
+        .foregroundStyle(Atelier.ink)
+        .background(Atelier.paper)
         .motion(Motion.standard, value: model.lastSendResult)
     }
 
-    /// Clicking the logo and status opens the Send window. If it's open but covered by another
+    /// Clicking the name and status opens the Send window. If it's open but covered by another
     /// window, it comes to the front; only when it's already on top does a click close it.
     private var header: some View {
         Button {
@@ -57,25 +64,24 @@ struct PanelView: View {
                 bringToFront()
             }
         } label: {
-            HStack(spacing: Space.md) {
-                LogoBadge(size: 34)
-                VStack(alignment: .leading, spacing: Space.xs) {
-                    Text("Droprr").font(.headline)
-                    HStack(spacing: Space.xs) {
-                        Circle()
-                            .fill(model.isListening ? Color.green : Color.orange)
-                            .frame(width: 7, height: 7)
-                        Text(model.isListening ? "Ready to receive" : model.status)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+            HStack(alignment: .center, spacing: Space.md) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Droprr").font(Atelier.serif(24))
+                    HStack(spacing: 7) {
+                        StatusDot(on: model.isListening)
+                        Text(model.isListening ? "Ready" : model.status)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Atelier.muted)
                             .lineLimit(1)
                     }
                 }
                 Spacer()
+                LogoBadge(size: 30)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(HoverButtonStyle(.plain))
+        .buttonStyle(.plain)
         .hoverHint("Open or close the Send window", edge: .bottom)
     }
 
@@ -97,46 +103,35 @@ struct PanelView: View {
     }
 
     private var emptyDevices: some View {
-        VStack(spacing: Space.sm) {
-            Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(.title2)
-                .foregroundStyle(Theme.gradient)
+        VStack(alignment: .leading, spacing: Space.md) {
+            Text("No devices yet").font(Atelier.serif(18))
             Text("Add your other devices in Settings to start sending.")
-                .font(.callout)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-            Button("Open Settings…", action: showSettings)
-                .buttonStyle(HoverButtonStyle(.prominent))
+                .font(.system(size: 12))
+                .foregroundStyle(Atelier.muted)
+            Button("Open Settings", action: showSettings)
+                .buttonStyle(AtelierPrimaryStyle())
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, Space.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var footer: some View {
-        HStack(spacing: Space.xs) {
-            FooterButton(symbol: "square.and.arrow.up", help: "Open the Send window (⌘N)", key: "n") {
+        HStack(spacing: Space.lg) {
+            FooterButton(title: "Send", help: "Open the Send window (⌘N)", key: "n") {
                 openWindow(id: "send")
                 bringToFront()
             }
-            FooterButton(symbol: "folder", help: "Open the Droprr folder in Downloads (⌘D)", key: "d") {
+            FooterButton(title: "Folder", help: "Open the Droprr folder in Downloads (⌘D)", key: "d") {
                 try? FileManager.default.createDirectory(at: MacModel.inbox, withIntermediateDirectories: true)
                 NSWorkspace.shared.open(MacModel.inbox)
             }
-            FooterButton(symbol: "qrcode", help: "Pair a phone with a QR code (⌘P)", key: "p") {
+            FooterButton(title: "Pair", help: "Pair a phone with a QR code (⌘P)", key: "p") {
                 openWindow(id: "pair")
                 bringToFront()
             }
-            FooterButton(symbol: "gearshape", help: "Settings (⌘,)", key: ",", action: showSettings)
+            FooterButton(title: "Settings", help: "Settings (⌘,)", key: ",", action: showSettings)
             Spacer()
-            FooterButton(symbol: "power", help: "Quit Droprr (⌘Q)", key: "q") { NSApp.terminate(nil) }
+            FooterButton(title: "Quit", help: "Quit Droprr (⌘Q)", key: "q") { NSApp.terminate(nil) }
         }
-    }
-
-    private func sectionTitle(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .tracking(0.6)
     }
 
     private func showSettings() {
@@ -145,6 +140,7 @@ struct PanelView: View {
     }
 }
 
+/// A device line: click it to choose files; the icons send the clipboard or files.
 private struct DeviceTile: View {
     var peer: Peer
     var waiting: Int
@@ -154,30 +150,26 @@ private struct DeviceTile: View {
     @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.sm) {
-            HStack(alignment: .top) {
-                GlyphCircle(symbol: Theme.symbol(for: peer), size: 30, filled: hovering)
-                Spacer()
+        VStack(spacing: 0) {
+            Hairline()
+            HStack(spacing: Space.md) {
+                Image(systemName: Theme.symbol(for: peer))
+                    .font(.system(size: 13))
+                    .foregroundStyle(hovering ? Atelier.ink : Atelier.muted)
+                    .frame(width: 18)
+                Text(peer.name).font(Atelier.serif(16)).lineLimit(1)
                 if waiting > 0 {
                     WaitingBadge(count: waiting, peerName: peer.name, onClear: onClearWaiting)
                 }
+                Spacer(minLength: Space.sm)
+                RowAction(symbol: "doc.on.clipboard", label: "Send what's on the clipboard", action: onClipboard)
+                RowAction(symbol: "plus", label: "Choose files to send", action: onFiles)
             }
-            Text(peer.name)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-            HStack(spacing: Space.sm) {
-                TileAction(symbol: "doc.on.clipboard", label: "Clipboard", action: onClipboard)
-                TileAction(symbol: "doc.badge.plus", label: "Files", action: onFiles)
-            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, Space.xs)
         }
-        .padding(Space.md)
-        .background {
-            RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                .fill(hovering ? Theme.accentTint : Theme.tile)
-                .overlay(RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                    .strokeBorder(hovering ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.stroke), lineWidth: 1))
-        }
-        .contentShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+        .background(hovering ? Theme.secondaryTint.opacity(0.6) : .clear)
+        .contentShape(Rectangle())
         // Clicking anywhere outside the two buttons chooses files to send.
         .onTapGesture(perform: onFiles)
         .onHover { hovering = $0 }
@@ -190,33 +182,22 @@ struct WaitingBadge: View {
     var count: Int
     var peerName: String
     var onClear: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         Button(action: onClear) {
-            HStack(spacing: Space.xs) {
+            HStack(spacing: 4) {
+                Circle().fill(Theme.end).frame(width: 5, height: 5)
                 Text("\(count) waiting")
-                Image(systemName: "xmark.circle.fill").opacity(0.7)
+                Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
             }
-            .font(.caption2.weight(.medium))
+            .font(.system(size: 11))
+            .foregroundStyle(hovering ? Atelier.ink : Atelier.muted)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(HoverButtonStyle(.bordered, compact: true))
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
         .hoverHint("Clear the \(count) item\(count == 1 ? "" : "s") waiting for \(peerName)")
-    }
-}
-
-private struct TileAction: View {
-    var symbol: String
-    var label: String
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label(label, systemImage: symbol)
-                .labelStyle(.iconOnly)
-                .frame(maxWidth: .infinity, minHeight: 22)
-        }
-        .buttonStyle(HoverButtonStyle(.bordered, compact: true))
-        .hoverHint(label == "Clipboard" ? "Send what's on the clipboard" : "Choose files to send")
     }
 }
 
@@ -237,10 +218,13 @@ private struct RecentRow: View {
         HStack(spacing: Space.xs) {
             Button(action: onOpen) {
                 HStack(spacing: Space.md) {
-                    GlyphCircle(symbol: Theme.symbol(for: item), size: 26)
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        Text(item.title).font(.callout).lineLimit(1).truncationMode(.middle)
-                        Text(item.subtitle).font(.caption2).foregroundStyle(.secondary)
+                    Image(systemName: Theme.symbol(for: item))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Atelier.muted)
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.title).font(.system(size: 13)).lineLimit(1).truncationMode(.middle)
+                        Text(item.subtitle).font(.system(size: 11)).foregroundStyle(Atelier.muted)
                     }
                     Spacer(minLength: 0)
                 }
@@ -257,9 +241,10 @@ private struct RecentRow: View {
             }
             RowAction(symbol: "xmark", label: "Remove from list", action: onRemove)
         }
-        .padding(.horizontal, Space.sm)
-        .padding(.vertical, Space.xs)
-        .background(hovering ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
+        .padding(.horizontal, Space.xs)
+        .padding(.vertical, 8)
+        .background(hovering ? Theme.secondaryTint.opacity(0.6) : .clear)
+        .overlay(alignment: .top) { Hairline() }
         .onHover { hovering = $0 }
     }
 
@@ -282,14 +267,15 @@ private struct RowAction: View {
             Image(systemName: symbol).font(.caption.weight(.semibold)).frame(width: 18, height: 18)
         }
         .buttonStyle(HoverButtonStyle(.plain))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(Atelier.muted)
         .accessibilityLabel(label)
         .hoverHint(label)
     }
 }
 
+/// A footer action as small spaced capitals.
 private struct FooterButton: View {
-    var symbol: String
+    var title: String
     var help: String
     var key: KeyEquivalent
     var action: () -> Void
@@ -297,10 +283,12 @@ private struct FooterButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: symbol)
-                .frame(width: 28, height: 24)
-                .background(hovering ? Color.primary.opacity(0.08) : .clear,
-                            in: RoundedRectangle(cornerRadius: Radius.smallControl, style: .continuous))
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(1.5)
+                .foregroundStyle(hovering ? Atelier.ink : Atelier.muted)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(help)
