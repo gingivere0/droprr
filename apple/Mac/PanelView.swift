@@ -5,6 +5,7 @@ import SwiftUI
 struct PanelView: View {
     @Bindable var model: MacModel
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
@@ -44,11 +45,15 @@ struct PanelView: View {
         .animation(.default, value: model.lastSendResult)
     }
 
-    /// Clicking the logo and status opens the Send window.
+    /// Clicking the logo and status opens the Send window, or closes it if it's already open.
     private var header: some View {
         Button {
-            openWindow(id: "send")
-            bringToFront()
+            if sendWindowIsOpen {
+                dismissWindow(id: "send")
+            } else {
+                openWindow(id: "send")
+                bringToFront()
+            }
         } label: {
             HStack(spacing: 10) {
                 LogoBadge(size: 34)
@@ -69,7 +74,11 @@ struct PanelView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(HoverButtonStyle(.plain))
-        .hoverHint("Open the Send window")
+        .hoverHint("Open or close the Send window")
+    }
+
+    private var sendWindowIsOpen: Bool {
+        NSApp.windows.contains { $0.isVisible && ($0.identifier?.rawValue.hasPrefix("send") == true || $0.title == "Send with Droprr") }
     }
 
     private var emptyDevices: some View {
