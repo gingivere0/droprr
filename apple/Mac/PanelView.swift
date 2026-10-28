@@ -46,10 +46,11 @@ struct PanelView: View {
         .motion(Motion.standard, value: model.lastSendResult)
     }
 
-    /// Clicking the logo and status opens the Send window, or closes it if it's already open.
+    /// Clicking the logo and status opens the Send window. If it's open but covered by another
+    /// window, it comes to the front; only when it's already on top does a click close it.
     private var header: some View {
         Button {
-            if sendWindowIsOpen {
+            if let window = sendWindow, sendWindowIsOnTop(window) {
                 dismissWindow(id: "send")
             } else {
                 openWindow(id: "send")
@@ -78,8 +79,21 @@ struct PanelView: View {
         .hoverHint("Open or close the Send window")
     }
 
-    private var sendWindowIsOpen: Bool {
-        NSApp.windows.contains { $0.isVisible && ($0.identifier?.rawValue.hasPrefix("send") == true || $0.title == "Send with Droprr") }
+    private var sendWindow: NSWindow? {
+        NSApp.windows.first { $0.isVisible && ($0.identifier?.rawValue.hasPrefix("send") == true || $0.title == "Send with Droprr") }
+    }
+
+    /// True when no other app's normal window sits above the Send window (front-to-back screen order).
+    private func sendWindowIsOnTop(_ window: NSWindow) -> Bool {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return true }
+        let me = ProcessInfo.processInfo.processIdentifier
+        for info in list where (info[kCGWindowLayer as String] as? Int) == 0 {
+            if (info[kCGWindowNumber as String] as? Int) == window.windowNumber { return true }
+            // Another app's window is in front of ours.
+            if (info[kCGWindowOwnerPID as String] as? Int32) != me { return false }
+        }
+        return false
     }
 
     private var emptyDevices: some View {
