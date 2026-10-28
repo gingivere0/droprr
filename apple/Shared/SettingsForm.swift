@@ -230,7 +230,7 @@ private struct PeerRow: View {
     }
 }
 
-private struct PeerEditor: View {
+struct PeerEditor: View {
     @State var peer: Peer
     var isNew: Bool
     var onRemove: () -> Void

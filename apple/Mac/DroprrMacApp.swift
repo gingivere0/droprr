@@ -108,6 +108,9 @@ final class MacModel {
         }
         Notifier.shared.requestPermission()
         restartIfNeeded()
+        #if DEBUG
+        SnapshotSupport.runIfRequested(model: self)
+        #endif
     }
 
     /// Starts the receiver, or restarts it when the port setting changed.

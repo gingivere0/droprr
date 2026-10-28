@@ -19,7 +19,7 @@ struct SendView: View {
     private var hasContent: Bool { !files.isEmpty || !trimmed.isEmpty }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.lg) {
+        VStack(alignment: .leading, spacing: Space.xl) {
             header
 
             if model.settings.peers.isEmpty {
@@ -33,7 +33,8 @@ struct SendView: View {
             }
         }
         .padding(Space.xl)
-        .frame(width: 520)
+        .frame(width: 560)
+        .background { WindowGlow() }
         .motion(Motion.standard, value: model.lastSendResult)
         .motion(Motion.fast, value: files)
     }
@@ -41,21 +42,22 @@ struct SendView: View {
     // MARK: Sections
 
     private var header: some View {
-        HStack(spacing: Space.md) {
-            LogoBadge(size: 32)
+        HStack(spacing: Space.lg) {
+            LogoBadge(size: 48)
             VStack(alignment: .leading, spacing: Space.xs) {
-                Text("Send with Droprr").font(.title2.weight(.semibold))
-                Text("Choose a device, add files or text, then Send.")
+                Text("Send").font(.largeTitle.weight(.bold))
+                Text(selected.map { "To \($0.name) · drop files or type below" } ?? "Choose a device to send to")
                     .font(.callout).foregroundStyle(.secondary)
             }
+            Spacer()
         }
     }
 
     private var emptyState: some View {
-        VStack(spacing: Space.md) {
-            Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(.largeTitle).foregroundStyle(Theme.accentText)
-            Text("Add your PC or pair your iPhone in Settings to start sending.")
+        VStack(spacing: Space.lg) {
+            GradientTile(symbol: "point.3.connected.trianglepath.dotted", size: 64, glowing: true)
+            Text("No devices yet").font(.title3.weight(.semibold))
+            Text("Pair your iPhone or add your PC in Settings to start sending.")
                 .multilineTextAlignment(.center).foregroundStyle(.secondary)
             Button("Open Settings…") {
                 openSettings()
@@ -66,12 +68,14 @@ struct SendView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(Space.xxl)
+        .card()
     }
 
     private var devices: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
-            SectionTitle("To")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: Space.md)], spacing: Space.md) {
+            SectionTitle("Send to")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 128, maximum: 160), spacing: Space.md)],
+                      alignment: .leading, spacing: Space.md) {
                 ForEach(Array(model.settings.peers.enumerated()), id: \.element.id) { index, peer in
                     DeviceCard(peer: peer, selected: peer.id == selected?.id,
                                waiting: model.waiting(for: peer),
@@ -92,59 +96,69 @@ struct SendView: View {
     }
 
     private var dropArea: some View {
-        VStack(spacing: Space.sm) {
+        VStack(spacing: Space.md) {
             if files.isEmpty {
-                Image(systemName: "arrow.down.doc")
-                    .font(.title)
-                    .foregroundStyle(dropTargeted ? AnyShapeStyle(Theme.accentText) : AnyShapeStyle(.secondary))
-                Text(dropTargeted ? "Release to add" : "Drop files here")
-                    .font(.headline)
+                GradientTile(symbol: dropTargeted ? "arrow.down.circle.fill" : "square.and.arrow.down.on.square",
+                             size: 56, glowing: dropTargeted)
+                    .scaleEffect(dropTargeted ? 1.08 : 1)
+                VStack(spacing: Space.xs) {
+                    Text(dropTargeted ? "Release to add" : "Drop files here").font(.title3.weight(.semibold))
+                    Text("Photos, documents, anything. Or choose them from Finder.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
                 Button("Choose Files…") { addFiles() }
-                    .buttonStyle(HoverButtonStyle(.bordered, compact: true))
+                    .buttonStyle(HoverButtonStyle(.bordered))
                     .keyboardShortcut("o")
             } else {
-                ForEach(files, id: \.self) { file in
-                    FileRow(file: file) { files.removeAll { $0 == file } }
+                HStack {
+                    Text("\(files.count) file\(files.count == 1 ? "" : "s") ready").font(.headline)
+                    Spacer()
+                    Button("Add More…") { addFiles() }
+                        .buttonStyle(HoverButtonStyle(.plain))
+                        .foregroundStyle(Theme.accentText)
+                        .keyboardShortcut("o")
                 }
-                Button("Add More…") { addFiles() }
-                    .buttonStyle(HoverButtonStyle(.plain))
-                    .foregroundStyle(Theme.accentText)
-                    .keyboardShortcut("o")
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: Space.sm)], spacing: Space.sm) {
+                    ForEach(files, id: \.self) { file in
+                        FileChip(file: file) { files.removeAll { $0 == file } }
+                    }
+                }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 120)
-        .padding(Space.md)
+        .frame(maxWidth: .infinity, minHeight: 190)
+        .padding(Space.lg)
         .background {
             RoundedRectangle(cornerRadius: Radius.feature, style: .continuous)
                 .fill(dropTargeted ? AnyShapeStyle(Theme.accentTint) : AnyShapeStyle(.background.secondary))
                 .overlay(RoundedRectangle(cornerRadius: Radius.feature, style: .continuous)
-                    .strokeBorder(dropTargeted ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.stroke),
-                                  style: StrokeStyle(lineWidth: dropTargeted ? 2 : 1, dash: dropTargeted ? [] : [6, 4])))
+                    .strokeBorder(dropTargeted ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.accentText.opacity(0.35)),
+                                  style: StrokeStyle(lineWidth: 2, dash: dropTargeted ? [] : [8, 6])))
         }
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
             Task { files += await Self.fileURLs(from: providers).filter { !files.contains($0) } }
             return true
         }
         .motion(Motion.fast, value: dropTargeted)
-        .accessibilityLabel(files.isEmpty ? "Drop area. Drop files here or choose files." : "\(files.count) files added")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(files.isEmpty ? "Drop area. Drop files here or choose files." : "\(files.count) files ready")
     }
 
     private var composer: some View {
-        VStack(alignment: .leading, spacing: Space.sm) {
-            SectionTitle("Text or link")
-            TextField("Type or paste something", text: $text, axis: .vertical)
-                .lineLimit(2...6)
+        HStack(alignment: .top, spacing: Space.md) {
+            ColorTile(symbol: "text.bubble.fill", color: Theme.start, size: 28)
+            TextField("Add a message or paste a link", text: $text, axis: .vertical)
+                .lineLimit(1...6)
                 .textFieldStyle(.plain)
+                .font(.body)
                 .focused($typing)
-                .padding(Space.md)
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                    .strokeBorder(typing ? AnyShapeStyle(Theme.accentText) : AnyShapeStyle(Theme.stroke), lineWidth: typing ? 2 : 1))
+                .padding(.top, Space.xs)
         }
+        .card(highlighted: typing)
+        .motion(Motion.fast, value: typing)
     }
 
     private var bottomBar: some View {
-        HStack(spacing: Space.sm) {
+        HStack(spacing: Space.md) {
             Button {
                 guard let peer = selected else { return }
                 Task { await model.sendClipboard(to: peer) }
@@ -162,12 +176,19 @@ struct SendView: View {
                 guard let peer = selected else { return }
                 Task { await sendStaged(to: peer) }
             } label: {
-                Label(selected.map { "Send to \($0.name)" } ?? "Send", systemImage: "paperplane.fill")
-                    .fontWeight(.semibold)
+                HStack(spacing: Space.sm) {
+                    if model.isSending { ProgressView().controlSize(.small).tint(.white) }
+                    else { Image(systemName: "paperplane.fill") }
+                    Text(selected.map { "Send to \($0.name)" } ?? "Send")
+                }
+                .font(.headline)
+                .padding(.horizontal, Space.sm)
+                .padding(.vertical, Space.xs)
             }
             .buttonStyle(HoverButtonStyle(.prominent))
+            .shadow(color: Theme.start.opacity(hasContent ? 0.35 : 0), radius: 10, y: 4)
             .keyboardShortcut(.return, modifiers: .command)
-            .hoverHint("Send the files and text above (⌘↩)")
+            .hoverHint("Send the files and message (⌘↩)")
             .disabled(selected == nil || !hasContent || model.isSending)
         }
     }
@@ -234,25 +255,35 @@ private struct DeviceCard: View {
 
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: Space.md) {
-                GlyphCircle(symbol: Theme.symbol(for: peer), size: 36, filled: selected || targeted)
-                VStack(alignment: .leading, spacing: Space.xs) {
+            VStack(spacing: Space.sm) {
+                ZStack(alignment: .bottomTrailing) {
+                    GradientTile(symbol: Theme.symbol(for: peer), size: 52, glowing: selected || targeted)
+                    if selected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .green)
+                            .offset(x: Space.sm, y: Space.sm)
+                    }
+                }
+                VStack(spacing: 0) {
                     Text(peer.name).font(.headline).lineLimit(1)
                     Text(targeted ? "Release to send now" : Theme.platformName(peer.platform))
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Spacer(minLength: 0)
             }
-            .padding(Space.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(width: 128)
+            .padding(.vertical, Space.lg)
             .background {
-                RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                    .fill(selected || targeted || hovering ? AnyShapeStyle(Theme.accentTint) : AnyShapeStyle(.background.secondary))
-                    .overlay(RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                RoundedRectangle(cornerRadius: Radius.feature, style: .continuous)
+                    .fill(selected || targeted ? AnyShapeStyle(Theme.accentTint)
+                          : hovering ? AnyShapeStyle(Color.primary.opacity(0.06)) : AnyShapeStyle(.background.secondary))
+                    .overlay(RoundedRectangle(cornerRadius: Radius.feature, style: .continuous)
                         .strokeBorder(selected || targeted ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.stroke),
                                       lineWidth: selected || targeted ? 2 : 1))
+                    .shadow(color: selected ? Theme.start.opacity(0.2) : .clear, radius: 10, y: 4)
             }
-            .contentShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.feature, style: .continuous))
         }
         .buttonStyle(.plain)
         .overlay(alignment: .topTrailing) {
@@ -274,24 +305,27 @@ private struct DeviceCard: View {
         }
         .motion(Motion.fast, value: selected)
         .motion(Motion.fast, value: targeted)
+        .motion(Motion.fast, value: hovering)
     }
 }
 
-private struct FileRow: View {
+/// A staged file as a colorful chip with its type icon.
+private struct FileChip: View {
     var file: URL
     var onRemove: () -> Void
 
     var body: some View {
         HStack(spacing: Space.sm) {
-            Image(systemName: "doc").foregroundStyle(Theme.accentText)
-            Text(file.lastPathComponent).lineLimit(1).truncationMode(.middle)
-            Spacer()
+            ColorTile(symbol: Theme.symbol(for: ReceivedItem(kind: .file(file))), color: Theme.start, size: 24)
+            Text(file.lastPathComponent).font(.callout).lineLimit(1).truncationMode(.middle)
+            Spacer(minLength: 0)
             Button(action: onRemove) { Image(systemName: "xmark.circle.fill") }
                 .buttonStyle(HoverButtonStyle(.plain))
                 .foregroundStyle(.secondary)
                 .accessibilityLabel("Remove \(file.lastPathComponent)")
         }
-        .font(.callout)
-        .padding(.horizontal, Space.sm)
+        .padding(Space.sm)
+        .background(.background, in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radius.row, style: .continuous).strokeBorder(Theme.stroke))
     }
 }
