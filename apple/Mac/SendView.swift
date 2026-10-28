@@ -27,10 +27,12 @@ struct SendView: View {
             } else {
                 devices
                 // Bento: the drop tile and the message tile side by side.
+                // Drop tile and message tile always match heights.
                 HStack(alignment: .top, spacing: Space.md) {
-                    dropArea
-                    composer.frame(width: 200)
+                    dropArea.frame(maxHeight: .infinity)
+                    composer.frame(width: 200).frame(maxHeight: .infinity)
                 }
+                .fixedSize(horizontal: false, vertical: true)
                 SendStatusView(message: model.lastSendResult, progress: model.progress)
                 bottomBar
             }
@@ -96,7 +98,9 @@ struct SendView: View {
     private var devices: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             SectionTitle("Send to")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: Space.md)],
+            // Tiles share the full width (up to four per row), so there's no empty gap beside them.
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Space.md),
+                                     count: min(max(model.settings.peers.count, 1), 4)),
                       alignment: .leading, spacing: Space.md) {
                 ForEach(Array(model.settings.peers.enumerated()), id: \.element.id) { index, peer in
                     DeviceCard(peer: peer, selected: peer.id == selected?.id,
@@ -147,7 +151,8 @@ struct SendView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 190)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(minHeight: 190)
         .padding(Space.lg)
         .background {
             RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
@@ -177,7 +182,8 @@ struct SendView: View {
             Spacer(minLength: 0)
         }
         .padding(Space.lg)
-        .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(minHeight: 190)
         .background {
             RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
                 .fill(Theme.secondaryTint)
