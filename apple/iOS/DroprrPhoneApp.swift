@@ -167,19 +167,28 @@ final class PhoneModel {
 
     // MARK: Sending
 
-    func send(_ payload: SendPayload, to peer: Peer) async {
+    /// Sends everything staged on the Send tab, in order. Returns true if all of it arrived.
+    @discardableResult
+    func send(_ payloads: [SendPayload], to peer: Peer) async -> Bool {
+        guard !payloads.isEmpty else { return false }
         settings.lastPeerID = peer.id
         sending = true
         progress = nil
         defer { sending = false; progress = nil }
-        lastSendResult = "Sending \(payload.label) to \(peer.name)…"
+        let label = payloads.map(\.label).joined(separator: ", ")
+        lastSendResult = "Sending \(label) to \(peer.name)…"
         do {
-            try await payload.send(with: DroprrClient(peer: peer, token: settings.token)) { [weak self] in self?.progress = $0 }
-            lastSendResult = "Sent \(payload.label) to \(peer.name)."
+            let client = DroprrClient(peer: peer, token: settings.token)
+            for payload in payloads {
+                try await payload.send(with: client) { [weak self] in self?.progress = $0 }
+            }
+            lastSendResult = "Sent \(label) to \(peer.name)."
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            return true
         } catch {
             lastSendResult = "Couldn't send to \(peer.name): \(error.localizedDescription)"
             UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
         }
     }
 

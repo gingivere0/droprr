@@ -29,7 +29,12 @@ private struct SendTab: View {
     @State private var text = ""
     @State private var photos: [PhotosPickerItem] = []
     @State private var importing = false
+    @State private var clipboard: SendPayload?
+    @State private var files: [URL] = []
     @FocusState private var typing: Bool
+
+    private var trimmedText: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var hasStaged: Bool { clipboard != nil || !photos.isEmpty || !files.isEmpty || !trimmedText.isEmpty }
 
     private var desktops: [Peer] { model.settings.peers.filter { !$0.isPhone } }
     private var peer: Peer? {
@@ -45,6 +50,7 @@ private struct SendTab: View {
                     devicePicker
                     actionGrid
                     composer
+                    sendButton
                     SendStatusView(message: model.lastSendResult, progress: model.progress)
                         .padding(.horizontal, 4)
                 }
@@ -58,19 +64,9 @@ private struct SendTab: View {
             ToolbarItem(placement: .topBarLeading) { LogoBadge(size: 28) }
         }
         .animation(.default, value: model.lastSendResult)
-        .onChange(of: photos) { _, items in
-            guard !items.isEmpty, let peer else { return }
-            photos = []
-            Task {
-                model.lastSendResult = "Preparing \(items.count) item\(items.count == 1 ? "" : "s")…"
-                let files = await Self.export(items)
-                await model.send(.files(files), to: peer)
-            }
-        }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-            guard let peer, case .success(let urls) = result else { return }
-            let files = urls.compactMap(Self.copyToTemp)
-            Task { await model.send(.files(files), to: peer) }
+            guard case .success(let urls) = result else { return }
+            withAnimation(.snappy) { files = urls.compactMap(Self.copyToTemp) }
         }
     }
 
@@ -111,61 +107,95 @@ private struct SendTab: View {
         }
     }
 
+    /// Tapping a card selects it; nothing goes out until Send. Tap a selected card's × to clear it.
     private var actionGrid: some View {
         HStack(spacing: 12) {
-            ActionCard(title: "Clipboard", symbol: "doc.on.clipboard.fill") {
-                guard let peer else { return }
-                guard let payload = model.clipboardPayload() else {
+            ActionCard(title: "Clipboard", symbol: "doc.on.clipboard.fill",
+                       detail: clipboard.map(\.label), selected: clipboard != nil,
+                       onClear: { clipboard = nil }) {
+                if clipboard != nil {
+                    clipboard = nil
+                } else if let payload = model.clipboardPayload() {
+                    clipboard = payload
+                } else {
                     model.lastSendResult = "The clipboard is empty."
-                    return
                 }
-                Task { await model.send(payload, to: peer) }
             }
             PhotosPicker(selection: $photos, matching: .any(of: [.images, .videos])) {
-                ActionCardLabel(title: "Photos", symbol: "photo.fill.on.rectangle.fill")
+                ActionCardLabel(title: "Photos", symbol: "photo.fill.on.rectangle.fill",
+                                detail: photos.isEmpty ? nil : "\(photos.count) selected", selected: !photos.isEmpty)
             }
             .buttonStyle(PressableStyle())
-            ActionCard(title: "Files", symbol: "folder.fill") { importing = true }
+            .overlay(alignment: .topTrailing) {
+                if !photos.isEmpty { ClearBadge { photos = [] } }
+            }
+            ActionCard(title: "Files", symbol: "folder.fill",
+                       detail: files.isEmpty ? nil : "\(files.count) selected", selected: !files.isEmpty,
+                       onClear: { files = [] }) {
+                importing = true
+            }
         }
-        .disabled(peer == nil || model.sending)
-        .opacity(model.sending ? 0.6 : 1)
+        .disabled(model.sending)
+        .animation(.snappy, value: hasStaged)
     }
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionLabel("Text or link")
-            VStack(alignment: .trailing, spacing: 10) {
-                TextField("Type or paste something", text: $text, axis: .vertical)
-                    .lineLimit(3...8)
-                    .focused($typing)
-                Button {
-                    guard let peer else { return }
-                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let payload: SendPayload
-                    if let url = URL(string: trimmed), let scheme = url.scheme, ["http", "https"].contains(scheme.lowercased()) {
-                        payload = .url(url)
-                    } else {
-                        payload = .text(text)
-                    }
-                    typing = false
-                    Task {
-                        await model.send(payload, to: peer)
-                        text = ""
-                    }
-                } label: {
-                    Label("Send", systemImage: "paperplane.fill")
-                        .fontWeight(.semibold)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 9)
-                        .foregroundStyle(.white)
-                        .background(Theme.gradient, in: Capsule())
-                }
-                .buttonStyle(PressableStyle())
-                .disabled(peer == nil || text.isEmpty || model.sending)
-                .opacity(text.isEmpty ? 0.5 : 1)
+            TextField("Type or paste something", text: $text, axis: .vertical)
+                .lineLimit(3...8)
+                .focused($typing)
+                .padding(14)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+    }
+
+    private var sendButton: some View {
+        Button {
+            guard let peer else { return }
+            typing = false
+            Task { await sendStaged(to: peer) }
+        } label: {
+            HStack(spacing: 8) {
+                if model.sending { ProgressView().tint(.white) } else { Image(systemName: "paperplane.fill") }
+                Text(peer.map { "Send to \($0.name)" } ?? "Send")
             }
-            .padding(14)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 15)
+            .foregroundStyle(.white)
+            .background(Theme.gradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: Theme.start.opacity(hasStaged ? 0.3 : 0), radius: 10, y: 5)
+        }
+        .buttonStyle(PressableStyle())
+        .disabled(peer == nil || !hasStaged || model.sending)
+        .opacity(hasStaged ? 1 : 0.45)
+    }
+
+    private func sendStaged(to peer: Peer) async {
+        var payloads: [SendPayload] = []
+        if !trimmedText.isEmpty {
+            if let url = URL(string: trimmedText), let scheme = url.scheme, ["http", "https"].contains(scheme.lowercased()) {
+                payloads.append(.url(url))
+            } else {
+                payloads.append(.text(text))
+            }
+        }
+        if let clipboard { payloads.append(clipboard) }
+        var attachments = files
+        if !photos.isEmpty {
+            model.lastSendResult = "Preparing \(photos.count) photo\(photos.count == 1 ? "" : "s")…"
+            attachments += await Self.export(photos)
+        }
+        if !attachments.isEmpty { payloads.append(.files(attachments)) }
+
+        if await model.send(payloads, to: peer) {
+            withAnimation(.snappy) {
+                text = ""
+                clipboard = nil
+                photos = []
+                files = []
+            }
         }
     }
 
@@ -205,26 +235,67 @@ private struct SectionLabel: View {
 private struct ActionCard: View {
     var title: String
     var symbol: String
+    var detail: String?
+    var selected: Bool
+    var onClear: () -> Void
     var action: () -> Void
 
     var body: some View {
-        Button(action: action) { ActionCardLabel(title: title, symbol: symbol) }
+        Button(action: action) { ActionCardLabel(title: title, symbol: symbol, detail: detail, selected: selected) }
             .buttonStyle(PressableStyle())
+            .overlay(alignment: .topTrailing) {
+                if selected { ClearBadge(action: onClear) }
+            }
     }
 }
 
 private struct ActionCardLabel: View {
     var title: String
     var symbol: String
+    var detail: String?
+    var selected: Bool
 
     var body: some View {
-        VStack(spacing: 10) {
-            GlyphCircle(symbol: symbol, size: 46, filled: true)
-            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(selected ? AnyShapeStyle(.white) : AnyShapeStyle(Theme.gradient))
+                    .frame(width: 46, height: 46)
+                Image(systemName: selected ? "checkmark" : symbol)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(selected ? AnyShapeStyle(Theme.start) : AnyShapeStyle(.white))
+            }
+            Text(title).font(.subheadline.weight(.semibold))
+            Text(detail ?? " ")
+                .font(.caption2)
+                .lineLimit(1)
+                .opacity(detail == nil ? 0 : 0.9)
         }
+        .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 18)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.vertical, 14)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(selected ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.regularMaterial))
+        }
+        .shadow(color: selected ? Theme.start.opacity(0.3) : .clear, radius: 8, y: 4)
+    }
+}
+
+/// The small × on a selected card that unselects it.
+private struct ClearBadge: View {
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 20))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(Theme.start, .white)
+        }
+        .buttonStyle(.plain)
+        .offset(x: 6, y: -6)
+        .accessibilityLabel("Clear")
     }
 }
 
