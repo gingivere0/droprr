@@ -205,6 +205,8 @@ An empty outbox returns `"items": []`.
 
 Downloads a `file` item's bytes, with `Content-Type` set to the file's media type (`application/octet-stream` if unknown) and `Content-Disposition: attachment; filename="..."` (plus `filename*=UTF-8''...` for non-ASCII names). An unknown or expired `id` returns `404`.
 
+For a `text` or `url` item, it returns `200` with the item's `content` as the body and `Content-Type: text/plain; charset=utf-8`.
+
 ### `DELETE /inbox/<id>`
 
 Acknowledges an item and removes it from the outbox. The phone calls this after it has saved the item.
