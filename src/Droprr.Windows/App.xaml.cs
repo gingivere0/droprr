@@ -17,6 +17,7 @@ public partial class App : Application
 
     readonly Dictionary<Guid, ReceiveProgressWindow> _receiving = new();
     SettingsWindow? _settingsWindow;
+    SendWindow? _sendWindow;
 
     readonly List<ReceivedItem> _recent = new();
     Mutex? _instanceMutex;
@@ -157,7 +158,16 @@ public partial class App : Application
 
     internal void ShowSendWindow(IEnumerable<string> files, bool exitOnClose = false)
     {
-        var window = new SendWindow(SettingsStore.Load(), files);
+        // Opening it again from the tray brings the open one to the front instead of stacking windows.
+        var paths = files.ToList();
+        if (paths.Count == 0 && _sendWindow is { IsLoaded: true })
+        {
+            _sendWindow.Activate();
+            return;
+        }
+        var window = new SendWindow(SettingsStore.Load(), paths);
+        if (paths.Count == 0)
+            _sendWindow = window;
         if (exitOnClose)
             window.Closed += (_, _) => Shutdown();
         window.Show();

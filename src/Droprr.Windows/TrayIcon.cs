@@ -48,11 +48,11 @@ sealed class TrayIcon : IDisposable
             ContextMenuStrip = menu,
             Visible = true,
         };
-        // A left click opens Settings; a right click opens the menu.
+        // A left click opens the Send window; a right click opens the menu.
         _icon.MouseClick += (_, e) =>
         {
             if (e.Button == MouseButtons.Left)
-                app.ShowSettings();
+                app.ShowSendWindow([]);
         };
         _icon.BalloonTipClicked += (_, _) => OnNotificationClicked();
         UpdateRecent([]);
