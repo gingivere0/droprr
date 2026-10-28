@@ -23,7 +23,16 @@
             </Button>
             <TextBlock Text="Send to" Opacity="0.8" VerticalAlignment="Bottom" />
         </DockPanel>
-        <ComboBox Grid.Row="1" x:Name="PeerBox" Margin="0,0,0,16" SelectionChanged="OnPeerChanged">
+        <DockPanel Grid.Row="1" Margin="0,0,0,16">
+            <Button x:Name="WaitingBadge" DockPanel.Dock="Right" Margin="8,0,0,0" Padding="10,4" VerticalAlignment="Center"
+                    Visibility="Collapsed" Click="OnClearWaiting" ToolTip="Clear the items waiting for this phone">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="WaitingText" />
+                    <TextBlock Text="&#xE711;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10"
+                               Margin="8,1,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+        <ComboBox x:Name="PeerBox" SelectionChanged="OnPeerChanged">
             <ComboBox.ItemTemplate>
                 <DataTemplate>
                     <StackPanel>
@@ -33,6 +42,7 @@
                 </DataTemplate>
             </ComboBox.ItemTemplate>
         </ComboBox>
+        </DockPanel>
 
         <Border Grid.Row="2" x:Name="DropZone" CornerRadius="8" BorderThickness="1.5"
                 BorderBrush="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}">

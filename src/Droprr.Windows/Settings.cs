@@ -27,8 +27,14 @@ public sealed class Peer
         set => Platform = value ? "ios" : (IsPhone ? "" : Platform);
     }
 
+    // Items in this peer's outbox, filled in by whoever shows the peer.
     [JsonIgnore]
-    public string Note => IsPhone ? "Queued until your phone checks in" : Host;
+    public int Waiting { get; set; }
+
+    [JsonIgnore]
+    public string Note => !IsPhone ? Host
+        : Waiting > 0 ? $"{Waiting} waiting · queued until it checks in"
+        : "Queued until your phone checks in";
 }
 
 public sealed class AppSettings

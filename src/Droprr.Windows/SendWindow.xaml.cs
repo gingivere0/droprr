@@ -43,9 +43,34 @@ public partial class SendWindow : Window
     void ShowPeers()
     {
         var selected = (PeerBox.SelectedItem as Peer)?.Name;
+        foreach (var peer in _settings.Peers)
+            peer.Waiting = peer.IsPhone ? Outbox.List(peer.Name).Count : 0;
+        PeerBox.ItemsSource = null;
         PeerBox.ItemsSource = _settings.Peers;
         PeerBox.SelectedItem = _settings.Peers.FirstOrDefault(p => p.Name == selected) ?? _settings.Peers.FirstOrDefault();
         EmptyState.Visibility = _settings.Peers.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ShowWaitingBadge();
+    }
+
+    void ShowWaitingBadge()
+    {
+        if (PeerBox.SelectedItem is Peer { IsPhone: true, Waiting: > 0 } phone)
+        {
+            WaitingText.Text = $"{phone.Waiting} waiting";
+            WaitingBadge.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            WaitingBadge.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    void OnClearWaiting(object sender, RoutedEventArgs e)
+    {
+        if (PeerBox.SelectedItem is not Peer { IsPhone: true } phone)
+            return;
+        if (((App)Application.Current).ConfirmAndClearWaiting(phone.Name, this))
+            ShowPeers();
     }
 
     void OnSettingsSaved()
@@ -82,6 +107,7 @@ public partial class SendWindow : Window
             Status.Text = $"{phone.Name} can't receive directly. Items wait on this PC until it runs \"Get from PC\" (kept for 7 days).";
         else if (Status.Text.Contains("can't receive directly"))
             Status.Text = "";
+        ShowWaitingBadge();
     }
 
     internal void AddPaths(IEnumerable<string> paths)
@@ -167,6 +193,7 @@ public partial class SendWindow : Window
                     await Outbox.EnqueueFileAsync(peer.Name, path, progress);
                 if (text.Length > 0)
                     Outbox.EnqueueText(peer.Name, Sender.TextType(text), text);
+                ShowPeers();
                 Status.Text = $"Queued for {peer.Name}. It arrives when your phone runs \"Get from PC\".";
             }
             else

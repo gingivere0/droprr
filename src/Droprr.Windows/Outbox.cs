@@ -94,6 +94,24 @@ static class Outbox
         return true;
     }
 
+    // Removes everything waiting for one peer, files included. Returns how many items were removed.
+    public static int Clear(string peer)
+    {
+        var folder = PeerFolder(peer);
+        if (!Directory.Exists(folder))
+            return 0;
+        var count = 0;
+        foreach (var metadata in Directory.EnumerateFiles(folder, "*.json").ToList())
+        {
+            TryDelete(Path.ChangeExtension(metadata, ".data"));
+            TryDelete(metadata);
+            count++;
+        }
+        foreach (var leftover in Directory.EnumerateFiles(folder).ToList())
+            TryDelete(leftover);
+        return count;
+    }
+
     public static void PurgeExpired()
     {
         if (!Directory.Exists(Root))

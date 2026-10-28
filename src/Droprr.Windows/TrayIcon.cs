@@ -27,6 +27,8 @@ sealed class TrayIcon : IDisposable
     readonly ContextMenu _menu = new();
     readonly MenuItem _status = new() { IsEnabled = false };
     readonly MenuItem _pending = new() { IsEnabled = false, Visibility = Visibility.Collapsed };
+    readonly List<MenuItem> _clearItems = new();
+    readonly App _app;
     readonly MenuItem _recentMenu = MenuEntry("Recent", "");
     // Invisible window the menu opens from: a tray menu only closes on an outside click when its window has focus.
     readonly Window _anchor = new()
@@ -45,6 +47,7 @@ sealed class TrayIcon : IDisposable
 
     public TrayIcon(App app)
     {
+        _app = app;
         _status.Header = _statusText;
         _menu.Items.Add(_status);
         _menu.Items.Add(_pending);
@@ -106,6 +109,19 @@ sealed class TrayIcon : IDisposable
     // Shows how many items are waiting for each phone to check in.
     public void SetPending(IReadOnlyList<(string Peer, int Count)> pending)
     {
+        // One "Clear…" entry per phone with items waiting, right under the count.
+        foreach (var item in _clearItems)
+            _menu.Items.Remove(item);
+        _clearItems.Clear();
+        var at = _menu.Items.IndexOf(_pending) + 1;
+        foreach (var (peer, _) in pending)
+        {
+            var label = pending.Count == 1 ? "Clear waiting items…" : $"Clear items waiting for {peer}…";
+            var clear = MenuEntry(label, "", () => _app.ConfirmAndClearWaiting(peer));
+            _clearItems.Add(clear);
+            _menu.Items.Insert(at++, clear);
+        }
+
         _pendingText = string.Join(", ", pending.Select(p => $"{p.Count} waiting for {p.Peer}"));
         _pending.Header = new TextBlock { Text = _pendingText };
         _pending.Visibility = _pendingText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
