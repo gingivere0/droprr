@@ -1,15 +1,19 @@
 {
-  // Copy to %APPDATA%\Droprr\settings.json. Droprr creates that file with a
-  // random token on first run, so usually you only need to add peers.
+  // %APPDATA%\Droprr\settings.json. Droprr creates it with a random token on first run, and everything
+  // here can be changed in the Settings window, so you rarely need to edit it by hand.
   "deviceName": "My PC",
   "port": 53318,
   "token": "REPLACE_WITH_A_LONG_RANDOM_TOKEN",
   // Leave null to save into Downloads\Droprr.
   "saveFolder": null,
-  // Devices this PC can send to, by Tailscale (MagicDNS) hostname.
+  // Text and links always go to the clipboard; true also copies received files (and images as pictures).
+  "copyFilesToClipboard": false,
+  // A Start menu shortcut, which is what makes Droprr show up in Windows Search.
+  "addToStartMenu": true,
+  // Devices this PC can send to. "host" is a Tailscale (MagicDNS) name or 100.x address.
   // "token" is the receiving device's token; leave it empty if it matches yours.
-  // "platform" is learned from the device ("windows", "macos", or "ios"). Phones
-  // ("ios") need no host: items for them wait until they run "Get from PC".
+  // "platform" is "windows", "macos", or "ios", learned from the device when it pairs or answers /ping.
+  // Phones ("ios") need no host: items for them wait on this PC until the phone collects them.
   "peers": [
     {
       "name": "My Mac",

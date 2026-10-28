@@ -16,7 +16,7 @@ public sealed class Peer
     // The receiving device's token. Empty means "same as this device's token".
     public string Token { get; set; } = "";
 
-    // "windows", "macos", or "ios", as reported by the peer's /ping. Empty means not known yet.
+    // "windows", "macos", or "ios", from pairing or the peer's /ping. Empty means not known yet.
     public string Platform { get; set; } = "";
 
     // Phones can't listen, so sends to them are queued in the Outbox until they check in.
@@ -51,6 +51,7 @@ public sealed class AppSettings
 
     // A Start menu shortcut, which is what makes Droprr show up in Windows Search.
     public bool AddToStartMenu { get; set; } = true;
+
     public List<Peer> Peers { get; set; } = new();
 
     public Peer? FindPeer(string name) =>

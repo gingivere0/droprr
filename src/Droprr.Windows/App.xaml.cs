@@ -15,24 +15,36 @@ public partial class App : Application
     const int MaxRecent = 10;
     const long LargeTransferBytes = 8 * 1024 * 1024;
 
-    readonly Dictionary<Guid, ReceiveProgressWindow> _receiving = new();
-    SettingsWindow? _settingsWindow;
-    SendWindow? _sendWindow;
-
-    readonly List<ReceivedItem> _recent = new();
+    // Running state
     Mutex? _instanceMutex;
+    readonly CancellationTokenSource _stopListening = new();
     ReceiverServer? _receiver;
     TrayIcon? _tray;
-    DispatcherTimer? _networkDebounce;
+
+    // Windows
+    SendWindow? _sendWindow;
+    SettingsWindow? _settingsWindow;
+    readonly Dictionary<Guid, ReceiveProgressWindow> _receiving = new();
+
+    // Received items and the clipboard
+    readonly List<ReceivedItem> _recent = new();
+    readonly List<string> _clipboardFiles = new();
+    DispatcherTimer? _clipboardBatch;
+
+    // Background checks
+    FileSystemWatcher? _outboxWatcher;
     DispatcherTimer? _outboxRefresh;
     DispatcherTimer? _outboxPurge;
+    DispatcherTimer? _networkDebounce;
     DispatcherTimer? _updateCheck;
-    DispatcherTimer? _clipboardBatch;
-    readonly List<string> _clipboardFiles = new();
-    readonly CancellationTokenSource _stopListening = new();
-    FileSystemWatcher? _outboxWatcher;
 
     internal AppSettings Settings { get; private set; } = null!;
+
+    // Raised on the UI thread after settings change (saved in Settings, or a device paired), so open windows can refresh.
+    internal event Action? SettingsSaved;
+
+    // Raised on the UI thread after a device pairs, with its saved peer entry.
+    internal event Action<Peer>? DevicePaired;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -250,9 +262,6 @@ public partial class App : Application
         return Settings.FindPeer(request.Name)!;
     }
 
-    // Raised on the UI thread after a device pairs, with its saved peer entry.
-    internal event Action<Peer>? DevicePaired;
-
     // There's one Send window: opening it again adds any files to it and brings it to the front.
     internal void ShowSendWindow(IEnumerable<string> files)
     {
@@ -280,9 +289,7 @@ public partial class App : Application
         window.Focus();
     }
 
-    // Raised on the UI thread after Settings saves, so open windows can refresh.
-    internal event Action? SettingsSaved;
-
+    // Called after Settings saves: picks up the new settings and restarts the receiver in case the port or token changed.
     internal async Task ReloadAsync()
     {
         try
@@ -295,9 +302,7 @@ public partial class App : Application
             return;
         }
         SettingsSaved?.Invoke();
-        // Only the tray instance runs the receiver; a standalone --settings window just saves.
-        if (_tray is not null)
-            await StartReceiverAsync();
+        await StartReceiverAsync();
     }
 
     internal async Task StartReceiverAsync()
