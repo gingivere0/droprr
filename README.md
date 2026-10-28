@@ -1,56 +1,92 @@
 # Droprr
 
-Droprr sends files, text, and links between your own devices over [Tailscale](https://tailscale.com): a Windows PC and an iPhone today, with a Mac app planned.
+Droprr sends files, photos, text, and links between your own Windows PC, Mac, and iPhone. It works over your private [Tailscale](https://tailscale.com) network: devices find each other by their Tailscale names, so it works the same at home or away.
 
-- **Windows:** a tray app that receives items, saves them to `Downloads\Droprr`, copies text and links to the clipboard, and shows a notification. It sends to other devices from its Send window or from Explorer's **Send to** menu, and holds items for your iPhone until the phone picks them up.
-- **iPhone:** a "Send to PC" Share Sheet shortcut, and a "Get from PC" shortcut that picks up anything waiting. See [docs/ios-shortcut.md](docs/ios-shortcut.md).
-- **Icons:** the shared artwork for every platform is in [file-swap-icon-pack](file-swap-icon-pack/README.md).
-- **Protocol:** a small authenticated HTTP API. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+## How it works
 
-## Windows setup
+- **Tailscale only.** Every device runs Tailscale on the same tailnet. Droprr accepts connections only from Tailscale addresses (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) and from the device itself, never from your LAN or the internet. Tailscale encrypts the traffic.
+- **One port.** Each computer listens on port `53318` by default (changeable in Settings).
+- **A token per computer.** Every request carries that computer's secret token. Pairing hands the token to your phone with a QR code, so you rarely type it.
+- **Phones collect.** An iPhone can't accept connections in the background, so anything sent to it waits on the sending computer for up to 7 days. The phone collects it when the app opens.
+- **An open protocol.** It's a small HTTP API, described in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
-Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) to build.
+Received items land in a `Droprr` folder in Downloads. Text and links also go straight to the clipboard, and a setting copies files and images too.
 
-```bash
-dotnet build
-```
+## Features
 
-Run `src/Droprr.Windows/bin/Debug/net10.0-windows/Droprr.exe`. On first run, Droprr:
+| | Windows | Mac | iPhone |
+| --- | --- | --- | --- |
+| App | Tray app with a Send window | Menu bar app with a Send window | App with Send and Received tabs |
+| Send from other apps | Explorer's **Send to › Droprr** | **Share › Droprr** | **Share › Droprr** |
+| Receive | Always, into `Downloads\Droprr` | Always, into `~/Downloads/Droprr` | While open, and collects queued items when it opens |
+| Hold items for an iPhone | Yes, with a "N waiting" badge to clear them | Yes | n/a |
+| Pair a phone by QR code | Yes | Yes | Scans the code (Camera or in-app) |
+| Auto-copy received items to the clipboard | Yes | Yes | n/a |
+| Start at sign-in | Yes | Yes (launch at login) | n/a |
 
-- creates `%APPDATA%\Droprr\settings.json` with a random token (see [settings.example.json](src/Droprr.Windows/settings.example.json) for the format),
-- adds **Droprr** to Explorer's **Send to** menu, and
-- starts listening on port `53318` on its Tailscale address and localhost.
+## Setup
 
-### Deploying new builds
+Install Tailscale on every device and sign in to the same tailnet first.
 
-Run Droprr from a `deploy` folder, and new builds go live on their own:
+### Windows
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1
-```
+1. Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+2. Publish a build. This creates `deploy\<yyyyMMdd-HHmmss>\Droprr.exe`:
 
-This publishes into `deploy\<yyyyMMdd-HHmmss>\` and marks it ready. Within a few seconds, a Droprr running from an earlier `deploy` folder starts the new build and exits (it waits if something is being received), reopening the Send or Settings window if one was open. The newest two builds are kept. Start with Windows, the Start menu shortcut, and **Send to** follow the new exe.
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1
+   ```
 
-### Firewall
+3. Start that `Droprr.exe` once. It creates `%APPDATA%\Droprr\settings.json` with a random token, adds itself to the Start menu (so Windows Search finds it) and to Explorer's **Send to** menu, and appears in the tray.
+4. Allow Droprr through Windows Firewall from Tailscale addresses only. Run this once in an elevated PowerShell:
 
-Windows Firewall blocks incoming connections by default. Allow Droprr's port from Tailscale addresses only, in an elevated PowerShell:
+   ```powershell
+   New-NetFirewallRule -DisplayName "Droprr (Tailscale)" -Direction Inbound -Protocol TCP -LocalPort 53318 -RemoteAddress 100.64.0.0/10 -Action Allow
+   ```
 
-```powershell
-New-NetFirewallRule -DisplayName "Droprr (Tailscale)" -Direction Inbound -Protocol TCP -LocalPort 53318 -RemoteAddress 100.64.0.0/10 -Action Allow
-```
+**Using it:** left-click the tray icon to open the Send window, or right-click it for the menu: Recent items, the Droprr folder, Settings, and how many items are waiting for your phone. Starting Droprr again while it's running just brings up the Send window. In Settings you can rename the PC, change the port or save folder, turn on **Start Droprr when I sign in to Windows** and **Auto-copy received items to clipboard**, manage the token, and add or remove devices.
 
-### Settings
+**Updates install themselves.** After changing the code, run `scripts\deploy.ps1` again. Within a few seconds, the running Droprr starts the new build and exits (it waits if something is arriving), reopening any window you had open. The newest two builds are kept, and the Start menu, **Send to**, and sign-in entries follow the new build.
 
-Right-click the tray icon and choose **Settings…**. There you can:
+To build without deploying, run `dotnet build` in the repo root.
 
-- rename this PC, change the port, and pick where received items are saved,
-- turn on **Start Droprr when I sign in to Windows**,
-- keep **Add Droprr to the Start menu and Windows Search** on (the default) so typing "Droprr" in Windows Search finds it,
-- show, copy, or replace the token every device needs, and
-- add, edit, or remove devices. Computers are listed by Tailscale host name; turn on **iPhone** for phones.
+### Mac and iPhone
 
-Everything is stored in `%APPDATA%\Droprr\settings.json` (see [settings.example.json](src/Droprr.Windows/settings.example.json)). That file is ignored by git: never commit real tokens or host names.
+1. Copy `apple/Config/Local.xcconfig.example` to `apple/Config/Local.xcconfig` (gitignored) and set your Apple team ID and a bundle ID prefix.
+2. Open `apple/Droprr.xcodeproj` in Xcode, then run the `DroprrMac` target on the Mac and the `DroprriOS` target on the iPhone.
 
-### Sending to your iPhone
+See [apple/README.md](apple/README.md) for details.
 
-A phone can't accept incoming connections, so items you send to an iPhone wait on the PC (in `%APPDATA%\Droprr\outbox`) until the phone runs **Get from PC**, for up to 7 days. The tray shows how many are waiting. The first time your phone runs Get from PC, it's added to your devices automatically.
+## Pairing
+
+1. On a computer, open **Pair a phone**: in Settings › Devices on Windows, or with the QR button in the Mac's menu bar panel.
+2. On the iPhone, scan the code with the Camera app or with Droprr's QR button.
+
+The phone saves that computer's address and token, and the computer adds the phone to its devices, so each can send to the other. The QR code contains the token, so show it only to your own phone.
+
+To send between two computers, add each one in the other's Settings with its Tailscale name and its token.
+
+## iPhone shortcuts (optional)
+
+Without the iPhone app, you can still send to a computer from the share sheet, and collect queued items, with two Shortcuts. See [docs/ios-shortcut.md](docs/ios-shortcut.md).
+
+## Troubleshooting
+
+- **The phone or another computer can't connect (timeout):** check that Tailscale is connected on both devices and that the Windows Firewall rule exists. On the phone, opening `http://<pc>:53318/ping` in Safari should immediately show an "unauthorized" error, which means the PC is reachable.
+- **"unauthorized":** the token doesn't match. Pair again, or copy the token from the receiving computer's Settings.
+- **Droprr doesn't show up in Windows Search:** check that **Add Droprr to the Start menu and Windows Search** is on in Settings.
+- **The tray icon is hidden:** Windows puts new tray icons behind the **^** arrow. Drag Droprr onto the taskbar to keep it visible.
+- **Developing with an AI agent or another sandboxed tool:** processes started from inside a packaged (MSIX) app have their AppData writes redirected into that app's private storage. A Droprr launched that way gets a separate settings file and token that you won't see. Start Droprr yourself, and let `scripts\deploy.ps1` plus the self-update hand new builds to it.
+
+## Repository layout
+
+| Path | What's there |
+| --- | --- |
+| `src/Droprr.Windows/` | The Windows app (WPF on .NET 10) |
+| `apple/` | The Mac and iPhone apps (SwiftUI, Xcode project) |
+| `docs/PROTOCOL.md` | The HTTP protocol every Droprr app speaks |
+| `docs/ios-shortcut.md` | Optional iPhone Shortcuts |
+| `scripts/deploy.ps1` | Publishes a Windows build for the self-updating app |
+| `file-swap-icon-pack/` | App and tray icons for every platform |
+
+`deploy/`, `bin/`, and `obj/` are build output and ignored by git, as are personal files such as `settings.json` and `apple/Config/Local.xcconfig`. Never commit tokens, host names, or IP addresses.
