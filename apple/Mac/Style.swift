@@ -143,10 +143,7 @@ struct SeamlessTitleBar: NSViewRepresentable {
 
     private func configure(_ window: NSWindow?) {
         guard let window else { return }
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.styleMask.insert(.fullSizeContentView)
-        window.isMovableByWindowBackground = true
+        AppDelegate.hideTitleBar(window)
     }
 }
 

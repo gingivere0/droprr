@@ -19,11 +19,13 @@ struct DroprrMacApp: App {
         Window("Send with Droprr", id: "send") {
             SendView(model: model)
         }
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
 
         Window("Pair a Phone", id: "pair") {
             PairView(model: model)
         }
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
 
         Settings {
@@ -60,6 +62,30 @@ private struct MenuBarLabel: View {
 
 /// Opening Droprr again from Finder, Spotlight or the Dock while it's running shows the Send window.
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // No title bar strip on any Droprr window (Settings included): content runs to the top edge,
+        // with just the window buttons in the corner.
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didBecomeMainNotification, NSWindow.didUpdateNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { note in
+                guard let window = note.object as? NSWindow else { return }
+                MainActor.assumeIsolated { AppDelegate.hideTitleBar(window) }
+            }
+        }
+    }
+
+    @MainActor
+    static func hideTitleBar(_ window: NSWindow) {
+        guard window.styleMask.contains(.titled), !(window is NSPanel) else { return }
+        if window.titlebarAppearsTransparent && window.titleVisibility == .hidden
+            && window.styleMask.contains(.fullSizeContentView) && window.toolbar == nil { return }
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.titlebarSeparatorStyle = .none
+        window.styleMask.insert(.fullSizeContentView)
+        window.toolbar = nil
+        window.isMovableByWindowBackground = true
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         MainActor.assumeIsolated { MacModel.current?.showSendWindow?() }
         return false
