@@ -101,14 +101,7 @@ public partial class SendWindow : Window
 
     string TokenFor(Peer peer) => string.IsNullOrEmpty(peer.Token) ? _settings.Token : peer.Token;
 
-    void OnPeerChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (PeerBox.SelectedItem is Peer { IsPhone: true } phone)
-            Status.Text = $"{phone.Name} can't receive directly. Items wait on this PC until it runs \"Get from PC\" (kept for 7 days).";
-        else if (Status.Text.Contains("can't receive directly"))
-            Status.Text = "";
-        ShowWaitingBadge();
-    }
+    void OnPeerChanged(object sender, SelectionChangedEventArgs e) => ShowWaitingBadge();
 
     internal void AddPaths(IEnumerable<string> paths)
     {
@@ -184,7 +177,8 @@ public partial class SendWindow : Window
         SendButton.IsEnabled = false;
         Progress.Value = 0;
         Progress.Visibility = paths.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        Status.Text = peer.IsPhone ? $"Queuing for {peer.Name}…" : $"Sending to {peer.Name}…";
+        // Queuing for a phone is quiet: its "N waiting" badge and the tray count show the result.
+        Status.Text = peer.IsPhone ? "" : $"Sending to {peer.Name}…";
         try
         {
             if (peer.IsPhone)
@@ -194,7 +188,6 @@ public partial class SendWindow : Window
                 if (text.Length > 0)
                     Outbox.EnqueueText(peer.Name, Sender.TextType(text), text);
                 ShowPeers();
-                Status.Text = $"Queued for {peer.Name}. It arrives when your phone runs \"Get from PC\".";
             }
             else
             {

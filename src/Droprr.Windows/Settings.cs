@@ -33,8 +33,8 @@ public sealed class Peer
 
     [JsonIgnore]
     public string Note => !IsPhone ? Host
-        : Waiting > 0 ? $"{Waiting} waiting · queued until it checks in"
-        : "Queued until your phone checks in";
+        : Waiting > 0 ? $"iPhone · {Waiting} waiting"
+        : "iPhone";
 }
 
 public sealed class AppSettings
