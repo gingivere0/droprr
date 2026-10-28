@@ -3,56 +3,70 @@
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                  xmlns:local="clr-namespace:Droprr"
-                 Title="Send with Droprr" Width="480" SizeToContent="Height" MinWidth="420" MinHeight="560"
+                 Title="Send with Droprr" Width="640" SizeToContent="Height" MinWidth="560" MinHeight="520"
                  WindowStartupLocation="CenterScreen" AllowDrop="True"
                  DragEnter="OnDragEnter" DragOver="OnDragOver" DragLeave="OnDragLeave" Drop="OnDrop"
-                 ExtendsContentIntoTitleBar="True" WindowBackdropType="Mica" WindowCornerPreference="Round">
+                 ExtendsContentIntoTitleBar="True" WindowBackdropType="None" WindowCornerPreference="Round">
     <ui:FluentWindow.Resources>
         <local:PlatformSymbolConverter x:Key="PlatformSymbol" />
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
+        <!-- "N waiting x": a secondary-tint chip. -->
+        <Style x:Key="WaitingBadge" TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+            <Setter Property="Background" Value="{DynamicResource ThemeSecondaryTintBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource ThemeSecondaryTextBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeSecondaryTintBrush}" />
+            <Setter Property="MouseOverBackground" Value="{DynamicResource ThemeSecondaryTintBrush}" />
+            <Setter Property="MouseOverBorderBrush" Value="{DynamicResource ThemeSecondaryTextBrush}" />
+            <Setter Property="PressedBackground" Value="{DynamicResource ThemeSecondaryTintBrush}" />
+            <Setter Property="PressedForeground" Value="{DynamicResource ThemeSecondaryTextBrush}" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusChip}" />
+            <Setter Property="Padding" Value="8,2" />
+            <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
+        </Style>
     </ui:FluentWindow.Resources>
 
     <StackPanel>
         <ui:TitleBar x:Name="AppTitleBar" Title="Send with Droprr" ShowMaximize="False" />
 
         <StackPanel Margin="{StaticResource WindowPadding}">
-            <!-- Devices -->
-            <DockPanel Margin="0,0,0,8">
+            <!-- Title row -->
+            <DockPanel Margin="0,0,0,12">
                 <ui:Button DockPanel.Dock="Right" Appearance="Transparent" Icon="{ui:SymbolIcon Settings24}"
                            ToolTip="Settings" AutomationProperties.Name="Settings" Click="OnSettings" />
-                <TextBlock Text="Send to" Style="{StaticResource BodyStrongText}" VerticalAlignment="Center" />
+                <TextBlock Text="Send to" Style="{StaticResource SubtitleText}" VerticalAlignment="Center" />
             </DockPanel>
 
-            <ListBox x:Name="PeerBox" MaxHeight="216" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     Background="Transparent" BorderThickness="0" Padding="0" AutomationProperties.Name="Devices">
+            <!-- Device tiles in a row; the selected one is filled with the accent. -->
+            <ListBox x:Name="PeerBox" Background="Transparent" BorderThickness="0" Padding="0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Devices">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
                 <ListBox.ItemContainerStyle>
-                    <!-- Device cards: rounded, hover fill, and when selected an accent border, tint, and pill.
-                         The border is always 1 px, so selecting never shifts the layout. -->
                     <Style TargetType="ListBoxItem">
-                        <Setter Property="Padding" Value="12,8" />
-                        <Setter Property="Margin" Value="0,0,0,4" />
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Width" Value="140" />
+                        <Setter Property="Margin" Value="0,0,12,12" />
+                        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
                         <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
-                                    <Border x:Name="Card" CornerRadius="{StaticResource RadiusCard}" BorderThickness="1"
-                                            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
-                                        <Grid>
-                                            <Border x:Name="Pill" Width="3" Height="16" CornerRadius="2" HorizontalAlignment="Left"
-                                                    Margin="0,0,0,0" Background="{DynamicResource AccentFillColorDefaultBrush}" Visibility="Hidden" />
-                                            <ContentPresenter Margin="{TemplateBinding Padding}" />
-                                        </Grid>
+                                    <Border x:Name="Tile" CornerRadius="{StaticResource RadiusTile}" BorderThickness="1"
+                                            Padding="12" Background="{DynamicResource ThemeTileBrush}"
+                                            BorderBrush="{DynamicResource ThemeBorderBrush}">
+                                        <ContentPresenter />
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Card" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                                            <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
                                         </Trigger>
                                         <Trigger Property="IsSelected" Value="True">
-                                            <Setter TargetName="Card" Property="Background" Value="{DynamicResource AccentTintBrush}" />
-                                            <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
-                                            <Setter TargetName="Pill" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="Tile" Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                            <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
                                         </Trigger>
                                         <Trigger Property="IsEnabled" Value="False">
                                             <Setter Property="Opacity" Value="0.4" />
@@ -65,73 +79,123 @@
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
                     <DataTemplate DataType="{x:Type local:Peer}">
-                        <DockPanel>
-                            <Border DockPanel.Dock="Left" Width="32" Height="32" CornerRadius="16" Margin="0,0,12,0"
-                                    Background="{DynamicResource AccentTintBrush}">
-                                <ui:SymbolIcon Symbol="{Binding Platform, Converter={StaticResource PlatformSymbol}}" FontSize="16"
-                                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
-                            </Border>
-                            <ui:Button DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0,0,0"
-                                       Visibility="{Binding HasWaiting, Converter={StaticResource BoolToVisibility}}"
-                                       ToolTip="{Binding ClearWaitingLabel}" AutomationProperties.Name="{Binding ClearWaitingLabel}"
-                                       Click="OnClearWaiting">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding WaitingLabel}" VerticalAlignment="Center" />
-                                    <ui:SymbolIcon Symbol="Dismiss12" Margin="8,0,0,0" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </ui:Button>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="{Binding Name}" Style="{StaticResource BodyStrongText}" />
-                                <TextBlock Text="{Binding Note}" Style="{StaticResource Caption}" />
-                            </StackPanel>
-                        </DockPanel>
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,12">
+                                <!-- Icon well: accent tint normally; a soft overlay on the accent when selected. -->
+                                <Border DockPanel.Dock="Left" Width="32" Height="32" CornerRadius="{StaticResource RadiusTile}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{DynamicResource AccentTintBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource OnAccentWellBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <ui:SymbolIcon Symbol="{Binding Platform, Converter={StaticResource PlatformSymbol}}" FontSize="16">
+                                        <ui:SymbolIcon.Style>
+                                            <Style TargetType="ui:SymbolIcon">
+                                                <Setter Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ui:SymbolIcon.Style>
+                                    </ui:SymbolIcon>
+                                </Border>
+                                <ui:Button DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                           Style="{StaticResource WaitingBadge}"
+                                           Visibility="{Binding HasWaiting, Converter={StaticResource BoolToVisibility}}"
+                                           ToolTip="{Binding ClearWaitingLabel}" AutomationProperties.Name="{Binding ClearWaitingLabel}"
+                                           Click="OnClearWaiting">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding WaitingLabel}" VerticalAlignment="Center" />
+                                        <ui:SymbolIcon Symbol="Dismiss12" FontSize="10" Margin="4,0,0,0" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </ui:Button>
+                            </DockPanel>
+                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                            <TextBlock Text="{Binding Note}" FontSize="{StaticResource FontSizeCaption}" TextTrimming="CharacterEllipsis" Opacity="0.8"
+                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
+                        </StackPanel>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
-            <ui:Card x:Name="EmptyState" Visibility="Collapsed">
+            <Border x:Name="EmptyState" Style="{StaticResource Tile}" Visibility="Collapsed" Margin="0,0,0,12">
                 <TextBlock TextWrapping="Wrap">
                     No devices yet.
                     <Hyperlink Click="OnSettings">Open Settings</Hyperlink>
                     to add one, or pair your iPhone with its QR code.
                 </TextBlock>
-            </ui:Card>
+            </Border>
 
-            <!-- Files -->
-            <TextBlock Text="Files" Style="{StaticResource BodyStrongText}" Margin="0,16,0,8" />
-            <Grid Height="152">
-                <Rectangle x:Name="DropBorder" RadiusX="8" RadiusY="8" StrokeThickness="1.5" StrokeDashArray="4 3"
-                           Stroke="{DynamicResource ControlStrongStrokeColorDefaultBrush}"
-                           Fill="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
-                <ListBox x:Name="FileList" DisplayMemberPath="Name" Margin="4" BorderThickness="0" Background="Transparent"
-                         AutomationProperties.Name="Files to send" />
-                <StackPanel x:Name="DropHint" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
-                    <ui:SymbolIcon Symbol="ArrowDownload24" FontSize="24" HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                    <TextBlock Text="Drop files or paste" Style="{StaticResource BodyStrongText}" Margin="0,8,0,0" HorizontalAlignment="Center" />
-                    <TextBlock Text="Ctrl+V pastes files or text from the clipboard" Style="{StaticResource Caption}" HorizontalAlignment="Center" />
-                </StackPanel>
+            <!-- Drop tile (large, left) and the message tile (secondary, right) -->
+            <Grid Height="224">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="3*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="2*" />
+                </Grid.ColumnDefinitions>
+
+                <Grid Grid.Column="0">
+                    <Rectangle x:Name="DropBorder" RadiusX="8" RadiusY="8" StrokeThickness="1.5" StrokeDashArray="4 3"
+                               Stroke="{DynamicResource ThemeBorderBrush}" Fill="{DynamicResource ThemeTileBrush}" />
+                    <ListBox x:Name="FileList" DisplayMemberPath="Name" Margin="8,8,8,48" BorderThickness="0" Background="Transparent"
+                             AutomationProperties.Name="Files to send" />
+                    <StackPanel x:Name="DropHint" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" Margin="0,0,0,24">
+                        <Border Width="40" Height="40" CornerRadius="{StaticResource RadiusTile}" Background="{DynamicResource AccentTintBrush}">
+                            <ui:SymbolIcon Symbol="ArrowDownload24" FontSize="20" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                        </Border>
+                        <TextBlock Text="Drop files or paste" Style="{StaticResource BodyStrongText}" Margin="0,8,0,0" HorizontalAlignment="Center" />
+                        <TextBlock Text="Ctrl+V pastes files or text" Style="{StaticResource Caption}" HorizontalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" Margin="8">
+                        <ui:Button Content="Add files…" Icon="{ui:SymbolIcon Add24}" Appearance="Transparent" Click="OnAddFiles" />
+                        <ui:Button Content="Clear" Icon="{ui:SymbolIcon Delete24}" Appearance="Transparent" Margin="4,0,0,0" Click="OnClearFiles" />
+                    </StackPanel>
+                </Grid>
+
+                <Border Grid.Column="2" Style="{StaticResource Tile}" Background="{DynamicResource ThemeSecondaryTintBrush}"
+                        BorderBrush="{DynamicResource ThemeSecondaryTintBrush}">
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                            <!-- Icon well on the secondary tile: secondaryText fill, glyph in the tile color. -->
+                            <Border DockPanel.Dock="Left" Width="32" Height="32" CornerRadius="{StaticResource RadiusTile}"
+                                    Background="{DynamicResource ThemeSecondaryTextBrush}" Margin="0,0,8,0">
+                                <ui:SymbolIcon Symbol="TextAlignLeft24" FontSize="16" Foreground="{DynamicResource ThemeTileBrush}" />
+                            </Border>
+                            <TextBlock Text="Text or link" Style="{StaticResource BodyStrongText}" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource ThemeSecondaryTextBrush}" />
+                        </DockPanel>
+                        <ui:TextBox x:Name="MessageText" AcceptsReturn="True" TextWrapping="Wrap"
+                                    VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto"
+                                    PlaceholderText="Type or paste text or a link" AutomationProperties.Name="Text or link" />
+                    </DockPanel>
+                </Border>
             </Grid>
-            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                <ui:Button Content="Add files…" Icon="{ui:SymbolIcon Add24}" Appearance="Transparent" Click="OnAddFiles" />
-                <ui:Button Content="Clear" Icon="{ui:SymbolIcon Delete24}" Appearance="Transparent" Margin="4,0,0,0" Click="OnClearFiles" />
-            </StackPanel>
 
-            <!-- Text -->
-            <TextBlock Text="Text or link" Style="{StaticResource BodyStrongText}" Margin="0,16,0,8" />
-            <ui:TextBox x:Name="MessageText" Height="96" AcceptsReturn="True" TextWrapping="Wrap"
-                        VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto"
-                        PlaceholderText="Type or paste text or a link" AutomationProperties.Name="Text or link" />
+            <!-- Status tile -->
+            <ProgressBar x:Name="Progress" Style="{StaticResource BrandProgressBar}" Visibility="Collapsed" Margin="0,12,0,0" />
+            <Border x:Name="SuccessTile" Style="{StaticResource Tile}" Visibility="Collapsed" Margin="0,12,0,0"
+                    Background="{DynamicResource SuccessFillBrush}" BorderBrush="{DynamicResource SuccessFillBrush}" Padding="12">
+                <DockPanel>
+                    <ui:SymbolIcon DockPanel.Dock="Left" Symbol="CheckmarkCircle24" Filled="True" FontSize="20" Margin="0,0,8,0"
+                                   Foreground="{DynamicResource SuccessTextBrush}" />
+                    <TextBlock x:Name="SuccessText" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource SuccessTextBrush}" />
+                </DockPanel>
+            </Border>
+            <ui:InfoBar x:Name="StatusBar" Margin="0,12,0,0" IsOpen="False" IsClosable="True" />
 
-            <!-- Status -->
-            <ProgressBar x:Name="Progress" Style="{StaticResource BrandProgressBar}" Visibility="Collapsed" Margin="0,16,0,0" />
-            <ui:InfoBar x:Name="StatusBar" Margin="0,16,0,0" IsOpen="False" IsClosable="True" />
-
-            <!-- Actions -->
+            <!-- Bottom bar: a secondary button on the left, the primary Send on the right. -->
             <DockPanel Margin="0,16,0,0" LastChildFill="False">
-                <ui:Button Content="Paste" Icon="{ui:SymbolIcon ClipboardPaste24}" Appearance="Transparent"
+                <ui:Button Content="Paste" Icon="{ui:SymbolIcon ClipboardPaste24}"
                            ToolTip="Paste files or text (Ctrl+V)" Click="OnPaste" />
                 <ui:Button x:Name="SendButton" DockPanel.Dock="Right" Content="Send" Icon="{ui:SymbolIcon Send24}"
-                           Appearance="Primary" IsDefault="True" ToolTip="Send (Ctrl+Enter)" Click="OnSend" />
+                           Style="{StaticResource PrimaryActionButton}" IsDefault="True" ToolTip="Send (Ctrl+Enter)" Click="OnSend" />
             </DockPanel>
         </StackPanel>
     </StackPanel>

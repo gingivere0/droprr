@@ -12,6 +12,21 @@
                 <!-- Droprr's design tokens (design-system/droprr/tokens.json) and type roles. -->
                 <ResourceDictionary Source="Themes/Tokens.xaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- Styles based on WPF UI's live here, not in Tokens.xaml: a merged dictionary can't see the
+                 styles in its sibling dictionaries when it loads, but the application dictionary can. -->
+            <!-- The main action (Send, Pair a phone): primaryButton, near-black in light mode and the accent in dark. -->
+            <Style x:Key="PrimaryActionButton" TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+                <Setter Property="Background" Value="{DynamicResource PrimaryButtonBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource OnPrimaryButtonBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource PrimaryButtonBrush}" />
+                <Setter Property="MouseOverBackground" Value="{DynamicResource PrimaryButtonHoverBrush}" />
+                <Setter Property="MouseOverBorderBrush" Value="{DynamicResource PrimaryButtonHoverBrush}" />
+                <Setter Property="PressedBackground" Value="{DynamicResource PrimaryButtonPressedBrush}" />
+                <Setter Property="PressedForeground" Value="{DynamicResource OnPrimaryButtonBrush}" />
+                <Setter Property="PressedBorderBrush" Value="{DynamicResource PrimaryButtonPressedBrush}" />
+                <Setter Property="Padding" Value="16,8" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

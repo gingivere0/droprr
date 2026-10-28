@@ -50,13 +50,14 @@ public partial class App : Application
     {
         base.OnStartup(e);
         try { Shortcuts.SetProcessAppId(); } catch { /* only affects taskbar grouping and notification branding */ }
-        AppTheme.Initialize();
         try
         {
             Settings = SettingsStore.Load();
+            AppTheme.Initialize(Settings.Theme);
         }
         catch (Exception ex)
         {
+            AppTheme.Initialize(null);
             await AppTheme.ShowMessageAsync("Droprr couldn't start", $"Couldn't read {SettingsStore.FilePath}:\n{ex.Message}");
             Shutdown(1);
             return;

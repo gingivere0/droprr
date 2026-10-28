@@ -6,38 +6,81 @@ using Wpf.Ui.Controls;
 
 namespace Droprr;
 
-// Light or dark to match Windows, with Droprr's brand accent (Themes/Tokens.xaml) rather than the system's.
+// Light or dark to match Windows, plus the color theme chosen in Settings (ThemeCatalog). Everything themed is
+// a DynamicResource, so switching either one restyles open windows immediately, with no restart.
 static class AppTheme
 {
-    static Color Token(string key) => (Color)Application.Current.FindResource(key);
+    static ThemeDef _theme = ThemeCatalog.Find(null);
+    static ApplicationTheme _mode = ApplicationTheme.Light;
 
-    public static void Initialize()
+    public static ThemeDef Current => _theme;
+
+    public static void Initialize(string? themeId)
     {
-        var theme = SystemUsesLightTheme() ? ApplicationTheme.Light : ApplicationTheme.Dark;
-        ApplicationThemeManager.Apply(theme, WindowBackdropType.Mica, updateAccent: false);
-        ApplyAccent(theme);
-        // A theme switch recomputes the accent shades for the new background.
-        ApplicationThemeManager.Changed += (newTheme, _) => ApplyAccent(newTheme);
+        _theme = ThemeCatalog.Find(themeId);
+        _mode = SystemUsesLightTheme() ? ApplicationTheme.Light : ApplicationTheme.Dark;
+        ApplicationThemeManager.Apply(_mode, WindowBackdropType.None, updateAccent: false);
+        ApplyColors();
+        // A light or dark switch recomputes the theme's shades for the new background.
+        ApplicationThemeManager.Changed += (newMode, _) =>
+        {
+            _mode = newMode;
+            ApplyColors();
+        };
     }
 
-    // WPF UI derives the accent shades from one color; accent-colored text uses the design system's
-    // values instead, so it keeps its contrast (6.4:1 or better) in both themes.
-    static void ApplyAccent(ApplicationTheme theme)
+    // Live: called from the Settings theme picker as the selection changes.
+    public static void SetTheme(string? themeId)
     {
-        var dark = theme == ApplicationTheme.Dark;
-        var violet = Token("BrandViolet");
-        // The design system keeps filled accent controls violet in both themes (white text on it is 7:1).
-        // WPF UI would lighten them in dark mode, which drops white text below 4.5:1.
-        var hover = Blend(violet, Colors.White, 0.18);
-        var pressed = Blend(violet, Colors.Black, 0.15);
-        ApplicationAccentColorManager.Apply(violet, violet, hover, pressed);
-        SetBrush("AccentFillColorDefaultBrush", violet);
+        _theme = ThemeCatalog.Find(themeId);
+        ApplyColors();
+    }
+
+    public static bool IsDark => _mode == ApplicationTheme.Dark;
+
+    // Sets every themed brush for the current theme and mode. WPF UI's own neutral and accent brushes are
+    // overridden too, so its controls (text boxes, toggles, cards) follow the theme.
+    static void ApplyColors()
+    {
+        var dark = IsDark;
+        var c = _theme.For(dark);
+
+        // Neutrals: the window surface behind the tiles, the tiles, hairlines, and text.
+        SetBrush("ThemeSurfaceBrush", c.Surface);
+        SetBrush("ThemeTileBrush", c.Tile);
+        SetBrush("ThemeBorderBrush", c.Border);
+        SetBrush("CardBackgroundFillColorDefaultBrush", c.Tile);
+        SetBrush("CardStrokeColorDefaultBrush", c.Border);
+        SetBrush("TextFillColorPrimaryBrush", c.TextPrimary);
+        SetBrush("TextFillColorSecondaryBrush", c.TextSecondary);
+
+        // Accent: the selected tile, toggles, and checkboxes. Hover and press shades follow the design tokens.
+        var hover = Blend(c.Accent, Colors.White, 0.18);
+        var pressed = Blend(c.Accent, Colors.Black, 0.15);
+        ApplicationAccentColorManager.Apply(c.Accent, c.Accent, hover, pressed);
+        SetBrush("AccentFillColorDefaultBrush", c.Accent);
         SetBrush("AccentFillColorSecondaryBrush", hover);
         SetBrush("AccentFillColorTertiaryBrush", pressed);
-        SetBrush("TextOnAccentFillColorPrimaryBrush", Colors.White);
-        SetBrush("AccentTextFillColorPrimaryBrush", Token(dark ? "AccentTextDark" : "AccentTextLight"));
-        SetBrush("AccentTintBrush", violet,
-            (double)Application.Current.FindResource(dark ? "AccentTintOpacityDark" : "AccentTintOpacityLight"));
+        SetBrush("TextOnAccentFillColorPrimaryBrush", c.OnAccent);
+        SetBrush("OnAccentWellBrush", c.OnAccent, 0.16);
+        SetBrush("AccentTextFillColorPrimaryBrush", c.AccentText);
+        SetBrush("AccentTintBrush", c.AccentTint);
+
+        // Secondary: one contrasting tile per screen (the message tile) and the "N waiting" badges. Raw
+        // secondary is decorative only (dots, swatches); controls and text use secondaryText, and an icon well
+        // on the secondary tile is filled with secondaryText with its glyph in the tile color.
+        SetBrush("ThemeSecondaryBrush", c.Secondary);
+        SetBrush("ThemeSecondaryTintBrush", c.SecondaryTint);
+        SetBrush("ThemeSecondaryTextBrush", c.SecondaryText);
+
+        // The main action: near-black in light mode, the accent in dark mode.
+        SetBrush("PrimaryButtonBrush", c.PrimaryButton);
+        SetBrush("PrimaryButtonHoverBrush", Blend(c.PrimaryButton, dark ? Colors.Black : Colors.White, 0.15));
+        SetBrush("PrimaryButtonPressedBrush", Blend(c.PrimaryButton, dark ? Colors.Black : Colors.White, 0.28));
+        SetBrush("OnPrimaryButtonBrush", c.OnPrimaryButton);
+
+        SetBrush("SuccessFillBrush", dark ? ThemeCatalog.SuccessFill.Dark : ThemeCatalog.SuccessFill.Light);
+        SetBrush("SuccessTextBrush", dark ? ThemeCatalog.SuccessText.Dark : ThemeCatalog.SuccessText.Light);
     }
 
     static void SetBrush(string key, Color color, double opacity = 1)
@@ -61,13 +104,15 @@ static class AppTheme
     }
 
     // Gives a window the app icon (taskbar and title bar) and makes it follow Windows' light and dark setting
-    // while it's open, keeping the brand accent.
+    // while it's open, keeping the theme's colors.
     public static void Setup(Window window, TitleBar? titleBar = null)
     {
         window.Icon = AppIcon.ImageSource;
         if (titleBar is not null)
             titleBar.Icon = new ImageIcon { Source = AppIcon.ImageSource, Width = 16, Height = 16 };
-        window.Loaded += (_, _) => SystemThemeWatcher.Watch(window, WindowBackdropType.Mica, updateAccents: false);
+        // Bento: a solid themed surface behind the tiles rather than Mica.
+        window.SetResourceReference(Window.BackgroundProperty, "ThemeSurfaceBrush");
+        window.Loaded += (_, _) => SystemThemeWatcher.Watch(window, WindowBackdropType.None, updateAccents: false);
     }
 
     static bool SystemUsesLightTheme()

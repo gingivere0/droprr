@@ -2,9 +2,18 @@
                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-                 Title="Droprr Settings" Width="720" Height="780" MinWidth="560" MinHeight="560"
+                 xmlns:local="clr-namespace:Droprr"
+                 Title="Droprr Settings" Width="780" Height="860" MinWidth="640" MinHeight="560"
                  WindowStartupLocation="CenterScreen"
-                 ExtendsContentIntoTitleBar="True" WindowBackdropType="Mica" WindowCornerPreference="Round">
+                 ExtendsContentIntoTitleBar="True" WindowBackdropType="None" WindowCornerPreference="Round">
+    <ui:FluentWindow.Resources>
+        <!-- A labeled on/off row inside a tile. -->
+        <Style x:Key="ToggleRow" TargetType="DockPanel">
+            <Setter Property="Margin" Value="0,12,0,0" />
+            <Setter Property="LastChildFill" Value="True" />
+        </Style>
+    </ui:FluentWindow.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -15,127 +24,206 @@
         <ui:TitleBar x:Name="AppTitleBar" Grid.Row="0" Title="Droprr Settings" />
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="24,4,24,12">
-                <TextBlock Text="Settings" Style="{StaticResource TitleText}" />
+            <Grid Margin="24,4,24,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-                <!-- This PC -->
-                <TextBlock Text="This PC" Style="{StaticResource SectionHeader}" />
-                <ui:CardControl Icon="{ui:SymbolIcon Desktop24}" Margin="0,0,0,4">
-                    <ui:CardControl.Header>
-                        <StackPanel>
-                            <TextBlock Text="Device name" />
-                            <TextBlock Text="The name other devices see" Style="{StaticResource Caption}" />
-                        </StackPanel>
-                    </ui:CardControl.Header>
-                    <ui:TextBox x:Name="DeviceName" Width="240" AutomationProperties.Name="Device name" />
-                </ui:CardControl>
-                <ui:CardControl Icon="{ui:SymbolIcon PlugConnected24}" Margin="0,0,0,4">
-                    <ui:CardControl.Header>
-                        <StackPanel>
-                            <TextBlock Text="Port" />
-                            <TextBlock Text="53318 unless every device is set to something else" Style="{StaticResource Caption}" />
-                        </StackPanel>
-                    </ui:CardControl.Header>
-                    <ui:TextBox x:Name="Port" Width="120" AutomationProperties.Name="Port" />
-                </ui:CardControl>
-                <ui:CardControl Icon="{ui:SymbolIcon Folder24}" Margin="0,0,0,4">
-                    <ui:CardControl.Header>
-                        <StackPanel>
-                            <TextBlock Text="Save received items to" />
-                            <TextBlock Text="Leave empty for Downloads\Droprr" Style="{StaticResource Caption}" />
-                        </StackPanel>
-                    </ui:CardControl.Header>
-                    <StackPanel Orientation="Horizontal">
-                        <ui:TextBox x:Name="SaveFolder" Width="220" AutomationProperties.Name="Save received items to" />
-                        <ui:Button Content="Browse…" Margin="8,0,0,0" AutomationProperties.Name="Browse for a save folder" Click="OnBrowse" />
-                    </StackPanel>
-                </ui:CardControl>
-                <ui:CardControl Icon="{ui:SymbolIcon ClipboardText24}" Margin="0,0,0,4">
-                    <ui:CardControl.Header>
-                        <StackPanel>
-                            <TextBlock Text="Copy received text and links to the clipboard" />
-                            <TextBlock Text="Kept out of clipboard history and cloud clipboard" Style="{StaticResource Caption}" />
-                        </StackPanel>
-                    </ui:CardControl.Header>
-                    <ui:ToggleSwitch x:Name="CopyTextBox" AutomationProperties.Name="Copy received text and links to the clipboard" />
-                </ui:CardControl>
-                <ui:CardControl Icon="{ui:SymbolIcon Clipboard24}" Margin="0,0,0,4">
-                    <ui:CardControl.Header>
-                        <StackPanel>
-                            <TextBlock Text="Auto-copy received items to clipboard" />
-                            <TextBlock Text="Also copies received files, and images as pictures."
-                                       Style="{StaticResource Caption}" />
-                        </StackPanel>
-                    </ui:CardControl.Header>
-                    <ui:ToggleSwitch x:Name="CopyFilesBox" AutomationProperties.Name="Auto-copy received items to clipboard" />
-                </ui:CardControl>
-                <ui:CardControl Icon="{ui:SymbolIcon Power24}" Margin="0,0,0,4">
-                    <ui:CardControl.Header>
-                        <TextBlock Text="Start Droprr when I sign in to Windows" />
-                    </ui:CardControl.Header>
-                    <ui:ToggleSwitch x:Name="StartWithWindowsBox" AutomationProperties.Name="Start Droprr when I sign in to Windows" />
-                </ui:CardControl>
-                <ui:CardControl Icon="{ui:SymbolIcon Search24}">
-                    <ui:CardControl.Header>
-                        <TextBlock Text="Add Droprr to the Start menu and Windows Search" />
-                    </ui:CardControl.Header>
-                    <ui:ToggleSwitch x:Name="StartMenuBox" AutomationProperties.Name="Add Droprr to the Start menu and Windows Search" />
-                </ui:CardControl>
+                <TextBlock Grid.Row="0" Grid.ColumnSpan="3" Text="Settings" Style="{StaticResource TitleText}" Margin="0,0,0,16" />
 
-                <!-- Token -->
-                <TextBlock Text="Token" Style="{StaticResource SectionHeader}" />
-                <ui:Card>
-                    <StackPanel>
-                        <DockPanel>
-                            <ui:SymbolIcon DockPanel.Dock="Left" Symbol="Key24" FontSize="20" Margin="0,0,12,0" VerticalAlignment="Top" />
-                            <TextBlock Style="{StaticResource Caption}"
-                                       Text="Every device that sends to this PC needs this token. Pairing a phone hands it over for you. Keep it private." />
-                        </DockPanel>
-                        <DockPanel Margin="32,12,0,0">
-                            <ui:Button DockPanel.Dock="Right" Content="New token" Icon="{ui:SymbolIcon ArrowSync24}" Margin="8,0,0,0" Click="OnNewToken" />
-                            <ui:Button DockPanel.Dock="Right" Content="Copy" Icon="{ui:SymbolIcon Copy24}" Margin="8,0,0,0" Click="OnCopyToken" />
-                            <ui:Button DockPanel.Dock="Right" x:Name="ShowTokenButton" Content="Show" Icon="{ui:SymbolIcon Eye24}" Margin="8,0,0,0" Click="OnShowToken" />
-                            <ui:TextBox x:Name="TokenText" IsReadOnly="True" AutomationProperties.Name="Token" FontFamily="{StaticResource MonoFont}" FontSize="{StaticResource FontSizeCaption}" />
-                        </DockPanel>
-                    </StackPanel>
-                </ui:Card>
+                <!-- Hero: this device -->
+                <Border Grid.Row="1" Grid.ColumnSpan="3" Style="{StaticResource Tile}">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Left" Width="56" Height="56" CornerRadius="{StaticResource RadiusTile}"
+                                Background="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,16,0" VerticalAlignment="Top">
+                            <ui:SymbolIcon Symbol="Desktop24" FontSize="28" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                        </Border>
+                        <ui:Button DockPanel.Dock="Right" VerticalAlignment="Center" Content="Pair a phone…" Icon="{ui:SymbolIcon QrCode24}"
+                                   Style="{StaticResource PrimaryActionButton}" Click="OnPair" />
+                        <StackPanel Margin="0,0,16,0">
+                            <TextBlock Text="This device" Style="{StaticResource Caption}" />
+                            <ui:TextBox x:Name="DeviceName" Margin="0,4,0,8" MaxWidth="320" HorizontalAlignment="Left" MinWidth="240"
+                                        AutomationProperties.Name="Device name" />
+                            <WrapPanel>
+                                <Border Style="{StaticResource Chip}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Port" FontSize="{StaticResource FontSizeCaption}" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" Margin="0,0,8,0" />
+                                        <ui:TextBox x:Name="Port" Width="88" Padding="6,2" AutomationProperties.Name="Port" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource Chip}" VerticalAlignment="Center">
+                                    <TextBlock x:Name="DeviceCountChip" FontSize="{StaticResource FontSizeCaption}"
+                                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                </Border>
+                            </WrapPanel>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
 
                 <!-- Devices -->
-                <TextBlock Text="Devices" Style="{StaticResource SectionHeader}" />
-                <ui:Card>
+                <Border Grid.Row="3" Grid.ColumnSpan="3" Style="{StaticResource Tile}">
                     <StackPanel>
+                        <TextBlock Text="Devices" Style="{StaticResource TileTitle}" Margin="0,0,0,4" />
                         <TextBlock Style="{StaticResource Caption}" Margin="0,0,0,12"
                                    Text="Computers by Tailscale name. Turn on iPhone for phones: items for them wait on this PC until the phone collects them." />
-                        <DataGrid x:Name="PeerGrid" AutomationProperties.Name="Devices" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column"
-                                  MinHeight="120" GridLinesVisibility="None" SelectionMode="Single">
+                        <DataGrid x:Name="PeerGrid" AutomationProperties.Name="Devices" AutoGenerateColumns="False" CanUserAddRows="False"
+                                  HeadersVisibility="Column" MinHeight="96" GridLinesVisibility="None" SelectionMode="Single">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" />
                                 <DataGridTextColumn Header="Tailscale host" Binding="{Binding Host}" Width="2*" />
                                 <DataGridTextColumn Header="Port" Binding="{Binding Port}" Width="70" />
                                 <DataGridCheckBoxColumn Header="iPhone" Binding="{Binding IsPhone, UpdateSourceTrigger=PropertyChanged}" Width="70"
                                                         ElementStyle="{StaticResource {x:Type CheckBox}}" EditingElementStyle="{StaticResource {x:Type CheckBox}}" />
-                                <DataGridTextColumn Header="Token (if different)" Binding="{Binding Token}" Width="2*" />
+                                <DataGridTextColumn Header="Token" Binding="{Binding Token}" Width="2*" />
                             </DataGrid.Columns>
                         </DataGrid>
                         <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                             <ui:Button Content="Add device" Icon="{ui:SymbolIcon Add24}" Click="OnAddPeer" />
                             <ui:Button Content="Remove" Icon="{ui:SymbolIcon Delete24}" Margin="8,0,0,0" Click="OnRemovePeer" />
-                            <ui:Button Content="Pair a phone…" Icon="{ui:SymbolIcon QrCode24}" Margin="8,0,0,0" Click="OnPair" />
                         </StackPanel>
                     </StackPanel>
-                </ui:Card>
-            </StackPanel>
+                </Border>
+
+                <!-- Receiving -->
+                <Border Grid.Row="5" Grid.Column="0" Style="{StaticResource Tile}">
+                    <StackPanel>
+                        <TextBlock Text="Receiving" Style="{StaticResource TileTitle}" Margin="0,0,0,8" />
+                        <TextBlock Text="Save to (empty for Downloads\Droprr)" Style="{StaticResource Caption}" Margin="0,0,0,4" />
+                        <DockPanel>
+                            <ui:Button DockPanel.Dock="Right" Icon="{ui:SymbolIcon FolderOpen24}" Margin="8,0,0,0"
+                                       ToolTip="Browse" AutomationProperties.Name="Browse for a save folder" Click="OnBrowse" />
+                            <ui:TextBox x:Name="SaveFolder" AutomationProperties.Name="Save received items to" />
+                        </DockPanel>
+                        <DockPanel Style="{StaticResource ToggleRow}">
+                            <ui:ToggleSwitch x:Name="CopyTextBox" DockPanel.Dock="Right" AutomationProperties.Name="Copy received text and links to the clipboard" />
+                            <StackPanel>
+                                <TextBlock Text="Copy text and links to the clipboard" TextWrapping="Wrap" />
+                                <TextBlock Text="Kept out of clipboard history" Style="{StaticResource Caption}" />
+                            </StackPanel>
+                        </DockPanel>
+                        <DockPanel Style="{StaticResource ToggleRow}">
+                            <ui:ToggleSwitch x:Name="CopyFilesBox" DockPanel.Dock="Right" AutomationProperties.Name="Auto-copy received items to clipboard" />
+                            <StackPanel>
+                                <TextBlock Text="Auto-copy received items to clipboard" TextWrapping="Wrap" />
+                                <TextBlock Text="Files too, and images as pictures" Style="{StaticResource Caption}" />
+                            </StackPanel>
+                        </DockPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Token -->
+                <Border Grid.Row="5" Grid.Column="2" Style="{StaticResource Tile}">
+                    <StackPanel>
+                        <TextBlock Text="Token" Style="{StaticResource TileTitle}" Margin="0,0,0,4" />
+                        <TextBlock Style="{StaticResource Caption}" Margin="0,0,0,12"
+                                   Text="Devices that send to this PC use it. Pairing a phone hands it over for you. Keep it private." />
+                        <ui:TextBox x:Name="TokenText" IsReadOnly="True" AutomationProperties.Name="Token"
+                                    FontFamily="{StaticResource MonoFont}" FontSize="{StaticResource FontSizeCaption}" />
+                        <WrapPanel Margin="0,8,0,0">
+                            <ui:Button x:Name="ShowTokenButton" Content="Show" Icon="{ui:SymbolIcon Eye24}" Margin="0,0,8,8" Click="OnShowToken" />
+                            <ui:Button Content="Copy" Icon="{ui:SymbolIcon Copy24}" Margin="0,0,8,8" Click="OnCopyToken" />
+                            <ui:Button Content="New token" Icon="{ui:SymbolIcon ArrowSync24}" Margin="0,0,8,8" Click="OnNewToken" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Appearance -->
+                <Border Grid.Row="7" Grid.Column="0" Style="{StaticResource Tile}">
+                    <StackPanel>
+                        <TextBlock Text="Appearance" Style="{StaticResource TileTitle}" />
+                        <ListBox x:Name="ThemeList" Background="Transparent" BorderThickness="0" Padding="0"
+                                 AutomationProperties.Name="Theme" SelectionChanged="OnThemeChanged">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="3" />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Margin" Value="0,0,8,8" />
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                                    <Setter Property="ToolTip" Value="{Binding Name}" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <StackPanel>
+                                                    <!-- The ring marks the current theme. -->
+                                                    <Border x:Name="Ring" CornerRadius="{StaticResource RadiusTile}" BorderThickness="2"
+                                                            BorderBrush="Transparent" Padding="2">
+                                                        <ContentPresenter />
+                                                    </Border>
+                                                </StackPanel>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type local:ThemeSwatch}">
+                                    <StackPanel>
+                                        <!-- Mini preview: the theme's surface and tile, with its accent and secondary dots. -->
+                                        <Border Height="44" CornerRadius="6" Background="{Binding Surface}" Padding="6">
+                                            <Border CornerRadius="4" Background="{Binding Tile}" BorderBrush="{Binding Border}" BorderThickness="1">
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                    <Ellipse Width="14" Height="14" Fill="{Binding Accent}" Margin="0,0,4,0" />
+                                                    <Ellipse Width="14" Height="14" Fill="{Binding Secondary}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </Border>
+                                        <TextBlock Text="{Binding Name}" Style="{StaticResource Caption}" TextAlignment="Center" Margin="0,4,0,2" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </Border>
+
+                <!-- Windows -->
+                <Border Grid.Row="7" Grid.Column="2" Style="{StaticResource Tile}">
+                    <StackPanel>
+                        <TextBlock Text="Windows" Style="{StaticResource TileTitle}" Margin="0,0,0,0" />
+                        <DockPanel Style="{StaticResource ToggleRow}">
+                            <ui:ToggleSwitch x:Name="StartWithWindowsBox" DockPanel.Dock="Right" AutomationProperties.Name="Start Droprr when I sign in to Windows" />
+                            <TextBlock Text="Start Droprr when I sign in" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        </DockPanel>
+                        <DockPanel Style="{StaticResource ToggleRow}">
+                            <ui:ToggleSwitch x:Name="StartMenuBox" DockPanel.Dock="Right" AutomationProperties.Name="Add Droprr to the Start menu and Windows Search" />
+                            <TextBlock Text="Show in the Start menu and Windows Search" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        </DockPanel>
+                        <ui:Button Content="Open settings file" Icon="{ui:SymbolIcon DocumentEdit24}" Appearance="Transparent"
+                                   Margin="-8,12,0,0" Click="OnOpenFile" />
+                    </StackPanel>
+                </Border>
+            </Grid>
         </ScrollViewer>
 
-        <Border Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
-            <DockPanel Margin="24,12,24,16" LastChildFill="False">
-                <ui:Button Content="Open settings file" Icon="{ui:SymbolIcon DocumentEdit24}" Appearance="Transparent" Click="OnOpenFile" />
-                <ui:Button DockPanel.Dock="Right" Content="Save" Icon="{ui:SymbolIcon Save24}" Appearance="Primary"
-                           Margin="8,0,0,0" IsDefault="True" Click="OnSave" />
-                <ui:Button DockPanel.Dock="Right" Content="Cancel" IsCancel="True" Click="OnCancel" />
-                <TextBlock x:Name="Error" DockPanel.Dock="Right" Foreground="{DynamicResource SystemFillColorCriticalBrush}"
-                           VerticalAlignment="Center" Margin="0,0,12,0" />
-            </DockPanel>
-        </Border>
+        <DockPanel Grid.Row="2" Margin="24,12,24,16" LastChildFill="False">
+            <ui:Button DockPanel.Dock="Right" Content="Save" Icon="{ui:SymbolIcon Save24}" Style="{StaticResource PrimaryActionButton}"
+                       Margin="8,0,0,0" IsDefault="True" Click="OnSave" />
+            <ui:Button DockPanel.Dock="Right" Content="Cancel" IsCancel="True" Click="OnCancel" />
+            <TextBlock x:Name="Error" DockPanel.Dock="Right" Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                       VerticalAlignment="Center" Margin="0,0,12,0" />
+        </DockPanel>
     </Grid>
 </ui:FluentWindow>

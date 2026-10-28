@@ -16,7 +16,9 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
     readonly AppSettings _settings;
     readonly ObservableCollection<Peer> _peers;
     readonly Dictionary<string, string> _originalTokens;
+    readonly string _originalTheme;
     bool _tokenVisible;
+    bool _saved;
 
     internal SettingsWindow(App app)
     {
@@ -38,7 +40,18 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         _originalTokens = _settings.Peers.GroupBy(p => p.Name.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Token, StringComparer.OrdinalIgnoreCase);
         PeerGrid.ItemsSource = _peers;
+        DeviceCountChip.Text = _peers.Count == 1 ? "1 device" : $"{_peers.Count} devices";
         ShowToken();
+
+        // Appearance: picking a swatch restyles every window at once; Cancel (or closing) puts it back.
+        _originalTheme = AppTheme.Current.Id;
+        ThemeList.ItemsSource = ThemeCatalog.All.Select(t => new ThemeSwatch(t, AppTheme.IsDark)).ToList();
+        ThemeList.SelectedItem = ((IEnumerable<ThemeSwatch>)ThemeList.ItemsSource).First(t => t.Id == _originalTheme);
+        Closed += (_, _) =>
+        {
+            if (!_saved)
+                AppTheme.SetTheme(_originalTheme);
+        };
 
         // Esc closes without saving, unless something inside used it first (like cancelling a cell edit).
         CommandBindings.Add(new CommandBinding(ApplicationCommands.Close, (_, _) => Close()));
@@ -63,6 +76,12 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         TokenText.Text = _tokenVisible ? _settings.Token : new string('•', 24);
         ShowTokenButton.Content = _tokenVisible ? "Hide" : "Show";
         ShowTokenButton.Icon = new Wpf.Ui.Controls.SymbolIcon(_tokenVisible ? Wpf.Ui.Controls.SymbolRegular.EyeOff24 : Wpf.Ui.Controls.SymbolRegular.Eye24);
+    }
+
+    void OnThemeChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (ThemeList.SelectedItem is ThemeSwatch swatch)
+            AppTheme.SetTheme(swatch.Id);
     }
 
     void OnShowToken(object sender, RoutedEventArgs e)
@@ -166,6 +185,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         _settings.AddToStartMenu = StartMenuBox.IsChecked == true;
         _settings.CopyFilesToClipboard = CopyFilesBox.IsChecked == true;
         _settings.CopyTextToClipboard = CopyTextBox.IsChecked == true;
+        _settings.Theme = AppTheme.Current.Id;
         try
         {
             SettingsStore.Save(_settings);
@@ -177,6 +197,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
             Error.Text = ex.Message;
             return;
         }
+        _saved = true;
         Close();
         await _app.ReloadAsync();
         if (toPair.Count > 0)

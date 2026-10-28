@@ -74,6 +74,9 @@ public sealed class AppSettings
     // Also copies received files (and images as pictures).
     public bool CopyFilesToClipboard { get; set; }
 
+    // The color theme's id (ThemeCatalog); Graphite & Lime unless chosen otherwise.
+    public string Theme { get; set; } = ThemeCatalog.DefaultId;
+
     // A Start menu shortcut, which is what makes Droprr show up in Windows Search.
     public bool AddToStartMenu { get; set; } = true;
 

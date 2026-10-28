@@ -7,16 +7,14 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime">
 
-    <!-- color.brand, color.accent, color.qrPlate -->
-    <Color x:Key="BrandViolet">#5C21F7</Color>
-    <Color x:Key="BrandCoral">#FF5E5C</Color>
-    <Color x:Key="AccentTextLight">#5C21F7</Color>
-    <Color x:Key="AccentTextDark">#A98BFF</Color>
-    <SolidColorBrush x:Key="BrandCoralBrush" Color="{StaticResource BrandCoral}" />
-    <!-- accent.tint: violet at 12% (light) or 20% (dark). AppTheme swaps this brush when the theme changes. -->
+    <!-- Theme colors (accent fill, accent text, tint, secondary) come from the selected theme in
+         ThemeCatalog.cs; AppTheme sets these brushes, so always use them as DynamicResource. The values
+         below are only startup defaults. -->
     <sys:Double x:Key="AccentTintOpacityLight">0.12</sys:Double>
     <sys:Double x:Key="AccentTintOpacityDark">0.20</sys:Double>
-    <SolidColorBrush x:Key="AccentTintBrush" Color="{StaticResource BrandViolet}" Opacity="0.12" />
+    <SolidColorBrush x:Key="AccentTintBrush" Color="#808080" Opacity="0.12" />
+    <SolidColorBrush x:Key="ThemeSecondaryBrush" Color="#808080" />
+    <!-- color.qrPlate -->
     <SolidColorBrush x:Key="QrPlateBrush" Color="#FFFFFF" />
 
     <!-- font.family, font.role (Windows) -->
@@ -59,8 +57,34 @@
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
     </Style>
 
-    <!-- Progress bars use the coral stop of the brand gradient. -->
+    <!-- Progress bars use the theme's secondaryText (raw secondary is decorative only). -->
     <Style x:Key="BrandProgressBar" TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
-        <Setter Property="Foreground" Value="{StaticResource BrandCoralBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource ThemeSecondaryTextBrush}" />
+    </Style>
+
+    <!-- Bento layout (tokens.json "bento"): tiles of mixed sizes on the themed surface, 12 px apart,
+         8 px corners on Windows, 16 px padding. -->
+    <sys:Double x:Key="TileGap">12</sys:Double>
+    <Thickness x:Key="TilePadding">16</Thickness>
+    <CornerRadius x:Key="RadiusTile">8</CornerRadius>
+    <CornerRadius x:Key="RadiusChip">4</CornerRadius>
+    <Style x:Key="Tile" TargetType="Border">
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusTile}" />
+        <Setter Property="Padding" Value="{StaticResource TilePadding}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+    </Style>
+    <Style x:Key="TileTitle" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongText}">
+        <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+
+
+    <!-- Small rounded labels, such as status chips in the Settings hero tile. -->
+    <Style x:Key="Chip" TargetType="Border">
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusChip}" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+        <Setter Property="Background" Value="{DynamicResource AccentTintBrush}" />
     </Style>
 </ResourceDictionary>

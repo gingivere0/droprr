@@ -4,7 +4,7 @@
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                  Title="Pair a phone" Width="440" SizeToContent="Height" ResizeMode="NoResize"
                  WindowStartupLocation="CenterOwner"
-                 ExtendsContentIntoTitleBar="True" WindowBackdropType="Mica" WindowCornerPreference="Round">
+                 ExtendsContentIntoTitleBar="True" WindowBackdropType="None" WindowCornerPreference="Round">
     <StackPanel>
         <ui:TitleBar x:Name="AppTitleBar" Title="Pair a phone" ShowMaximize="False" ShowMinimize="False" />
 
@@ -31,7 +31,7 @@
                         Message="It contains your Droprr token. Anyone who scans it can send files to this PC, so only show it to your own phone." />
             <ui:InfoBar x:Name="Error" Margin="0,8,0,0" IsOpen="False" IsClosable="False" Severity="Error" Title="Can't pair right now" />
 
-            <ui:Button Content="Done" HorizontalAlignment="Right" Appearance="Primary" Margin="0,16,0,0"
+            <ui:Button Content="Done" HorizontalAlignment="Right" Style="{StaticResource PrimaryActionButton}" Margin="0,16,0,0"
                        IsCancel="True" IsDefault="True" />
         </StackPanel>
     </StackPanel>

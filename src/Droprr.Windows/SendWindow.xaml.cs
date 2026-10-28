@@ -82,8 +82,16 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         ShowPeers();
     }
 
+    // "Sent" shows in the success tile; everything else in the InfoBar.
     void ShowStatus(InfoBarSeverity severity, string message)
     {
+        HideStatus();
+        if (severity == InfoBarSeverity.Success)
+        {
+            SuccessText.Text = message;
+            SuccessTile.Visibility = Visibility.Visible;
+            return;
+        }
         StatusBar.Severity = severity;
         StatusBar.Title = severity switch
         {
@@ -95,7 +103,11 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         StatusBar.IsOpen = true;
     }
 
-    void HideStatus() => StatusBar.IsOpen = false;
+    void HideStatus()
+    {
+        StatusBar.IsOpen = false;
+        SuccessTile.Visibility = Visibility.Collapsed;
+    }
 
     void OnSettingsSaved()
     {
@@ -144,9 +156,9 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
     void HighlightDropZone(bool on)
     {
         DropBorder.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty,
-            on ? "AccentFillColorDefaultBrush" : "ControlStrongStrokeColorDefaultBrush");
+            on ? "AccentFillColorDefaultBrush" : "ThemeBorderBrush");
         DropBorder.SetResourceReference(System.Windows.Shapes.Shape.FillProperty,
-            on ? "AccentTintBrush" : "CardBackgroundFillColorDefaultBrush");
+            on ? "AccentTintBrush" : "ThemeTileBrush");
     }
 
     void OnDragEnter(object sender, DragEventArgs e) => HighlightDropZone(CanDrop(e));

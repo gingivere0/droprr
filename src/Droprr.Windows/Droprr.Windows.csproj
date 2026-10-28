@@ -24,6 +24,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="$(IconPack)app.ico" LogicalName="Droprr.app.ico" />
+    <!-- The design system's tokens; ThemeCatalog reads the Bento themes from it. -->
+    <EmbeddedResource Include="..\..\design-system\droprr\tokens.json" LogicalName="Droprr.tokens.json" />
     <None Include="settings.example.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
