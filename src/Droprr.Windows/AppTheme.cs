@@ -73,10 +73,11 @@ static class AppTheme
         SetBrush("ThemeSecondaryTintBrush", c.SecondaryTint);
         SetBrush("ThemeSecondaryTextBrush", c.SecondaryText);
 
-        // The main action: near-black in light mode, the accent in dark mode.
+        // The main action (Send, Pair a phone, Save): the theme's primaryButton and onPrimaryButton tokens, with
+        // the same hover and press overlays as other accent fills.
         SetBrush("PrimaryButtonBrush", c.PrimaryButton);
-        SetBrush("PrimaryButtonHoverBrush", Blend(c.PrimaryButton, dark ? Colors.Black : Colors.White, 0.15));
-        SetBrush("PrimaryButtonPressedBrush", Blend(c.PrimaryButton, dark ? Colors.Black : Colors.White, 0.28));
+        SetBrush("PrimaryButtonHoverBrush", Blend(c.PrimaryButton, Colors.White, 0.18));
+        SetBrush("PrimaryButtonPressedBrush", Blend(c.PrimaryButton, Colors.Black, 0.15));
         SetBrush("OnPrimaryButtonBrush", c.OnPrimaryButton);
 
         SetBrush("SuccessFillBrush", dark ? ThemeCatalog.SuccessFill.Dark : ThemeCatalog.SuccessFill.Light);

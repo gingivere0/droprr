@@ -15,7 +15,7 @@
 
             <!-- Styles based on WPF UI's live here, not in Tokens.xaml: a merged dictionary can't see the
                  styles in its sibling dictionaries when it loads, but the application dictionary can. -->
-            <!-- The main action (Send, Pair a phone): primaryButton, near-black in light mode and the accent in dark. -->
+            <!-- The main action (Send, Pair a phone, Save): the theme's primaryButton and onPrimaryButton tokens. -->
             <Style x:Key="PrimaryActionButton" TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
                 <Setter Property="Background" Value="{DynamicResource PrimaryButtonBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource OnPrimaryButtonBrush}" />
