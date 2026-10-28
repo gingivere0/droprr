@@ -311,13 +311,24 @@ private struct ReceivedTab: View {
                             .font(.caption)
                             .textCase(nil)
                     }
-                } footer: {
-                    Text("The last \(PhoneModel.historyLimit) items. Files stay in Files › On My iPhone › Droprr › Received.")
                 }
             }
         }
         .navigationTitle("Received")
         .refreshable { await model.collectInbox() }
+        .safeAreaInset(edge: .bottom) {
+            Button(action: openReceivedFolder) {
+                Label("Open received files in Files", systemImage: "folder")
+                    .font(.subheadline.weight(.medium))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.start)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 8)
+        }
         .quickLookPreview($preview)
         .overlay(alignment: .bottom) {
             if let toast {
@@ -392,6 +403,14 @@ private struct ReceivedTab: View {
         }
         let from = entry.source.map { " from \($0)" } ?? ""
         return "\(kind)\(from) · \(entry.date.formatted(.relative(presentation: .named)))"
+    }
+
+    /// Opens On My iPhone › Droprr › Received in the Files app.
+    private func openReceivedFolder() {
+        let folder = PhoneModel.inbox
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        guard let url = URL(string: "shareddocuments://" + folder.path) else { return }
+        UIApplication.shared.open(url)
     }
 
     private func show(_ message: String) {
