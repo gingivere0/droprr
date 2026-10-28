@@ -231,7 +231,7 @@ final class MacModel {
         if peer.isPhone {
             do {
                 try outbox.enqueue(payload, for: peer)
-                lastSendResult = "\(payload.label.capitalizedFirst) is waiting for \(peer.name). It arrives when Droprr opens there."
+                lastSendResult = nil   // the tile's "waiting" badge already shows it
             } catch {
                 lastSendResult = "Couldn't queue for \(peer.name): \(error.localizedDescription)"
             }
