@@ -1,7 +1,7 @@
-#if os(macOS)
-
-import AppKit
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// The Mac app's window styles. The color theme (ThemePalette) still supplies the accent and
 /// secondary colors; the style decides surfaces, shapes, type and controls.
@@ -117,12 +117,15 @@ enum Look {
         }
     }
 
+    #if os(macOS)
     /// The window's own background color behind the SwiftUI content.
     static var windowColor: NSColor { style == .spatial ? .clear : NSColor(background) }
+    #endif
 }
 
 // MARK: Backgrounds and containers
 
+#if os(macOS)
 private struct VisualEffect: NSViewRepresentable {
     var material: NSVisualEffectView.Material
 
@@ -136,22 +139,29 @@ private struct VisualEffect: NSViewRepresentable {
 
     func updateNSView(_ view: NSVisualEffectView, context: Context) { view.material = material }
 }
+#endif
 
 /// The window background for the current style.
 struct LookBackground: View {
     static let snapshotting = ProcessInfo.processInfo.environment["DROPRR_SNAPSHOT"] != nil
+    static let room = LinearGradient(colors: [Color(red: 0.42, green: 0.39, blue: 0.35), Color(red: 0.24, green: 0.27, blue: 0.3)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing)
 
     var body: some View {
         switch Look.style {
         case .spatial:
             ZStack {
+                #if os(macOS)
                 if Self.snapshotting {
                     // Snapshots can't draw AppKit views; stand in for the blurred desktop.
-                    LinearGradient(colors: [Color(red: 0.42, green: 0.39, blue: 0.35), Color(red: 0.24, green: 0.27, blue: 0.3)],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                    Self.room
                 } else {
                     VisualEffect(material: .hudWindow)
                 }
+                #else
+                // iPhone apps can't see what's behind them, so Spatial floats over a soft, dim room.
+                Self.room
+                #endif
                 Color.black.opacity(0.18)
                 // A faint glow of the theme's second color, like light in the room.
                 RadialGradient(colors: [Theme.end.opacity(0.18), .clear], center: .topLeading, startRadius: 0, endRadius: 420)
@@ -171,7 +181,9 @@ extension View {
         self
             .foregroundStyle(Look.ink)
             .fontDesign(Look.style == .clay ? .rounded : .default)
+            #if os(macOS)
             .toggleStyle(LookToggleStyle())
+            #endif
             .background { LookBackground().ignoresSafeArea() }
             .modifier(ForcedDark())
     }
@@ -568,5 +580,3 @@ private struct StyleSwatch: View {
         .accessibilityHidden(true)
     }
 }
-
-#endif

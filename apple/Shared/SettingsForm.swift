@@ -26,10 +26,18 @@ struct SettingsForm<Extra: View>: View {
         Form {
             #if os(iOS)
             Section {
+                StylePicker(settings: settings)
+                    .listRowInsets(EdgeInsets(top: Space.md, leading: Space.md, bottom: Space.md, trailing: Space.md))
+            } header: {
+                Text("Style")
+            } footer: {
+                Text("Spatial is always dark.")
+            }
+            Section {
                 ThemePicker(settings: settings)
                     .listRowInsets(EdgeInsets(top: Space.md, leading: Space.md, bottom: Space.md, trailing: Space.md))
             } header: {
-                Text("Appearance")
+                Text("Colors")
             } footer: {
                 Text("Light and dark follow your iPhone.")
             }
@@ -137,7 +145,7 @@ struct SettingsForm<Extra: View>: View {
         .formStyle(.grouped)
         #if os(iOS)
         .scrollContentBackground(.hidden)
-        .background(Theme.surface)
+        .background { LookBackground().ignoresSafeArea() }
         #endif
         .confirmationDialog("Remove \(removing?.name ?? "device")?", isPresented: Binding(
             get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {

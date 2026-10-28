@@ -26,6 +26,8 @@ struct ContentView: View {
                 .badge(model.newItems.count)
             NavigationStack {
                 SettingsForm(settings: model.settings)
+                    .scrollContentBackground(.hidden)
+                    .background { LookBackground().ignoresSafeArea() }
                     .navigationTitle("Settings")
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
@@ -37,6 +39,9 @@ struct ContentView: View {
             .tag(2)
         }
         .tint(Theme.accentText)
+        .foregroundStyle(Look.ink)
+        .fontDesign(Look.style == .clay ? .rounded : .default)
+        .preferredColorScheme(Look.forcesDark ? .dark : nil)
         // The home-screen icon follows the theme too (alternate app icons).
         .onAppear { AppIconSwitcher.apply(model.settings.theme) }
         .onChange(of: model.settings.theme) { _, theme in AppIconSwitcher.apply(theme) }
@@ -134,7 +139,7 @@ private struct PairingStatusCard: View {
             }
             .padding(Space.xl)
             .frame(maxWidth: 300)
-            .background(Theme.tile, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
+            .background { LookTile(selected: false) }
             .shadow(radius: 20)
         }
         .transition(.opacity)
@@ -206,8 +211,7 @@ private struct SendTab: View {
     }
 
     private var backdrop: some View {
-        // The gradient is for small surfaces only; screens use the system background.
-        Theme.surface.ignoresSafeArea()
+        LookBackground().ignoresSafeArea()
     }
 
     /// Logo, a large "Send" title and who it's going to, like the Mac's Send window.
@@ -215,9 +219,9 @@ private struct SendTab: View {
         HStack(spacing: Space.md) {
             LogoBadge(size: 44).id(model.settings.theme)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Send").font(.largeTitle.weight(.bold))
+                Text("Send").font(Look.display(34, weight: Look.style == .material ? .regular : nil))
                 Text(peer.map { "To \($0.name)" } ?? "Pair a computer to start")
-                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                    .font(.subheadline).foregroundStyle(Look.muted).lineLimit(1)
             }
             Spacer(minLength: 0)
         }
@@ -239,31 +243,26 @@ private struct SendTab: View {
                     } label: {
                         HStack(spacing: Space.md) {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(selected ? Theme.onAccent.opacity(0.18) : Theme.accentTint)
+                                .fill(selected ? Look.selectedInk.opacity(0.12) : Theme.accentTint)
                                 .frame(width: 36, height: 36)
                                 .overlay {
                                     Image(systemName: selected ? "checkmark" : Theme.symbol(for: device))
                                         .font(.system(size: 16, weight: .semibold))
-                                        .foregroundStyle(selected ? Theme.onAccent : Theme.accentText)
+                                        .foregroundStyle(selected ? Look.selectedInk : Theme.accentText)
                                 }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(device.name).font(.subheadline.weight(.semibold))
                                     .lineLimit(1).minimumScaleFactor(0.7)
                                 Text(Theme.platformName(device.platform)).font(.caption)
-                                    .foregroundStyle(selected ? Theme.onAccent.opacity(0.75) : Color.secondary)
+                                    .foregroundStyle(selected ? Look.selectedInk.opacity(0.75) : Look.muted)
                             }
                             Spacer(minLength: 0)
                         }
-                        .foregroundStyle(selected ? Theme.onAccent : Color.primary)
+                        .foregroundStyle(selected ? Look.selectedInk : Look.ink)
                         .padding(Space.md)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background {
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(selected ? Theme.start : Theme.tile)
-                                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .strokeBorder(selected ? .clear : Theme.stroke, lineWidth: 1))
-                        }
-                        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .background { LookTile(selected: selected) }
+                        .contentShape(RoundedRectangle(cornerRadius: LookTile.radius, style: .continuous))
                     }
                     .buttonStyle(PressableStyle())
                     .accessibilityLabel("\(device.name), \(Theme.platformName(device.platform))")
@@ -331,9 +330,8 @@ private struct SendTab: View {
         }
         .padding(Space.lg)
         .background {
-            RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                .fill(Theme.secondaryTint)
-                .overlay(RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+            LookTile(selected: false)
+                .overlay(RoundedRectangle(cornerRadius: LookTile.radius, style: .continuous)
                     .strokeBorder(typing ? Theme.secondaryText : .clear, lineWidth: 2))
         }
         .motion(Motion.fast, value: typing)
@@ -346,16 +344,14 @@ private struct SendTab: View {
             Task { await sendStaged(to: peer) }
         } label: {
             HStack(spacing: Space.sm) {
-                if model.sending { ProgressView().tint(Theme.onPrimaryButton) } else { Image(systemName: "paperplane.fill") }
+                if model.sending { ProgressView() } else { Image(systemName: "paperplane.fill") }
                 Text(peer.map { "Send to \($0.name)" } ?? "Send")
             }
             .font(.headline)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, Space.lg)
-            .foregroundStyle(Theme.onPrimaryButton)
-            .background(Theme.primaryButton, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
+            .padding(.vertical, Space.xs)
         }
-        .buttonStyle(PressableStyle())
+        .buttonStyle(PrimaryStyle())
         .disabled(peer == nil || !hasStaged || model.sending)
         .opacity(hasStaged ? 1 : 0.45)
     }
@@ -413,10 +409,7 @@ private struct SectionLabel: View {
     init(_ text: String) { self.text = text }
 
     var body: some View {
-        Text(text.uppercased())
-            .font(.caption.weight(.semibold))
-            .tracking(0.8)
-            .foregroundStyle(.secondary)
+        Kicker(text)
     }
 }
 
@@ -447,11 +440,11 @@ private struct ActionCardLabel: View {
         VStack(spacing: Space.sm) {
             ZStack {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(selected ? Theme.onAccent.opacity(0.18) : Theme.accentTint)
+                    .fill(selected ? Look.selectedInk.opacity(0.12) : Theme.accentTint)
                     .frame(width: 46, height: 46)
                 Image(systemName: selected ? "checkmark" : symbol)
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(selected ? Theme.onAccent : Theme.accentText)
+                    .foregroundStyle(selected ? Look.selectedInk : Theme.accentText)
             }
             Text(title).font(.subheadline.weight(.semibold))
             Text(detail ?? " ")
@@ -459,15 +452,10 @@ private struct ActionCardLabel: View {
                 .lineLimit(1)
                 .opacity(detail == nil ? 0 : 0.9)
         }
-        .foregroundStyle(selected ? Theme.onAccent : .primary)
+        .foregroundStyle(selected ? Look.selectedInk : Look.ink)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.vertical, Space.lg)
-        .background {
-            RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                .fill(selected ? Theme.start : Theme.tile)
-                .overlay(RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                    .strokeBorder(selected ? .clear : Theme.stroke, lineWidth: 1))
-        }
+        .background { LookTile(selected: selected) }
     }
 }
 
@@ -513,14 +501,12 @@ private struct EmptyDevicesCard: View {
                     .font(.headline)
                     .padding(.horizontal, Space.xl)
                     .padding(.vertical, Space.md)
-                    .foregroundStyle(Theme.onPrimaryButton)
-                    .background(Theme.primaryButton, in: Capsule())
             }
-            .buttonStyle(PressableStyle())
+            .buttonStyle(PrimaryStyle())
         }
         .frame(maxWidth: .infinity)
         .padding(Space.xxl)
-        .background(Theme.tile, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
+        .background { LookTile(selected: false) }
         .padding(.top, Space.xxl)
     }
 }
@@ -549,18 +535,20 @@ private struct ReceivedTab: View {
                     Spacer()
                     if model.collecting { ProgressView() }
                 }
+                .listRowBackground(Look.container)
             }
 
             if model.history.isEmpty {
                 Section {
                     ContentUnavailableView("Nothing yet", systemImage: "tray",
                                            description: Text("Things sent to this iPhone appear here."))
+                        .listRowBackground(Look.container)
                 }
             }
 
             if !model.newItems.isEmpty {
                 Section {
-                    ForEach(model.newItems) { row($0) }
+                    ForEach(model.newItems) { row($0).listRowBackground(Look.container) }
                 } header: {
                     HStack {
                         Text("New")
@@ -576,7 +564,7 @@ private struct ReceivedTab: View {
 
             if !model.seenItems.isEmpty {
                 Section {
-                    ForEach(model.seenItems) { row($0) }
+                    ForEach(model.seenItems) { row($0).listRowBackground(Look.container) }
                 } header: {
                     HStack {
                         Text("History")
@@ -590,7 +578,7 @@ private struct ReceivedTab: View {
         }
         .navigationTitle("Received")
         .scrollContentBackground(.hidden)
-        .background(Theme.surface)
+        .background { LookBackground().ignoresSafeArea() }
         .refreshable { await model.collectInbox() }
         .safeAreaInset(edge: .bottom) {
             Button(action: openReceivedFolder) {
@@ -598,13 +586,13 @@ private struct ReceivedTab: View {
                     .font(.subheadline.weight(.medium))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, Space.md)
-                    .background(Theme.tile, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
+                    .background { LookTile(selected: false) }
             }
             .buttonStyle(.plain)
             .foregroundStyle(Theme.accentText)
             .padding(.horizontal, Space.lg)
             .padding(.vertical, Space.sm)
-            .background(Theme.surface)   // a solid band, so list rows don't show through
+            .background { LookBackground().ignoresSafeArea(edges: .bottom) }   // a solid band, so list rows don't show through
         }
         .sheet(item: Binding(get: { preview.map(PreviewFile.init) }, set: { preview = $0?.url })) { file in
             // A sheet instead of .quickLookPreview so photos and videos can be flicked down to close.
@@ -783,5 +771,26 @@ private struct RowIconButton: View {
         }
         .buttonStyle(.borderless)
         .accessibilityLabel(label)
+    }
+}
+
+/// A tile in the current style: a raised card, or the selected color when chosen.
+private struct LookTile: View {
+    static var radius: CGFloat { Look.isAtelier ? 4 : 22 }
+    var selected: Bool
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+        Group {
+            if selected {
+                shape.fill(Look.selectedFill)
+                    .shadow(color: Look.style == .spatial ? Theme.end.opacity(0.35) : .clear, radius: 14)
+            } else if Look.isAtelier {
+                shape.fill(Look.container).overlay(shape.strokeBorder(Look.hairline, lineWidth: 1))
+            } else {
+                LookSurface(shape: shape)
+            }
+        }
+        .modifier(ClayShadow())
     }
 }
