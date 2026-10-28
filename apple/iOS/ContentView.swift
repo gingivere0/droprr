@@ -179,7 +179,7 @@ private struct SendTab: View {
         .background(backdrop)
         .navigationTitle("Droprr")
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) { LogoBadge(size: 28) }
+            ToolbarItem(placement: .topBarLeading) { LogoBadge(size: 28).id(model.settings.theme) }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Done") { typing = false }

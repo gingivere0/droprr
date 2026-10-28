@@ -74,7 +74,7 @@ Contrast: every text pair is at least 4.5:1 and every control or icon well at le
 | `accent` / `onAccent` | The **selected** tile (selected device, selected action), toggles, the app glyph tile. Text and icons on it use `onAccent`. |
 | `accentTint` / `accentText` | Unselected icon wells (rounded squares behind glyphs), links, small accent text. |
 | `secondary`, `secondaryTint`, `secondaryText` | One contrasting tile per screen: the message/text tile (`secondaryTint` fill) and "N waiting" badges (`secondaryTint` fill, `secondaryText` text). An icon well on that tile is filled with `secondaryText` and its glyph uses the `tile` color. Raw `secondary` is decorative only (dots, swatches), never a control or text color, because several themes' secondary is too light on white. |
-| `primaryButton` / `onPrimaryButton` | The main action (Send, Pair a Phone): near-black in light mode, the accent in dark mode. |
+| `primaryButton` / `onPrimaryButton` | The main action (Send, Pair a Phone): always the theme's accent, in light and dark mode (same values as `accent` / `onAccent`). |
 | `textPrimary`, `textSecondary` | Text on `surface` and `tile`. Platforms may use their native label colors if they match. |
 | `successFill`, `successText` (under `bento`) | The "Sent" status tile. |
 
