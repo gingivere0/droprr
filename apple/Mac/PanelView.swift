@@ -76,7 +76,7 @@ struct PanelView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(HoverButtonStyle(.plain))
-        .hoverHint("Open or close the Send window")
+        .hoverHint("Open or close the Send window", edge: .bottom)
     }
 
     private var sendWindow: NSWindow? {

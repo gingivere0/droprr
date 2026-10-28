@@ -284,11 +284,12 @@ extension ReceivedItem {
 }
 
 #if os(macOS)
-/// Shows a small hint after the pointer rests on a view for a second. Used instead of `.help`,
-/// whose tooltips don't appear reliably in a menu bar panel.
+/// Shows a small hint after the pointer rests on a view for a second. Drawn as a non-interactive
+/// overlay (not a popover), so it never takes focus or swallows the click on the control beneath.
 private struct HoverHint: ViewModifier {
     var text: String
     var delay: Duration
+    var edge: VerticalEdge
     @State private var showing = false
     @State private var timer: Task<Void, Never>?
 
@@ -305,12 +306,26 @@ private struct HoverHint: ViewModifier {
                     showing = false
                 }
             }
-            .popover(isPresented: $showing, arrowEdge: .bottom) {
-                Text(text)
-                    .font(.callout)
-                    .padding(.horizontal, Space.md)
-                    .padding(.vertical, Space.sm)
+            .simultaneousGesture(TapGesture().onEnded { timer?.cancel(); showing = false })
+            .overlay(alignment: edge == .top ? .top : .bottom) {
+                if showing {
+                    Text(text)
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                        .fixedSize()
+                        .padding(.horizontal, Space.sm)
+                        .padding(.vertical, Space.xs)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Radius.row, style: .continuous).strokeBorder(Theme.stroke))
+                        .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
+                        .alignmentGuide(edge == .top ? .top : .bottom) { d in
+                            edge == .top ? d[.bottom] + Space.xs : d[.top] - Space.xs
+                        }
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
             }
+            .zIndex(showing ? 10 : 0)
             .accessibilityHint(text)
     }
 }
@@ -365,8 +380,8 @@ struct HoverButtonStyle: ButtonStyle {
 }
 
 extension View {
-    func hoverHint(_ text: String, after delay: Duration = .seconds(1)) -> some View {
-        modifier(HoverHint(text: text, delay: delay))
+    func hoverHint(_ text: String, after delay: Duration = .seconds(1), edge: VerticalEdge = .top) -> some View {
+        modifier(HoverHint(text: text, delay: delay, edge: edge))
     }
 }
 #endif
