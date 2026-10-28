@@ -9,8 +9,20 @@ Devices talk over plain HTTP inside a Tailscale network. Tailscale's WireGuard t
 - **Addresses:** a receiver accepts connections only from its Tailscale network and from localhost. The simplest way is to listen only on its Tailscale IPv4 address (in `100.64.0.0/10`) and on localhost. See [Implementation notes](#implementation-notes) for the alternative.
 - **Port:** configurable. The default is **`53318`**.
 - **Host names:** senders address peers by their Tailscale MagicDNS name, for example `http://my-pc:53318`.
-- **Auth:** every request, including `/ping`, must send `Authorization: Bearer <token>`. A missing or wrong token gets `401`.
+- **Auth:** every request, including `/ping`, must send `Authorization: Bearer <token>`, using one of the receiver's [tokens](#tokens). A missing or wrong token gets `401`.
 - **Encoding:** JSON bodies and responses are UTF-8 with `Content-Type: application/json`.
+
+## Tokens
+
+Each device has one **main token** plus one **device token** per paired peer.
+
+- **Main token:** shown in the device's pairing QR code and in its Settings. "Generate new token" (or "New token") replaces the main token only; device tokens keep working.
+- **Device tokens:** minted during [`POST /pair`](#post-pair), one per peer: 32 random bytes, base64url-encoded without padding.
+- **Authorization:** a request is authorized if its bearer token matches the main token or any device token. Compare against each one in constant time.
+- **What a device stores per peer:** `acceptToken`, the device token it minted for that peer and accepts from it, and `token`, the token it sends when calling that peer (empty for phones, which can't be called).
+- **Re-pairing** the same name replaces that peer's `acceptToken`, so the old one stops working. **Removing** a device deletes its `acceptToken`, so it can no longer connect.
+- **Never send your own main token to a peer.** A computer peer with no `token` isn't paired: the app shows "Not paired: scan its code or enter its token" and doesn't send to it. A token the user enters by hand (for example, another device's main token) still works.
+- Peers paired before device tokens existed keep their stored tokens and keep working; nobody has to pair again.
 
 ## Endpoints
 
@@ -38,7 +50,8 @@ Every error response, on any endpoint, has a 4xx or 5xx status and this body:
 | `400` | Bad request: empty content, unknown `type`, invalid URL, malformed JSON, no items, a missing `?for=`, or invalid `/pair` fields. |
 | `401` | Missing or wrong token. |
 | `404` | Unknown path. |
-| `500` | The receiver failed, for example while writing to disk. |
+| `500` | The receiver failed. The body says `"receiver error"`; details stay in the receiver's local log, never in the response. |
+| `507` | Not enough disk space: a `/send` body with a known `Content-Length` would leave less than 1 GB free on the drive it saves to. |
 
 ## `GET /ping`
 
@@ -52,12 +65,13 @@ Authorization: Bearer <token>
 Response `200`:
 
 ```json
-{ "name": "My PC", "version": "0.1.0", "platform": "windows" }
+{ "name": "My PC", "version": "0.1.0", "platform": "windows", "protocol": 1 }
 ```
 
 - `name` (string): the device's display name from its settings.
 - `version` (string): the app's version.
 - `platform` (string): one of `"windows"`, `"macos"`, or `"ios"`.
+- `protocol` (integer): the protocol version this document describes, `1`. Separate from the app's `version`.
 
 ## `POST /send`
 
@@ -85,6 +99,7 @@ A multipart body may also carry plain form fields. They become text or url items
 
 - `type` must be `"text"` or `"url"`.
 - `content` must be non-empty. For `"url"`, it must be a single absolute URL with no line breaks.
+- **Links are `http` and `https` only.** A `"url"` whose scheme is anything else (such as `file:` or `javascript:`) is saved and handled as text, not rejected.
 
 ### Response
 
@@ -153,7 +168,7 @@ Whichever name is used goes through the same cleanup as multipart file names. An
 
 Fields are read in this order: `url`, `content`, `text`, `file`. Other fields and empty values are ignored.
 
-- `url` is always a **url** item, and must be a valid absolute URL (otherwise `400`).
+- `url` is a **url** item, and must be a valid absolute URL (otherwise `400`). If its scheme isn't `http` or `https`, it's saved and handled as **text**.
 - `content`, `text`, and `file` are **text**, or **url** if the value is a single web URL.
 
 This is what Shortcuts sends for a Form body whose field is Text rather than File.
@@ -162,7 +177,7 @@ This is what Shortcuts sends for a Form body whose field is Text rather than Fil
 
 - **Files** are saved to a `Droprr` folder in the user's Downloads (configurable). File names lose any path parts and invalid characters, and an existing file is never overwritten: the receiver adds ` (1)`, ` (2)`, and so on instead.
 - **Text** is saved as `Text <date time>.txt` and copied to the clipboard.
-- **Links** are saved as an internet shortcut and copied to the clipboard.
+- **Links** (`http` and `https` only) are saved as an internet shortcut and copied to the clipboard. A receiver only ever opens `http` and `https` links; anything else is copied as text.
 - A notification appears for each item.
 - There's no size limit, so receivers should stream files to disk rather than hold them in memory.
 
@@ -175,6 +190,8 @@ A phone can't listen for incoming connections, so it pulls items from desktops i
 - **Expiry:** items expire 7 days after they're queued, whether or not they were fetched.
 
 All inbox endpoints need the same `Authorization: Bearer <token>` header and use the [error shape](#errors) above.
+
+**Scoping:** when a request authenticates with a [device token](#tokens), all three inbox endpoints act only on that peer's queue. `?for=` is ignored (but still accepted), and an `id` from another queue returns `404`. With the main token, `?for=` picks the queue by name, which the iOS shortcuts rely on.
 
 ### `GET /inbox?for=<device name>`
 
@@ -258,9 +275,9 @@ droprr://pair?v=1&name=My%20PC&host=100.64.0.1&port=53318&token=EXAMPLE-TOKEN&pl
 
 **When a phone scans it:**
 
-1. It stores the token **per peer**. Each desktop has its own token, so the phone sends each desktop the token from that desktop's QR code, never one shared token.
-2. It adds the peer, or updates an existing one matched by `host` or `name`, with the new name, host, `dns`, port, token, and platform. It should prefer `dns` for connecting when present, since the IP can change, and fall back to `host`.
-3. It **must** call [`POST /pair`](#post-pair) right away with that token, so the desktop adds the phone too and pairing works in both directions.
+1. It keeps the QR code's token for that desktop only. Each desktop has its own tokens; a phone never shares one desktop's token with another.
+2. It adds the peer, or updates an existing one matched by `host` or `name`, with the new name, host, `dns`, port, and platform. It should prefer `dns` for connecting when present, since the IP can change, and fall back to `host`.
+3. It **must** call [`POST /pair`](#post-pair) right away with the QR code's token, so the desktop adds the phone too and pairing works in both directions. It stores the `token` in the response as that peer's token and uses it from then on instead of the QR code's token.
 4. It calls `GET /ping` to confirm the pairing, and tells the user whether it worked.
 
 ### `POST /pair`
@@ -272,21 +289,22 @@ A device introduces itself to a desktop it just paired with. Requires the deskto
 ```
 
 ```json
-{ "name": "My Mac", "platform": "macos", "host": "my-mac", "port": 53318 }
+{ "name": "My Mac", "platform": "macos", "host": "my-mac", "port": 53318, "token": "<device token for the desktop to use>" }
 ```
 
 - `name` (string, required): the caller's device name. For a phone, use the same name it passes to `GET /inbox?for=`.
 - `platform` (string, required): `"ios"`, `"macos"`, or `"windows"`.
 - `host` (string): required for computers, omitted for phones, which can't accept connections. Prefer the MagicDNS name.
 - `port` (integer, optional): the caller's listening port, for computers. Defaults to `53318`.
+- `token` (string, optional): computers send it: a device token the caller just minted for this desktop, which the desktop must use whenever it calls the caller. Phones omit it.
 
 Response `200`:
 
 ```json
-{ "ok": true, "name": "My PC" }
+{ "ok": true, "name": "My PC", "token": "<device token for the caller to use>" }
 ```
 
-`name` is the desktop's device name. The desktop adds the caller as a peer, or updates the peer with the same name (case-insensitive). An `"ios"` peer is queue-only: sends to it go to its [inbox](#inbox-phone-pull). A desktop keeps a host it already has for a known computer rather than replacing it. The desktop shows a "`<name>` paired" notification and, if its pairing window is open, confirms the pairing there and closes it. Invalid fields return `400`.
+`name` is the desktop's device name. `token` is a new [device token](#tokens) the desktop minted for the caller; the caller stores it as this desktop's token and uses it from then on. The desktop adds the caller as a peer, or updates the peer with the same name (case-insensitive), storing the token it minted as that peer's `acceptToken` (replacing any earlier one) and the request's `token` as the token it sends to that peer (empty for phones). An `"ios"` peer is queue-only: sends to it go to its [inbox](#inbox-phone-pull). A desktop keeps a host it already has for a known computer rather than replacing it. The desktop shows a "`<name>` paired" notification and, if its pairing window is open, confirms the pairing there and closes it. Invalid fields return `400`.
 
 A desktop also still adds an unknown name that calls `GET /inbox?for=` as an `"ios"` peer, as a fallback for phones that didn't call `/pair`.
 
@@ -297,4 +315,5 @@ A desktop also still adds an unknown name that calls `GET /inbox?for=` as an `"i
 - **Binding:** a listener may bind to all interfaces (`0.0.0.0` or `::`) instead of specific addresses, as long as it immediately drops any connection whose source address isn't loopback, in `100.64.0.0/10` (Tailscale IPv4), or in `fd7a:115c:a1e0::/48` (Tailscale IPv6). This helps on platforms where the Tailscale address is hard to find or changes often.
 - **Peer platforms:** a desktop records each peer's `platform` from `POST /pair` or its last successful `/ping`, and its peer editor has an "iPhone" toggle that sets `"platform": "ios"`. When `GET /inbox?for=<name>` arrives with a name that isn't a known peer, the desktop adds it as an `"ios"` peer, so it can be picked as a send target. None of this changes the wire format.
 - **Private endpoints:** an app may add loopback-only endpoints for its own parts, such as the Mac share extension handing items to the Mac app's outbox. They aren't part of this protocol, and other devices must not rely on them.
+- **Windows hardening:** the Windows app stores every token encrypted for the signed-in user (DPAPI), marks received files with the Mark of the Web (`Zone.Identifier`, internet zone), opens only common media, document, and text types directly (anything else is shown in Explorer), and keeps clipboard writes out of clipboard history and cloud clipboard. None of this changes the wire format.
 - **Link files:** platforms may save links in their native shortcut format. Windows saves `Link <date time>.url`, and macOS saves `Link <date time>.webloc`.
