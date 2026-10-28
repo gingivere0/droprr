@@ -71,7 +71,7 @@ struct SendView: View {
                 .accessibilityLabel("Settings")
                 .hoverHint("Settings (⌘,)")
                 .keyboardShortcut(",")
-                .offset(y: -3)
+                .offset(y: -22)
         }
     }
 
