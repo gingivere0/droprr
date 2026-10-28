@@ -24,6 +24,8 @@ struct PairView: View {
         }
         .padding(Space.xl)
         .frame(width: 340)
+        .background { WindowGlow().ignoresSafeArea() }
+        .seamlessWindow()
         .onAppear { model.lastPaired = nil }
         .onChange(of: model.lastPaired) { _, name in
             // A phone scanned the code and introduced itself: confirm, then close.

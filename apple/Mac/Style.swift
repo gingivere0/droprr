@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Mac-only building blocks for the richer Send and Settings screens.
@@ -123,5 +124,37 @@ struct Pill: View {
         .padding(.horizontal, Space.sm)
         .padding(.vertical, Space.xs)
         .background(color.opacity(0.14), in: Capsule())
+    }
+}
+
+/// Hides the window's title bar strip so the content (and its glow) runs to the top edge.
+/// The close/minimize buttons stay; content leaves room for them.
+struct SeamlessTitleBar: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { configure(view.window) }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async { configure(view.window) }
+    }
+
+    private func configure(_ window: NSWindow?) {
+        guard let window else { return }
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.styleMask.insert(.fullSizeContentView)
+        window.isMovableByWindowBackground = true
+    }
+}
+
+extension View {
+    /// Seamless title bar plus top room for the window buttons.
+    func seamlessWindow() -> some View {
+        self
+            .padding(.top, Space.lg)
+            .background(SeamlessTitleBar().frame(width: 0, height: 0))
+            .ignoresSafeArea(.container, edges: .top)
     }
 }

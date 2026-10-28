@@ -34,7 +34,8 @@ struct SendView: View {
         }
         .padding(Space.xl)
         .frame(width: 560)
-        .background { WindowGlow() }
+        .background { WindowGlow().ignoresSafeArea() }
+        .seamlessWindow()
         .motion(Motion.standard, value: model.lastSendResult)
         .motion(Motion.fast, value: files)
     }

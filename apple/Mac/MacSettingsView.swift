@@ -25,7 +25,8 @@ struct MacSettingsView: View {
     var body: some View {
         ScrollView { content }
         .frame(width: 580, height: 680)
-        .background { WindowGlow() }
+        .background { WindowGlow().ignoresSafeArea() }
+        .seamlessWindow()
         .sheet(item: $editing) { peer in
             PeerEditor(peer: peer, isNew: !settings.peers.contains { $0.id == peer.id },
                        onRemove: { editing = nil; removing = peer }) { saved in
