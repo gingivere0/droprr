@@ -28,6 +28,10 @@ public sealed record TransferProgress(Guid Id, long Received, long? Total, bool 
 
 sealed record SendBody(string? Type, string? Content);
 
+sealed record PairBody(string? Name, string? Platform, string? Host, int? Port);
+
+public sealed record PairRequest(string Name, string Platform, string? Host, int? Port);
+
 // The HTTP receiver described in docs/PROTOCOL.md. Binds only to loopback and Tailscale addresses.
 sealed class ReceiverServer : IAsyncDisposable
 {
@@ -44,6 +48,9 @@ sealed class ReceiverServer : IAsyncDisposable
 
     // Raised on a server thread with the device name a phone asked for in GET /inbox.
     public event Action<string>? InboxPolled;
+
+    // Raised on a server thread when a device calls POST /pair.
+    public event Action<PairRequest>? PairRequested;
 
     // Raised on a server thread, at most every 200 ms per request, and once more when it ends.
     public event Action<TransferProgress>? ReceiveProgress;
@@ -93,6 +100,7 @@ sealed class ReceiverServer : IAsyncDisposable
         app.MapGet("/ping", () => Results.Json(new { name = _settings.DeviceName, version = Version, platform = "windows" }));
         app.MapFallback(() => Error("not found", StatusCodes.Status404NotFound));
         app.MapPost("/send", (Func<HttpContext, Task<IResult>>)HandleSendAsync);
+        app.MapPost("/pair", (Func<HttpContext, Task<IResult>>)PairAsync);
         app.MapGet("/inbox", (Func<HttpContext, IResult>)ListInbox);
         app.MapGet("/inbox/{id}", (Func<string, IResult>)DownloadInboxItem);
         app.MapDelete("/inbox/{id}", (string id) =>
@@ -109,6 +117,37 @@ sealed class ReceiverServer : IAsyncDisposable
             return false;
         var given = Encoding.UTF8.GetBytes(header["Bearer ".Length..].Trim());
         return CryptographicOperations.FixedTimeEquals(given, Encoding.UTF8.GetBytes(_settings.Token));
+    }
+
+    static readonly string[] Platforms = ["ios", "macos", "windows"];
+
+    // A device that just scanned this PC's pairing QR introduces itself, so this PC can send back to it.
+    async Task<IResult> PairAsync(HttpContext context)
+    {
+        PairBody? body;
+        try
+        {
+            body = await context.Request.ReadFromJsonAsync<PairBody>(context.RequestAborted);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            return Error("body must be JSON: {\"name\", \"platform\", \"host\"?, \"port\"?}", StatusCodes.Status400BadRequest);
+        }
+
+        var name = body?.Name?.Trim() ?? "";
+        var platform = body?.Platform?.Trim().ToLowerInvariant() ?? "";
+        var host = body?.Host?.Trim() ?? "";
+        if (name.Length == 0)
+            return Error("name is required", StatusCodes.Status400BadRequest);
+        if (!Platforms.Contains(platform))
+            return Error("platform must be \"ios\", \"macos\", or \"windows\"", StatusCodes.Status400BadRequest);
+        if (platform != "ios" && host.Length == 0)
+            return Error("host is required for computers", StatusCodes.Status400BadRequest);
+        if (body!.Port is < 1 or > 65535)
+            return Error("port must be from 1 to 65535", StatusCodes.Status400BadRequest);
+
+        PairRequested?.Invoke(new PairRequest(name, platform, platform == "ios" ? null : host, body.Port));
+        return Results.Json(new { ok = true, name = _settings.DeviceName });
     }
 
     IResult ListInbox(HttpContext context)

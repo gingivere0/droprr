@@ -5,10 +5,15 @@
         WindowStartupLocation="CenterOwner" FontFamily="{StaticResource AppFont}">
     <StackPanel Margin="24">
         <TextBlock Text="Pair a phone" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,16" />
-        <Border CornerRadius="12" Background="White" Padding="16" HorizontalAlignment="Center">
+        <Border x:Name="CodePanel" CornerRadius="12" Background="White" Padding="16" HorizontalAlignment="Center">
             <Image x:Name="Code" Width="280" Height="280" RenderOptions.BitmapScalingMode="NearestNeighbor" />
         </Border>
-        <TextBlock Text="Scan with your iPhone camera" FontSize="16" FontWeight="SemiBold"
+        <StackPanel x:Name="PairedPanel" Visibility="Collapsed" Height="312" VerticalAlignment="Center">
+            <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="72"
+                       Foreground="SeaGreen" HorizontalAlignment="Center" Margin="0,96,0,12" />
+            <TextBlock x:Name="PairedText" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" />
+        </StackPanel>
+        <TextBlock x:Name="ScanHint" Text="Scan with your iPhone camera" FontSize="16" FontWeight="SemiBold"
                    HorizontalAlignment="Center" Margin="0,16,0,4" />
         <TextBlock x:Name="Details" Opacity="0.75" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
         <Border Style="{StaticResource Card}" Margin="0,16,0,0" Padding="12">

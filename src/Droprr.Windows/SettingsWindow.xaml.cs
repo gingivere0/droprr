@@ -32,6 +32,19 @@ public partial class SettingsWindow : Window
         _peers = new ObservableCollection<Peer>(_settings.Peers);
         PeerGrid.ItemsSource = _peers;
         ShowToken();
+
+        // Show a device the moment it pairs, without losing edits made here that aren't saved yet.
+        app.DevicePaired += OnDevicePaired;
+        Closed += (_, _) => app.DevicePaired -= OnDevicePaired;
+    }
+
+    void OnDevicePaired(Peer paired)
+    {
+        var existing = _peers.FirstOrDefault(p => p.Name.Trim().Equals(paired.Name.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+            _peers[_peers.IndexOf(existing)] = paired;
+        else
+            _peers.Add(paired);
     }
 
     void ShowToken()

@@ -247,7 +247,35 @@ droprr://pair?v=1&name=My%20PC&host=100.64.0.1&port=53318&token=EXAMPLE-TOKEN&pl
 
 1. It stores the token **per peer**. Each desktop has its own token, so the phone sends each desktop the token from that desktop's QR code, never one shared token.
 2. It adds the peer, or updates an existing one matched by `host` or `name`, with the new name, host, `dns`, port, token, and platform. It should prefer `dns` for connecting when present, since the IP can change, and fall back to `host`.
-3. It calls `GET /ping` with the new token to confirm the pairing, and tells the user whether it worked.
+3. It **must** call [`POST /pair`](#post-pair) right away with that token, so the desktop adds the phone too and pairing works in both directions.
+4. It calls `GET /ping` to confirm the pairing, and tells the user whether it worked.
+
+### `POST /pair`
+
+A device introduces itself to a desktop it just paired with. Requires the desktop's token, like every other endpoint.
+
+```json
+{ "name": "iPhone", "platform": "ios" }
+```
+
+```json
+{ "name": "My Mac", "platform": "macos", "host": "my-mac", "port": 53318 }
+```
+
+- `name` (string, required): the caller's device name. For a phone, use the same name it passes to `GET /inbox?for=`.
+- `platform` (string, required): `"ios"`, `"macos"`, or `"windows"`.
+- `host` (string): required for computers, omitted for phones, which can't accept connections. Prefer the MagicDNS name.
+- `port` (integer, optional): the caller's listening port, for computers. Defaults to `53318`.
+
+Response `200`:
+
+```json
+{ "ok": true, "name": "My PC" }
+```
+
+`name` is the desktop's device name. The desktop adds the caller as a peer, or updates the peer with the same name (case-insensitive). An `"ios"` peer is queue-only: sends to it go to its [inbox](#inbox-phone-pull). A desktop keeps a host it already has for a known computer rather than replacing it. The desktop shows a "`<name>` paired" notification and, if its pairing window is open, confirms the pairing there and closes it. Invalid fields return `400`.
+
+A desktop also still adds an unknown name that calls `GET /inbox?for=` as an `"ios"` peer, as a fallback for phones that didn't call `/pair`.
 
 **Handling:** the code contains a secret. A desktop builds it only while the pairing window is open and never saves it to disk or writes it to a log. It warns the user that the code contains the token.
 

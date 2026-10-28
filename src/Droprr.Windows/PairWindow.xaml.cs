@@ -30,6 +30,29 @@ public partial class PairWindow : Window
         var dns = MagicDnsName();
         Code.Source = Render(PairingUri(settings, host, dns));
         Details.Text = $"{settings.DeviceName} · {dns ?? host} · port {settings.Port}";
+
+        if (Application.Current is App app)
+        {
+            app.DevicePaired += OnPaired;
+            Closed += (_, _) => app.DevicePaired -= OnPaired;
+        }
+    }
+
+    // The phone called POST /pair: confirm, and drop the code (it holds the token) before closing.
+    void OnPaired(Peer peer)
+    {
+        Code.Source = null;
+        CodePanel.Visibility = Visibility.Collapsed;
+        ScanHint.Visibility = Visibility.Collapsed;
+        PairedPanel.Visibility = Visibility.Visible;
+        PairedText.Text = $"Paired with {peer.Name} ✓";
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            Close();
+        };
+        timer.Start();
     }
 
     public static string PairingUri(AppSettings settings, string host, string? dns)

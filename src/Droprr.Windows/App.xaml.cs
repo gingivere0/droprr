@@ -179,22 +179,54 @@ public partial class App : Application
         _settingsWindow.Activate();
     }
 
-    // A phone that checks in under an unknown name becomes an iPhone peer, so the Send window offers it.
+    // Fallback for phones that never called POST /pair: one that checks its inbox under an unknown name
+    // becomes an iPhone peer, so the Send window offers it.
     void OnInboxPolled(string device)
     {
         var known = Settings.FindPeer(device);
         if (known is { IsPhone: true })
             return;
-        Settings = SettingsStore.Update(s =>
-        {
-            if (s.FindPeer(device) is { } peer)
-                peer.IsPhone = true;
-            else
-                s.Peers.Add(new Peer { Name = device, Platform = "ios" });
-        });
+        SavePeer(new PairRequest(device, "ios", null, null));
         if (known is null)
             _tray?.Notify("New device", $"{device} checked in and can now receive from this PC.");
     }
+
+    // A device scanned this PC's pairing QR and introduced itself, so pairing works in both directions.
+    void OnPairRequested(PairRequest request)
+    {
+        var peer = SavePeer(request);
+        _tray?.Notify($"{peer.Name} paired", peer.IsPhone
+            ? "Items you send to it wait here until it checks in."
+            : "You can now send to it from this PC.");
+        DevicePaired?.Invoke(peer);
+    }
+
+    // Adds the peer or updates the one with the same name. A host this PC already has (often a MagicDNS
+    // name the user typed) is kept for computers; phones never have one.
+    Peer SavePeer(PairRequest request)
+    {
+        Settings = SettingsStore.Update(s =>
+        {
+            var peer = s.FindPeer(request.Name);
+            if (peer is null)
+            {
+                peer = new Peer { Name = request.Name };
+                s.Peers.Add(peer);
+            }
+            peer.Platform = request.Platform;
+            if (peer.IsPhone)
+                peer.Host = "";
+            else if (peer.Host.Length == 0 && request.Host is not null)
+                peer.Host = request.Host;
+            if (request.Port is { } port)
+                peer.Port = port;
+        });
+        SettingsSaved?.Invoke();
+        return Settings.FindPeer(request.Name)!;
+    }
+
+    // Raised on the UI thread after a device pairs, with its saved peer entry.
+    internal event Action<Peer>? DevicePaired;
 
     internal void ShowSendWindow(IEnumerable<string> files, bool exitOnClose = false)
     {
@@ -245,6 +277,7 @@ public partial class App : Application
         var receiver = new ReceiverServer(Settings);
         receiver.ItemReceived += item => Dispatcher.BeginInvoke(() => OnItemReceived(item));
         receiver.InboxPolled += device => Dispatcher.BeginInvoke(() => OnInboxPolled(device));
+        receiver.PairRequested += request => Dispatcher.BeginInvoke(() => OnPairRequested(request));
         receiver.ReceiveProgress += progress => Dispatcher.BeginInvoke(() => OnReceiveProgress(progress));
         try
         {
