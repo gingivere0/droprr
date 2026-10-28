@@ -113,12 +113,11 @@ private struct DeviceTile: View {
     var waiting: Int
     var onClipboard: () -> Void
     var onFiles: () -> Void
-    @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
-                GlyphCircle(symbol: Theme.symbol(for: peer), size: 30, filled: hovering)
+                GlyphCircle(symbol: Theme.symbol(for: peer), size: 30)
                 Spacer()
                 if waiting > 0 {
                     Text("\(waiting) waiting")
@@ -141,10 +140,8 @@ private struct DeviceTile: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(.background.secondary)
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(hovering ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.quaternary), lineWidth: 1))
+                    .strokeBorder(.quaternary, lineWidth: 1))
         }
-        .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.15), value: hovering)
     }
 }
 
