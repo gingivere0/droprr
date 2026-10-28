@@ -4,19 +4,14 @@ import SwiftUI
 
 @main
 struct DroprrMacApp: App {
+    @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var model = MacModel()
 
     var body: some Scene {
         MenuBarExtra {
             PanelView(model: model)
         } label: {
-            // Seth prefers the colored logo over a monochrome template icon.
-            Image(nsImage: {
-                let image = NSImage(named: "MenuBarIcon") ?? NSImage()
-                image.isTemplate = false
-                image.size = NSSize(width: 18, height: 18)
-                return image
-            }())
+            MenuBarLabel(model: model)
         }
         .menuBarExtraStyle(.window)
 
@@ -32,9 +27,46 @@ struct DroprrMacApp: App {
     }
 }
 
+/// The menu bar icon. It's the one view that always exists, so it also captures `openWindow`
+/// and opens the Send window when Droprr starts.
+private struct MenuBarLabel: View {
+    var model: MacModel
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        // Seth prefers the colored logo over a monochrome template icon.
+        Image(nsImage: {
+            let image = NSImage(named: "MenuBarIcon") ?? NSImage()
+            image.isTemplate = false
+            image.size = NSSize(width: 18, height: 18)
+            return image
+        }())
+        .onAppear {
+            guard model.showSendWindow == nil else { return }
+            model.showSendWindow = {
+                openWindow(id: "send")
+                bringToFront()
+            }
+            model.showSendWindow?()
+        }
+    }
+}
+
+/// Opening Droprr again from Finder, Spotlight or the Dock while it's running shows the Send window.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainActor.assumeIsolated { MacModel.current?.showSendWindow?() }
+        return false
+    }
+}
+
 @Observable
 @MainActor
 final class MacModel {
+    /// The running app's model, for the app delegate.
+    static weak var current: MacModel?
+    @ObservationIgnored var showSendWindow: (() -> Void)?
+
     let settings = DroprrSettings.shared
     var status = "Starting…"
     var isListening = false
@@ -55,6 +87,7 @@ final class MacModel {
 
     init() {
         outbox = Outbox(settings: settings)
+        defer { Self.current = self }
         receiver = DroprrReceiver(settings: settings, inbox: Self.inbox)
         receiver.outbox = outbox
         receiver.onStateChange = { [weak self] state in
