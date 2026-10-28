@@ -82,14 +82,17 @@ final class Outbox: OutboxServing {
 
     func clear(for peer: Peer) {
         let ids = lock.withLock { items.filter { $0.peerID == peer.id }.map(\.id) }
-        ids.forEach { _ = remove(id: $0) }
+        ids.forEach { _ = remove(id: $0, peerID: nil) }
     }
 
     // MARK: OutboxServing (receiver queue)
 
-    func list(for deviceName: String, from remoteHost: String?) -> [[String: Any]] {
+    func list(for deviceName: String?, peerID: UUID?, from remoteHost: String?) -> [[String: Any]] {
         purgeExpired()
         let peer = DispatchQueue.main.sync { () -> Peer? in
+            // A device token picks the queue; ?for= is ignored.
+            if let peerID { return settings.peers.first { $0.id == peerID } }
+            guard let deviceName else { return nil }
             if let known = settings.peers.first(where: { $0.matches(deviceName: deviceName) }) {
                 if !known.isPhone, let i = settings.peers.firstIndex(where: { $0.id == known.id }) {
                     settings.peers[i].platform = "ios"   // it's polling, so it's a phone
@@ -115,9 +118,9 @@ final class Outbox: OutboxServing {
         }
     }
 
-    func file(id: String) -> (url: URL, name: String, mimeType: String)? {
+    func file(id: String, peerID: UUID?) -> (url: URL, name: String, mimeType: String)? {
         purgeExpired()
-        guard let item = lock.withLock({ items.first { $0.id == id } }) else { return nil }
+        guard let item = lock.withLock({ items.first { $0.id == id && (peerID == nil || $0.peerID == peerID) } }) else { return nil }
         if let content = item.content {
             // Text and links download as plain text, so a shortcut can fetch every type the same way.
             let temp = FileManager.default.temporaryDirectory.appendingPathComponent("droprr-out-\(id).txt")
@@ -130,12 +133,13 @@ final class Outbox: OutboxServing {
         return (fileURL(id), item.name, mime)
     }
 
-    func remove(id: String) -> Bool {
+    func remove(id: String, peerID: UUID?) -> Bool {
         purgeExpired()
         var found = false
+        let matches: (Item) -> Bool = { $0.id == id && (peerID == nil || $0.peerID == peerID) }
         mutate { items in
-            found = items.contains { $0.id == id }
-            items.removeAll { $0.id == id }
+            found = items.contains(where: matches)
+            items.removeAll(where: matches)
         }
         if found { try? FileManager.default.removeItem(at: fileURL(id)) }
         return found

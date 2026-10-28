@@ -2,10 +2,12 @@ import Foundation
 
 /// What a desktop's outbox exposes to the receiver for the /inbox endpoints.
 protocol OutboxServing: AnyObject {
-    /// JSON-ready items for the named phone, oldest first. May register an unknown phone as a peer.
-    func list(for deviceName: String, from remoteHost: String?) -> [[String: Any]]
-    func file(id: String) -> (url: URL, name: String, mimeType: String)?
-    func remove(id: String) -> Bool
+    /// JSON-ready items, oldest first: for the peer with `peerID` when the request used that peer's
+    /// device token, otherwise for the named phone (main token). May register an unknown phone as a peer.
+    func list(for deviceName: String?, peerID: UUID?, from remoteHost: String?) -> [[String: Any]]
+    /// With a `peerID`, only that peer's items are visible.
+    func file(id: String, peerID: UUID?) -> (url: URL, name: String, mimeType: String)?
+    func remove(id: String, peerID: UUID?) -> Bool
     /// Queues already-received items for the phone peer with this id (Mac share extension hand-off).
     func enqueue(_ items: [ReceivedItem], forPeerID id: String) throws
 }
@@ -16,6 +18,10 @@ struct PairRequest {
     var platform: String
     var host: String   // empty for phones
     var port: Int
+    /// The token the caller minted for this desktop to use when calling it (computers only).
+    var token: String?
+    /// The device token this desktop minted for the caller, to accept from it.
+    var acceptToken: String
 }
 
 struct ReceivedItem: Identifiable {
@@ -75,12 +81,10 @@ final class DroprrReceiver {
     // MARK: - Routing
 
     private func precheck(_ request: HTTPServer.Request) -> HTTPServer.Response? {
-        let token = settings.token
-        guard !token.isEmpty else {
-            return .json(503, ["ok": false, "error": "no pairing token set on this device"])
-        }
-        let auth = request.header("authorization") ?? ""
-        guard auth.hasPrefix("Bearer "), constantTimeEqual(String(auth.dropFirst(7)), token) else {
+        guard authorization(request) != nil else {
+            if !settings.hasMainToken && settings.peers.allSatisfy({ ($0.acceptToken ?? "").isEmpty }) {
+                return .json(503, ["ok": false, "error": "no pairing token set on this device"])
+            }
             return .json(401, ["ok": false, "error": "unauthorized"])
         }
         let route = Route(request)
@@ -113,20 +117,32 @@ final class DroprrReceiver {
         }
     }
 
+    /// Which token authorized the request: the main token or a paired device's token.
+    private func authorization(_ request: HTTPServer.Request) -> DroprrSettings.Authorization? {
+        let header = request.header("authorization") ?? ""
+        guard header.hasPrefix("Bearer ") else { return nil }
+        return settings.authorize(String(header.dropFirst(7)))
+    }
+
     private func handleInbox(_ request: HTTPServer.Request, _ route: Route, _ outbox: OutboxServing) -> HTTPServer.Response {
         let notFound = HTTPServer.Response.json(404, ["ok": false, "error": "not found"])
+        // A device token scopes the inbox to that peer's queue and ignores ?for=.
+        var peerID: UUID?
+        if case .device(let id) = authorization(request) { peerID = id }
         if route.segments.count == 1 {
-            guard request.method == "GET", let name = route.query["for"], !name.isEmpty else {
+            guard request.method == "GET" else { return notFound }
+            let name = route.query["for"].flatMap { $0.isEmpty ? nil : $0 }
+            guard peerID != nil || name != nil else {
                 return .json(400, ["ok": false, "error": "missing for=<device name>"])
             }
-            let items = outbox.list(for: name, from: request.remoteHost)
+            let items = outbox.list(for: name, peerID: peerID, from: request.remoteHost)
             return .json(200, ["ok": true, "items": items])
         }
         let id = route.segments[1]
         if request.method == "DELETE" {
-            return outbox.remove(id: id) ? .json(200, ["ok": true]) : notFound
+            return outbox.remove(id: id, peerID: peerID) ? .json(200, ["ok": true]) : notFound
         }
-        guard let file = outbox.file(id: id) else { return notFound }
+        guard let file = outbox.file(id: id, peerID: peerID) else { return notFound }
         var response = HTTPServer.Response(status: 200, body: Data(), contentType: file.mimeType)
         response.file = file.url
         let ascii = file.name.unicodeScalars.allSatisfy { $0.isASCII && $0 != "\"" }
@@ -167,8 +183,14 @@ final class DroprrReceiver {
                 }
                 port = value
             }
-            DispatchQueue.main.async { onPair(PairRequest(name: name, platform: platform, host: host, port: port)) }
-            return .json(200, ["ok": true, "name": settings.deviceName])
+            let callerToken = (json["token"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            let minted = DroprrSettings.generateToken()
+            // Store before answering, so the caller's very next request with the new token is accepted.
+            DispatchQueue.main.sync {
+                onPair(PairRequest(name: name, platform: platform, host: host, port: port,
+                                   token: platform == "ios" ? nil : callerToken, acceptToken: minted))
+            }
+            return .json(200, ["ok": true, "name": settings.deviceName, "token": minted])
         }
         if route.segments.first == "outbox", let outbox {
             let temp = FileManager.default.temporaryDirectory.appendingPathComponent("droprr-fwd-\(UUID().uuidString)")
@@ -181,22 +203,26 @@ final class DroprrReceiver {
             } catch let failure as Failure {
                 return .json(failure.status, ["ok": false, "error": failure.message])
             } catch {
-                return .json(500, ["ok": false, "error": error.localizedDescription])
+                NSLog("Droprr receiver error: %@", String(describing: error))
+                return .json(500, ["ok": false, "error": "receiver error"])
             }
         }
         if route.segments.first == "ping" {
-            return .json(200, ["name": settings.deviceName, "version": DroprrDefaults.version, "platform": DroprrSettings.platform])
+            return .json(200, ["name": settings.deviceName, "version": DroprrDefaults.version,
+                               "platform": DroprrSettings.platform, "protocol": 1])
         }
         do {
             let items = try receive(request, into: inbox)
             guard !items.isEmpty else { throw Failure(400, "no items") }
+            for case .file(let url) in items.map(\.kind) { Links.quarantine(url) }
             let onItem = self.onItem
             DispatchQueue.main.async { items.forEach(onItem) }
             return .json(200, ["ok": true, "received": items.count])
         } catch let failure as Failure {
             return .json(failure.status, ["ok": false, "error": failure.message])
         } catch {
-            return .json(500, ["ok": false, "error": error.localizedDescription])
+            NSLog("Droprr receiver error: %@", String(describing: error))
+            return .json(500, ["ok": false, "error": "receiver error"])
         }
     }
 
@@ -314,6 +340,8 @@ final class DroprrReceiver {
             let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.contains(where: \.isNewline), let url = URL(string: trimmed),
                   let scheme = url.scheme, !scheme.isEmpty else { throw Failure(400, "invalid URL") }
+            // Links are http and https only; anything else (file:, javascript:) is kept as text.
+            guard Links.isWeb(url) else { return try textItem(type: "text", content: content, into: dir) }
             let plist: [String: Any] = ["URL": url.absoluteString]
             let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
             try data.write(to: uniqueDestination(for: "Link \(Self.stamp()).webloc", in: dir))
@@ -390,9 +418,4 @@ final class DroprrReceiver {
         return f.string(from: Date())
     }
 
-    private func constantTimeEqual(_ a: String, _ b: String) -> Bool {
-        let x = Array(a.utf8), y = Array(b.utf8)
-        guard x.count == y.count else { return false }
-        return zip(x, y).reduce(0) { $0 | ($1.0 ^ $1.1) } == 0
-    }
 }

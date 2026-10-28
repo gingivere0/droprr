@@ -47,11 +47,11 @@ final class MacShareModel {
         sending = true
         defer { sending = false }
         status = peer.isPhone ? "Queueing for \(peer.name)…" : "Sending to \(peer.name)…"
-        var client = DroprrClient(peer: peer, token: settings.token)
+        var client = DroprrClient(peer: peer)
         if peer.isPhone {
             // Phones collect from the Mac app's outbox, so hand the items to it on this Mac.
-            client = DroprrClient(peer: Peer(name: "This Mac", host: "127.0.0.1", port: settings.port),
-                                  token: settings.token, sendPath: "/outbox/\(peer.id.uuidString)")
+            client = DroprrClient(peer: Peer(name: "This Mac", host: "127.0.0.1", port: settings.port, token: settings.token),
+                                  sendPath: "/outbox/\(peer.id.uuidString)")
         }
         do {
             for payload in payloads {

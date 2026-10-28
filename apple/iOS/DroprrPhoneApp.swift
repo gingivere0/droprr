@@ -12,7 +12,7 @@ struct DroprrPhoneApp: App {
             ContentView(model: model)
                 .tint(Theme.accentText)
                 // Scanning the pairing QR code with the Camera app opens droprr://pair?…
-                .onOpenURL { url in model.pair(with: url.absoluteString) }
+                .onOpenURL { url in model.pair(with: url.absoluteString, confirm: true) }
         }
         .onChange(of: scenePhase) { _, phase in
             // Desktops always queue items for a phone, so collect them each time the app comes forward.
@@ -121,7 +121,20 @@ final class PhoneModel {
     /// Shown as a card over the app while and after a QR code is scanned.
     var pairingStatus: PairingStatus?
 
-    func pair(with code: String) {
+    /// A pairing link opened from outside the app (Camera, Safari, Messages), waiting for the user to confirm.
+    var pendingPairing: PairingInfo?
+
+    /// Peer that a pairing code would replace, if any.
+    func existingPeer(for info: PairingInfo) -> Peer? {
+        let addresses = [info.host, info.dns].compactMap { $0 }.filter { !$0.isEmpty }
+        return settings.peers.first { peer in
+            addresses.contains { peer.host.caseInsensitiveCompare($0) == .orderedSame } || peer.matches(deviceName: info.name)
+        }
+    }
+
+    /// Handles a scanned or opened pairing code. Links opened from outside the app are never applied
+    /// directly: they wait in `pendingPairing` until the user taps Pair.
+    func pair(with code: String, confirm: Bool = false) {
         let info: PairingInfo
         switch PairingInfo.parse(code) {
         case .success(let parsed): info = parsed
@@ -132,14 +145,31 @@ final class PhoneModel {
             pairingStatus = .failure("That isn't a Droprr pairing code.")
             return
         }
-        let peer = settings.apply(info)
+        guard info.pointsInsideTailnet else {
+            pairingStatus = .failure("This code points outside your Tailscale network, so Droprr won't use it.")
+            return
+        }
+        if confirm {
+            pendingPairing = info
+        } else {
+            completePairing(info)
+        }
+    }
+
+    func completePairing(_ info: PairingInfo) {
+        pendingPairing = nil
+        var peer = settings.apply(info)
         pairingStatus = .working("Pairing with \(peer.name)")
         Task {
             do {
-                let client = DroprrClient(peer: peer, token: settings.token)
-                // Pair both ways: the desktop adds this phone too.
-                try? await client.pair(name: settings.deviceName, platform: DroprrSettings.platform)
-                let ping = try await client.ping()
+                // Pair both ways with the QR code's token; the desktop answers with a device token
+                // just for this phone, which replaces the QR token from now on.
+                let result = try await DroprrClient(peer: peer).pair(name: settings.deviceName, platform: DroprrSettings.platform)
+                if let token = result.token, let i = settings.peers.firstIndex(where: { $0.id == peer.id }) {
+                    settings.peers[i].token = token
+                    peer = settings.peers[i]
+                }
+                let ping = try await DroprrClient(peer: peer).ping()
                 if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) {
                     settings.peers[i].platform = ping.platform
                     settings.peers[i].remoteName = ping.name
@@ -169,7 +199,7 @@ final class PhoneModel {
         var count = 0
         var reached = 0
         for peer in desktops {
-            let client = DroprrClient(peer: peer, token: settings.token)
+            let client = DroprrClient(peer: peer)
             guard let items = try? await client.inbox(for: settings.deviceName) else { continue }
             reached += 1
             for entry in items {
@@ -182,8 +212,12 @@ final class PhoneModel {
                         try FileManager.default.moveItem(at: temp, to: dest)
                         item = ReceivedItem(kind: .file(dest))
                     case "url":
-                        guard let url = URL(string: entry.content ?? "") else { continue }
-                        item = ReceivedItem(kind: .url(url))
+                        // Only http(s) is a link; anything else is kept as text.
+                        if let url = URL(string: entry.content ?? ""), Links.isWeb(url) {
+                            item = ReceivedItem(kind: .url(url))
+                        } else {
+                            item = ReceivedItem(kind: .text(entry.content ?? ""))
+                        }
                     default:
                         item = ReceivedItem(kind: .text(entry.content ?? ""))
                     }
@@ -229,7 +263,7 @@ final class PhoneModel {
         let label = payloads.map(\.label).joined(separator: ", ")
         lastSendResult = "Sending \(label) to \(peer.name)…"
         do {
-            let client = DroprrClient(peer: peer, token: settings.token)
+            let client = DroprrClient(peer: peer)
             for payload in payloads {
                 try await payload.send(with: client) { [weak self] in self?.progress = $0 }
             }
@@ -283,7 +317,7 @@ struct HistoryEntry: Codable, Identifiable {
         let kind: ReceivedItem.Kind
         switch type {
         case "file": kind = .file(PhoneModel.inbox.appendingPathComponent(value))
-        case "url": kind = URL(string: value).map { .url($0) } ?? .text(value)
+        case "url": kind = URL(string: value).flatMap { Links.isWeb($0) ? .url($0) : nil } ?? .text(value)
         default: kind = .text(value)
         }
         return ReceivedItem(id: id, kind: kind, date: date)

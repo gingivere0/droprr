@@ -30,11 +30,18 @@ struct MacSettingsView: View {
             PeerEditor(peer: peer, isNew: !settings.peers.contains { $0.id == peer.id },
                        onRemove: { editing = nil; removing = peer }) { saved in
                 if let saved {
+                    let tokenChanged = settings.peers.first { $0.id == saved.id }?.token != saved.token
                     if let i = settings.peers.firstIndex(where: { $0.id == saved.id }) {
                         settings.peers[i] = saved
                     } else {
                         settings.peers.append(saved)
-                        Task { await ping(saved) }
+                    }
+                    if tokenChanged {
+                        // Switch both sides to per-device tokens, then check the connection.
+                        Task {
+                            await settings.exchangeTokens(with: saved)
+                            if let current = settings.peers.first(where: { $0.id == saved.id }) { await ping(current) }
+                        }
                     }
                 }
                 editing = nil
@@ -119,8 +126,13 @@ struct MacSettingsView: View {
                 .buttonStyle(HoverButtonStyle(.bordered, compact: true))
             }
             Divider()
+            OptionRow(title: "Copy received text and links to the clipboard",
+                      detail: "Paste them right away. Clipboard managers are asked not to keep them.") {
+                Toggle("", isOn: Binding(get: { settings.copyTextAndLinks }, set: { settings.copyTextAndLinks = $0 }))
+            }
+            Divider()
             OptionRow(title: "Auto-copy received items to clipboard",
-                      detail: "Text and links are always copied. This also copies files and images.") {
+                      detail: "Copies everything as it arrives, including files and images.") {
                 Toggle("", isOn: Binding(get: { settings.autoCopy }, set: { settings.autoCopy = $0 }))
             }
             Divider()
@@ -173,7 +185,7 @@ struct MacSettingsView: View {
     private func ping(_ peer: Peer) async {
         pingResults[peer.id] = .checking
         do {
-            let info = try await DroprrClient(peer: peer, token: settings.token).ping()
+            let info = try await DroprrClient(peer: peer).ping()
             pingResults[peer.id] = .ok("\(Theme.platformName(info.platform)) · v\(info.version)")
             if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) {
                 settings.peers[i].platform = info.platform
@@ -209,6 +221,10 @@ private struct DeviceRow: View {
                 }
                 .foregroundStyle(.secondary).lineLimit(1)
                 status
+                if !peer.isPaired {
+                    Label("Not paired: scan its code or enter its token", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2).foregroundStyle(.orange)
+                }
             }
             Spacer()
             if !peer.isPhone {

@@ -105,14 +105,52 @@ private final class HTTPConnection {
 
     func start(on queue: DispatchQueue) {
         retainSelf = self
+        self.queue = queue
         connection.stateUpdateHandler = { [weak self] state in
+            guard let self else { return }
             switch state {
-            case .failed, .cancelled: self?.cleanup()
-            default: break
+            case .ready:
+                // Also require the *local* address to be loopback or Tailscale, so a LAN client that
+                // gives itself a 100.64.x.x address can't reach the listener through Wi-Fi or Ethernet.
+                guard let local = self.connection.currentPath?.localEndpoint, HTTPServer.isAllowed(local) else {
+                    self.connection.cancel()
+                    return
+                }
+                self.armTimeout(seconds: Self.headerTimeout)
+                self.receive()
+            case .failed, .cancelled:
+                self.cleanup()
+            default:
+                break
             }
         }
         connection.start(queue: queue)
-        receive()
+    }
+
+    // MARK: Limits
+
+    private static let headerTimeout: TimeInterval = 30   // to finish sending headers
+    private static let idleTimeout: TimeInterval = 60     // between body packets
+    private static let minimumFreeSpace: Int64 = 1_000_000_000
+    private var queue: DispatchQueue?
+    private var timeout: DispatchWorkItem?
+
+    /// Closes the connection if nothing more arrives in time.
+    private func armTimeout(seconds: TimeInterval) {
+        timeout?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, !self.finished else { return }
+            self.connection.cancel()
+        }
+        timeout = work
+        queue?.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    /// Free space on the volume that holds temporary and received files.
+    private static func freeSpace() -> Int64? {
+        let url = FileManager.default.temporaryDirectory
+        let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
+        return values?.volumeAvailableCapacityForImportantUsage ?? values?.volumeAvailableCapacity.map(Int64.init)
     }
 
     private func receive() {
@@ -129,6 +167,7 @@ private final class HTTPConnection {
 
     private func consume(_ data: Data) {
         buffer.append(data)
+        if request != nil { armTimeout(seconds: Self.idleTimeout) }
         if request == nil {
             guard let end = buffer.range(of: Data("\r\n\r\n".utf8)) else {
                 if buffer.count > Self.maxHeaderBytes { respond(.json(431, ["ok": false, "error": "headers too large"])) }
@@ -142,12 +181,17 @@ private final class HTTPConnection {
                 return
             }
             request = req
+            armTimeout(seconds: Self.idleTimeout)
             if let rejection = server.precheck(req) {
                 respond(rejection)
                 return
             }
             chunked = req.header("transfer-encoding")?.lowercased().contains("chunked") == true
             remaining = Int(req.header("content-length") ?? "") ?? 0
+            if remaining > 0, let free = Self.freeSpace(), free - Int64(remaining) < Self.minimumFreeSpace {
+                respond(.json(507, ["ok": false, "error": "not enough disk space"]))
+                return
+            }
             if chunked || remaining > 0 {
                 let file = FileManager.default.temporaryDirectory.appendingPathComponent("droprr-recv-\(UUID().uuidString)")
                 FileManager.default.createFile(atPath: file.path, contents: nil)
@@ -228,6 +272,7 @@ private final class HTTPConnection {
     private func respond(_ response: HTTPServer.Response) {
         finished = true
         let reasons = [200: "OK", 400: "Bad Request", 401: "Unauthorized", 404: "Not Found", 415: "Unsupported Media Type",
+                       507: "Insufficient Storage",
                        431: "Request Header Fields Too Large", 500: "Internal Server Error", 503: "Service Unavailable"]
         let reason = reasons[response.status] ?? "Status"
         var length = response.body.count
@@ -268,6 +313,8 @@ private final class HTTPConnection {
     }
 
     private func cleanup() {
+        timeout?.cancel()
+        timeout = nil
         try? bodyHandle?.close()
         bodyHandle = nil
         if let file = request?.bodyFile { try? FileManager.default.removeItem(at: file) }

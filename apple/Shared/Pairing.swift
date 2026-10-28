@@ -62,6 +62,30 @@ struct PairingInfo: Equatable {
     /// Where to connect: the MagicDNS name when known, since the IP can change.
     var connectHost: String { dns ?? host }
 
+    /// Codes may only point inside the tailnet: 100.64.0.0/10, fd7a:115c:a1e0::/48,
+    /// a *.ts.net name, or a single-label MagicDNS name.
+    var pointsInsideTailnet: Bool {
+        [host, dns ?? ""].filter { !$0.isEmpty }.allSatisfy(Self.isTailscaleHost)
+    }
+
+    static func isTailscaleHost(_ raw: String) -> Bool {
+        let host = raw.trimmingCharacters(in: CharacterSet(charactersIn: "[]")).lowercased()
+        var v4 = in_addr()
+        if inet_pton(AF_INET, host, &v4) == 1 {
+            let b = withUnsafeBytes(of: v4.s_addr) { Array($0) }
+            return b[0] == 100 && (b[1] & 0xc0) == 64
+        }
+        var v6 = in6_addr()
+        if inet_pton(AF_INET6, host, &v6) == 1 {
+            let b = withUnsafeBytes(of: v6) { Array($0) }
+            return b[0] == 0xfd && b[1] == 0x7a && b[2] == 0x11 && b[3] == 0x5c && b[4] == 0xa1 && b[5] == 0xe0
+        }
+        let name = host.hasSuffix(".") ? String(host.dropLast()) : host
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789-.")
+        guard !name.isEmpty, name.unicodeScalars.allSatisfy(allowed.contains) else { return false }
+        return name.hasSuffix(".ts.net") || !name.contains(".")
+    }
+
     var peer: Peer {
         Peer(name: name, host: connectHost, port: port, platform: platform, remoteName: name, token: token)
     }
@@ -105,5 +129,30 @@ extension DroprrSettings {
         peers.append(peer)
         lastPeerID = peer.id
         return peer
+    }
+}
+
+extension DroprrSettings {
+    /// After a computer is added (or its token changed) by hand: introduce this device with POST /pair
+    /// so both sides switch to per-device tokens. Computers also mint a token for the other side to use
+    /// when calling back; phones don't, since nothing can call a phone. If the other device is too old
+    /// for /pair, the hand-entered token simply keeps being used.
+    @MainActor
+    func exchangeTokens(with peer: Peer) async {
+        guard !peer.isPhone, let token = peer.token, !token.isEmpty else { return }
+        let isComputer = DroprrSettings.platform != "ios"
+        let minted = isComputer ? DroprrSettings.generateToken() : nil
+        do {
+            let result = try await DroprrClient(peer: peer).pair(
+                name: deviceName, platform: DroprrSettings.platform,
+                host: isComputer ? PairingInfo.tailscaleAddress() : nil,
+                port: isComputer ? port : nil, token: minted)
+            guard let i = peers.firstIndex(where: { $0.id == peer.id }) else { return }
+            if let newToken = result.token { peers[i].token = newToken }
+            if let minted { peers[i].acceptToken = minted }
+            peers[i].remoteName = result.name
+        } catch {
+            // Keep the hand-entered token; the next Test shows whether it works.
+        }
     }
 }

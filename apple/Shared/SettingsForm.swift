@@ -109,7 +109,7 @@ struct SettingsForm<Extra: View>: View {
                 TextField("Device name", text: $settings.deviceName)
                 #if os(macOS)
                 Toggle("Auto-copy received items to clipboard", isOn: $settings.autoCopy)
-                    .hoverHint("Text and links are always copied. This also copies received files and images.")
+                    .hoverHint("Copies everything as it arrives, including files and images.")
                 #else
                 Toggle("Auto-copy received items to clipboard", isOn: $settings.autoCopy)
                 #endif
@@ -141,11 +141,17 @@ struct SettingsForm<Extra: View>: View {
             PeerEditor(peer: peer, isNew: !settings.peers.contains { $0.id == peer.id },
                        onRemove: { editing = nil; removing = peer }) { saved in
                 if let saved {
+                    let tokenChanged = settings.peers.first { $0.id == saved.id }?.token != saved.token
                     if let i = settings.peers.firstIndex(where: { $0.id == saved.id }) {
                         settings.peers[i] = saved
                     } else {
                         settings.peers.append(saved)
-                        Task { await ping(saved) }
+                    }
+                    if tokenChanged {
+                        Task {
+                            await settings.exchangeTokens(with: saved)
+                            if let current = settings.peers.first(where: { $0.id == saved.id }) { await ping(current) }
+                        }
                     }
                 }
                 editing = nil
@@ -156,7 +162,7 @@ struct SettingsForm<Extra: View>: View {
     private func ping(_ peer: Peer) async {
         pingResults[peer.id] = .checking
         do {
-            let info = try await DroprrClient(peer: peer, token: settings.token).ping()
+            let info = try await DroprrClient(peer: peer).ping()
             pingResults[peer.id] = .ok("\(Theme.platformName(info.platform)) · v\(info.version)")
             if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) {
                 settings.peers[i].platform = info.platform
@@ -184,6 +190,10 @@ private struct PeerRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                if !peer.isPaired {
+                    Label("Not paired: scan its code or enter its token", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2).foregroundStyle(.orange)
+                }
                 statusLine
             }
             Spacer()
@@ -338,23 +348,26 @@ struct PeerEditor: View {
 }
 
 enum Clipboard {
-    /// Copies any received item: text, a link, an image as image data, or another file as a file.
+    /// Copies a received item: text, a web link (other schemes as text), an image as image data,
+    /// or another file as a file. Marked concealed so clipboard managers don't keep a history of it.
     static func copy(_ item: ReceivedItem) {
         switch item.kind {
-        case .text(let text): copy(text: text)
-        case .url(let url): copy(url: url)
-        case .file(let file): copy(file: file)
+        case .text(let text): copy(text: text, concealed: true)
+        case .url(let url): copy(url: url, concealed: true)
+        case .file(let file): copy(file: file, concealed: true)
         }
     }
 
-    static func copy(file: URL) {
+    static func copy(file: URL, concealed: Bool = false) {
         let isImage = UTType(filenameExtension: file.pathExtension)?.conforms(to: .image) == true
         #if os(macOS)
-        NSPasteboard.general.clearContents()
+        let pb = NSPasteboard.general
+        pb.clearContents()
         var objects: [NSPasteboardWriting] = []
         if isImage, let image = NSImage(contentsOf: file) { objects.append(image) }
         objects.append(file as NSURL)
-        NSPasteboard.general.writeObjects(objects)
+        pb.writeObjects(objects)
+        if concealed { conceal(pb) }
         #else
         if isImage, let image = UIImage(contentsOfFile: file.path) {
             UIPasteboard.general.image = image
@@ -364,22 +377,34 @@ enum Clipboard {
         #endif
     }
 
-    static func copy(text: String) {
+    static func copy(text: String, concealed: Bool = false) {
         #if os(macOS)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        if concealed { conceal(pb) }
         #else
         UIPasteboard.general.string = text
         #endif
     }
 
-    static func copy(url: URL) {
+    static func copy(url: URL, concealed: Bool = false) {
+        guard Links.isWeb(url) else { return copy(text: url.absoluteString, concealed: concealed) }
         #if os(macOS)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects([url as NSURL])
-        NSPasteboard.general.setString(url.absoluteString, forType: .string)
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects([url as NSURL])
+        pb.setString(url.absoluteString, forType: .string)
+        if concealed { conceal(pb) }
         #else
         UIPasteboard.general.url = url
         #endif
     }
+
+    #if os(macOS)
+    /// nspasteboard.org convention: clipboard managers skip items marked concealed.
+    private static func conceal(_ pb: NSPasteboard) {
+        pb.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+    }
+    #endif
 }

@@ -8,13 +8,13 @@ struct PingInfo: Codable {
 }
 
 enum DroprrError: LocalizedError {
-    case noToken
+    case notPaired
     case badPeer
     case server(Int, String)
 
     var errorDescription: String? {
         switch self {
-        case .noToken: return "Set the pairing token in Settings first."
+        case .notPaired: return "Not paired: scan its code or enter its token."
         case .badPeer: return "That device's address isn't valid."
         case .server(let code, let message): return "The device answered \(code): \(message)"
         }
@@ -23,8 +23,8 @@ enum DroprrError: LocalizedError {
 
 /// Sends to another Droprr device. See docs/PROTOCOL.md.
 struct DroprrClient {
+    /// Requests carry `peer.token` only. This device's main token is never sent to another device.
     var peer: Peer
-    var token: String
     /// "/send" normally; the Mac share extension uses "/outbox/<peer id>" on its own Mac to queue for a phone.
     var sendPath = "/send"
 
@@ -64,16 +64,28 @@ struct DroprrClient {
         try check(response, data)
     }
 
-    /// Tells a desktop about this device so pairing works both ways (POST /pair). Returns the desktop's name.
-    @discardableResult
-    func pair(name: String, platform: String) async throws -> String {
+    struct PairResult {
+        var name: String
+        /// The device token the desktop minted for this device; use it instead of the QR token from now on.
+        var token: String?
+    }
+
+    /// Introduces this device to a desktop (POST /pair) so pairing works both ways.
+    /// Computers pass their own address and a token they minted for that desktop; phones omit them.
+    func pair(name: String, platform: String, host: String? = nil, port: Int? = nil, token: String? = nil) async throws -> PairResult {
         var request = try makeRequest(path: "/pair", method: "POST")
         request.timeoutInterval = 5
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name, "platform": platform])
+        var body: [String: Any] = ["name": name, "platform": platform]
+        if let host { body["host"] = host }
+        if let port { body["port"] = port }
+        if let token { body["token"] = token }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await Self.session.data(for: request)
         try check(response, data)
-        return ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["name"] as? String ?? peer.name
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        return PairResult(name: json?["name"] as? String ?? peer.name,
+                          token: (json?["token"] as? String).flatMap { $0.isEmpty ? nil : $0 })
     }
 
     // MARK: Inbox (phone pull, see docs/PROTOCOL.md)
@@ -123,8 +135,7 @@ struct DroprrClient {
     }
 
     private func makeRequest(path: String, method: String) throws -> URLRequest {
-        let token = peer.token.flatMap { $0.isEmpty ? nil : $0 } ?? self.token
-        guard !token.isEmpty else { throw DroprrError.noToken }
+        guard let token = peer.token, !token.isEmpty else { throw DroprrError.notPaired }
         guard let base = peer.baseURL, let url = URL(string: base.absoluteString + path) else { throw DroprrError.badPeer }
         var request = URLRequest(url: url)
         request.httpMethod = method

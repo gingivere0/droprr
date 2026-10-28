@@ -30,12 +30,58 @@ struct ContentView: View {
         .sheet(isPresented: $scanning) {
             PairingScannerSheet { model.pair(with: $0) }
         }
+        .sheet(isPresented: Binding(get: { model.pendingPairing != nil }, set: { if !$0 { model.pendingPairing = nil } })) {
+            if let info = model.pendingPairing {
+                ConfirmPairingSheet(info: info, replacing: model.existingPeer(for: info),
+                                    onPair: { model.completePairing(info) },
+                                    onCancel: { model.pendingPairing = nil })
+                    .presentationDetents([.medium])
+            }
+        }
         .overlay {
             if let status = model.pairingStatus, !scanning {
                 PairingStatusCard(status: status) { model.pairingStatus = nil }
             }
         }
         .motion(Motion.slow, value: model.pairingStatus)
+    }
+}
+
+/// Shown when a pairing link is opened from outside the app: nothing changes until Pair is tapped.
+private struct ConfirmPairingSheet: View {
+    var info: PairingInfo
+    var replacing: Peer?
+    var onPair: () -> Void
+    var onCancel: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    HStack(spacing: Space.md) {
+                        GlyphCircle(symbol: info.platform == "macos" ? "laptopcomputer" : "pc", size: 44, filled: true)
+                        VStack(alignment: .leading, spacing: Space.xs) {
+                            Text(info.name).font(.headline)
+                            Text(Theme.platformName(info.platform)).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
+                    LabeledContent("Address", value: "\(info.connectHost):\(String(info.port))")
+                        .font(.callout.monospaced())
+                } footer: {
+                    if let replacing {
+                        Text("This replaces the address and token saved for \(replacing.name).")
+                    } else {
+                        Text("Only pair with your own computers.")
+                    }
+                }
+            }
+            .navigationTitle("Pair with \(info.name)?")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onCancel) }
+                ToolbarItem(placement: .confirmationAction) { Button("Pair", action: onPair).fontWeight(.semibold) }
+            }
+        }
     }
 }
 
@@ -411,6 +457,7 @@ private struct EmptyDevicesCard: View {
 
 private struct ReceivedTab: View {
     @Bindable var model: PhoneModel
+    @Environment(\.openURL) private var openURL
     @State private var preview: URL?
     @State private var toast: String?
 
@@ -546,8 +593,8 @@ private struct ReceivedTab: View {
             }
         }
         .contextMenu {
-            if case .url(let url) = item.kind {
-                Link(destination: url) { Label("Open Link", systemImage: "safari") }
+            if case .url(let url) = item.kind, Links.isWeb(url) {
+                Button { openURL(url) } label: { Label("Open Link", systemImage: "safari") }
             }
             if case .file(let url) = item.kind {
                 ShareLink(item: url) { Label("Share…", systemImage: "square.and.arrow.up") }

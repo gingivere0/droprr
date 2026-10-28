@@ -104,7 +104,7 @@ final class MacModel {
         receiver.onItem = { [weak self] in self?.received($0) }
         outbox.onChange = { [weak self] in self?.outboxVersion += 1 }
         Notifier.shared.onOpen = { url in
-            if url.isFileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) } else { NSWorkspace.shared.open(url) }
+            if url.isFileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) } else { Links.open(url) }
         }
         Notifier.shared.requestPermission()
         restartIfNeeded()
@@ -121,9 +121,9 @@ final class MacModel {
     }
 
     private func received(_ item: ReceivedItem) {
-        // Like Windows: text and links are always copied; the auto-copy setting adds files and images.
+        // Like Windows: text and links are copied unless turned off; auto-copy adds files and images.
         switch item.kind {
-        case .text, .url: Clipboard.copy(item)
+        case .text, .url: if settings.copyTextAndLinks || settings.autoCopy { Clipboard.copy(item) }
         case .file: if settings.autoCopy { Clipboard.copy(item) }
         }
         Motion.perform { recent.insert(item, at: 0) }
@@ -142,9 +142,14 @@ final class MacModel {
             // Keep a host we already have for a known computer.
             if settings.peers[i].host.isEmpty { settings.peers[i].host = request.host }
             if request.platform != "ios" && settings.peers[i].host == request.host { settings.peers[i].port = request.port }
+            // Re-pairing replaces the device token, so the old one stops working.
+            settings.peers[i].acceptToken = request.acceptToken
+            if request.platform == "ios" { settings.peers[i].token = nil }
+            else if let token = request.token { settings.peers[i].token = token }
         } else {
             settings.peers.append(Peer(name: request.name, host: request.host, port: request.port,
-                                       platform: request.platform, remoteName: request.name))
+                                       platform: request.platform, remoteName: request.name,
+                                       token: request.token, acceptToken: request.acceptToken))
         }
         lastPaired = request.name
         lastSendResult = "\(request.name) paired."
@@ -159,7 +164,7 @@ final class MacModel {
     func open(_ item: ReceivedItem) {
         switch item.kind {
         case .file(let url): NSWorkspace.shared.activateFileViewerSelecting([url])
-        case .url(let url): NSWorkspace.shared.open(url)
+        case .url(let url): Links.open(url)
         case .text: Clipboard.copy(item)
         }
     }
@@ -261,7 +266,7 @@ final class MacModel {
         lastSendResult = "Sending \(payload.label) to \(peer.name)…"
         defer { isSending = false; progress = nil }
         do {
-            let client = DroprrClient(peer: peer, token: settings.token)
+            let client = DroprrClient(peer: peer)
             try await payload.send(with: client) { [weak self] in self?.progress = $0 }
             lastSendResult = "Sent \(payload.label) to \(peer.name)."
         } catch {

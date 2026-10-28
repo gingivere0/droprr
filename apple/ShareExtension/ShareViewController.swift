@@ -50,7 +50,7 @@ final class ShareModel {
         sending = true
         defer { sending = false }
         status = "Sending to \(peer.name)…"
-        let client = DroprrClient(peer: peer, token: settings.token)
+        let client = DroprrClient(peer: peer)
         do {
             for payload in payloads {
                 try await payload.send(with: client) { [weak self] in self?.progress = $0 }
