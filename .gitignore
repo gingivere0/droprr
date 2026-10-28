@@ -1,0 +1,26 @@
+# Build output
+bin/
+obj/
+out/
+publish/
+*.binlog
+
+# IDE and user files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.rsuser
+
+# Local config: never commit real settings, tokens, or hostnames
+settings.json
+!settings.example.json
+*.local.json
+.env
+.env.*
+local/
+
+# OS
+Thumbs.db
+.DS_Store
