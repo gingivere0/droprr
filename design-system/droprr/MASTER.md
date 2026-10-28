@@ -53,13 +53,15 @@ Use the platform's own values. Don't hard-code grays.
 
 Droprr's look is the **Bento Grid**: the window or screen is a light-gray (or charcoal) surface, and everything sits on rounded tiles of mixed sizes with a 12-pt gap. There are six color themes. The user picks one in Settings (Appearance); **Graphite & Lime** (`graphiteLime`) is the default. Every theme has a light and a dark variant that follows the OS appearance. Exact values for every role are in [`tokens.json`](tokens.json) under `themes`.
 
+Contrast: every text pair is at least 4.5:1 and every control or icon well at least 3:1 in both light and dark (checked against `tile` and `surface`).
+
 | ID | Name | Light accent / secondary | Dark accent / secondary |
 | --- | --- | --- | --- |
 | `graphiteLime` | Graphite & Lime | `#1F2024` / `#A3E635` | `#E9EAEE` / `#A3E635` |
-| `sunset` | Sunset | `#E8590C` / `#7048E8` | `#FF7A30` / `#9B7BFF` |
+| `sunset` | Sunset | `#C2410C` / `#7048E8` | `#FF7A30` / `#9B7BFF` |
 | `cherry` | Cherry | `#D6293E` / `#0F9D8F` | `#F0475A` / `#2DD4BF` |
-| `roseGold` | Rose Gold | `#C2577A` / `#C9973A` | `#E07A9C` / `#E0B25A` |
-| `sage` | Sage | `#6B8F71` / `#C8704A` | `#8FB596` / `#E08A63` |
+| `roseGold` | Rose Gold | `#A8456A` / `#C9973A` | `#E07A9C` / `#E0B25A` |
+| `sage` | Sage | `#557A5C` / `#C8704A` | `#8FB596` / `#E08A63` |
 | `oliveMustard` | Olive & Mustard | `#5E6B2B` / `#D9A520` | `#A3B25A` / `#E8B93A` |
 
 ### Roles
@@ -71,7 +73,7 @@ Droprr's look is the **Bento Grid**: the window or screen is a light-gray (or ch
 | `border` | Hairline tile outline and dividers. |
 | `accent` / `onAccent` | The **selected** tile (selected device, selected action), toggles, the app glyph tile. Text and icons on it use `onAccent`. |
 | `accentTint` / `accentText` | Unselected icon wells (rounded squares behind glyphs), links, small accent text. |
-| `secondary`, `secondaryTint`, `secondaryText` | One contrasting tile per screen: the message/text tile and "N waiting" badges. Icon well filled with `secondary`. |
+| `secondary`, `secondaryTint`, `secondaryText` | One contrasting tile per screen: the message/text tile (`secondaryTint` fill) and "N waiting" badges (`secondaryTint` fill, `secondaryText` text). An icon well on that tile is filled with `secondaryText` and its glyph uses the `tile` color. Raw `secondary` is decorative only (dots, swatches), never a control or text color, because several themes' secondary is too light on white. |
 | `primaryButton` / `onPrimaryButton` | The main action (Send, Pair a Phone): near-black in light mode, the accent in dark mode. |
 | `textPrimary`, `textSecondary` | Text on `surface` and `tile`. Platforms may use their native label colors if they match. |
 | `successFill`, `successText` (under `bento`) | The "Sent" status tile. |
