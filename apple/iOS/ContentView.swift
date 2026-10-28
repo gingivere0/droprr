@@ -750,8 +750,18 @@ enum AppIconSwitcher {
     @MainActor
     static func apply(_ theme: String) {
         let wanted: String? = theme == ThemePalette.defaultID ? nil : "AppIcon-\(theme)"
-        guard UIApplication.shared.supportsAlternateIcons, UIApplication.shared.alternateIconName != wanted else { return }
-        UIApplication.shared.setAlternateIconName(wanted) { _ in }
+        let app = UIApplication.shared
+        guard app.supportsAlternateIcons, app.alternateIconName != wanted else { return }
+        // The public call always shows a "You have changed the icon" alert. This app is installed
+        // directly (not through the App Store), so use UIKit's quiet variant when it's there.
+        let quiet = NSSelectorFromString("_setAlternateIconName:completionHandler:")
+        if app.responds(to: quiet) {
+            typealias SetIcon = @convention(c) (NSObject, Selector, NSString?, @escaping @convention(block) (NSError?) -> Void) -> Void
+            let setIcon = unsafeBitCast(app.method(for: quiet), to: SetIcon.self)
+            setIcon(app, quiet, wanted as NSString?) { _ in }
+        } else {
+            app.setAlternateIconName(wanted) { _ in }
+        }
     }
 }
 
