@@ -9,18 +9,18 @@ using System.Windows.Media.Imaging;
 
 namespace Droprr;
 
-// The app icon for the taskbar, title bars, and tray, in the current theme's colors. Graphite & Lime uses the
-// original art (file-swap-icon-pack/windows/app.ico, drawn for each size). Every other theme uses its logo from
+// The app icon for the taskbar, title bars, and tray, in the current theme's colors: each theme's logo from
 // file-swap-icon-pack/themes/<theme id>/logo-1024.png, the same art the Mac uses, scaled down to icon sizes
-// once and cached.
+// once and cached. The exe's own icon (Explorer, Start menu) is Graphite & Lime's, made at build time by
+// scripts/make-app-icon.ps1.
 static class AppIcon
 {
-    const string OriginalTheme = "graphiteLime";
+    const string DefaultTheme = "graphiteLime";
     static readonly int[] Sizes = [16, 20, 24, 32, 48, 64, 256];
 
     static readonly Dictionary<string, byte[]> Icons = new();
-    static byte[] _current = Read("app.ico")!;
-    static string _theme = OriginalTheme;
+    static byte[] _current = Load(DefaultTheme);
+    static string _theme = DefaultTheme;
     static ImageSource? _imageSource;
 
     // Raised on the UI thread when the logo changes, so every icon can be replaced.
@@ -40,17 +40,22 @@ static class AppIcon
     {
         if (themeId == _theme)
             return;
-        if (!Icons.TryGetValue(themeId, out var ico))
-        {
-            ico = themeId == OriginalTheme || Read($"logo.{themeId}.png") is not { } logo
-                ? Read("app.ico")!
-                : BuildIcon(logo);
-            Icons[themeId] = ico;
-        }
         _theme = themeId;
-        _current = ico;
+        _current = Load(themeId);
         _imageSource = null;
         Changed?.Invoke();
+    }
+
+    // A theme without a logo uses Graphite & Lime's.
+    static byte[] Load(string themeId)
+    {
+        if (!Icons.TryGetValue(themeId, out var ico))
+        {
+            var logo = Read($"logo.{themeId}.png");
+            ico = logo is null ? Load(DefaultTheme) : BuildIcon(logo);
+            Icons[themeId] = ico;
+        }
+        return ico;
     }
 
     static byte[]? Read(string name)

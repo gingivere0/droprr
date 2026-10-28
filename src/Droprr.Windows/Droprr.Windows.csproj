@@ -10,8 +10,10 @@
     <AssemblyName>Droprr</AssemblyName>
     <RootNamespace>Droprr</RootNamespace>
     <Version>0.2.0</Version>
-    <IconPack>..\..\file-swap-icon-pack\windows\</IconPack>
-    <ApplicationIcon>$(IconPack)app.ico</ApplicationIcon>
+    <!-- The exe's icon (Explorer, Start menu, Alt+Tab before the app runs) is made from the default theme's logo
+         by the MakeAppIcon target below. -->
+    <AppIconSource>..\..\file-swap-icon-pack\themes\graphiteLime\logo-1024.png</AppIconSource>
+    <ApplicationIcon>$(BaseIntermediateOutputPath)Droprr.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- WFO0003 suggests WinForms' ApplicationHighDpiMode instead of the manifest, but that only applies through
          WinForms' own startup. This is a WPF app (WinForms is only the tray icon), so the manifest sets DPI awareness. -->
@@ -23,10 +25,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="$(IconPack)app.ico" LogicalName="Droprr.app.ico" />
     <!-- The design system's tokens; ThemeCatalog reads the Bento themes from it. -->
     <EmbeddedResource Include="..\..\design-system\droprr\tokens.json" LogicalName="Droprr.tokens.json" />
-    <!-- Each theme's logo (Graphite & Lime uses app.ico, the original art). -->
+    <!-- Each theme's logo, for the taskbar, title bar, and tray icons (AppIcon). -->
+    <EmbeddedResource Include="$(AppIconSource)" LogicalName="Droprr.logo.graphiteLime.png" />
     <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\sunset\logo-1024.png" LogicalName="Droprr.logo.sunset.png" />
     <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\cherry\logo-1024.png" LogicalName="Droprr.logo.cherry.png" />
     <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\roseGold\logo-1024.png" LogicalName="Droprr.logo.roseGold.png" />
@@ -39,5 +41,11 @@
     <PackageReference Include="QRCoder" Version="1.8.1" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
+
+  <!-- Rebuilds obj\Droprr.ico when the logo or the script changes. -->
+  <Target Name="MakeAppIcon" BeforeTargets="PrepareForBuild"
+          Inputs="$(AppIconSource);..\..\scripts\make-app-icon.ps1" Outputs="$(ApplicationIcon)">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;..\..\scripts\make-app-icon.ps1&quot; -Source &quot;$(AppIconSource)&quot; -Output &quot;$(ApplicationIcon)&quot;" />
+  </Target>
 
 </Project>

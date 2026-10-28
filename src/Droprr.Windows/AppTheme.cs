@@ -86,8 +86,9 @@ static class AppTheme
 
         SetBrush("SuccessFillBrush", dark ? ThemeCatalog.SuccessFill.Dark : ThemeCatalog.SuccessFill.Light);
 
-        AppIcon.SetTheme(_theme.Id);
         SetBrush("SuccessTextBrush", dark ? ThemeCatalog.SuccessText.Dark : ThemeCatalog.SuccessText.Light);
+
+        AppIcon.SetTheme(_theme.Id);
     }
 
     static void SetBrush(string key, Color color, double opacity = 1)
