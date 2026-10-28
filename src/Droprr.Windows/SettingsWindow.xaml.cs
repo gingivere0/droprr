@@ -80,8 +80,21 @@ public partial class SettingsWindow : Window
             _peers.Remove(peer);
     }
 
-    void OnOpenFile(object sender, RoutedEventArgs e) =>
-        Process.Start(new ProcessStartInfo("notepad.exe", $"\"{SettingsStore.FilePath}\"") { UseShellExecute = true });
+    // Opens settings.json in the default .json editor, or Notepad when nothing is associated with .json.
+    void OnOpenFile(object sender, RoutedEventArgs e)
+    {
+        var path = SettingsStore.FilePath;
+        if (!System.IO.File.Exists(path))
+            SettingsStore.Save(_settings);
+        try
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            Process.Start(new ProcessStartInfo("notepad.exe", $"\"{path}\"") { UseShellExecute = true });
+        }
+    }
 
     async void OnSave(object sender, RoutedEventArgs e)
     {
