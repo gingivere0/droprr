@@ -80,8 +80,14 @@ static class AppTheme
         SetBrush("OnPrimaryButtonBrush", c.OnPrimaryButton);
 
         SetBrush("SuccessFillBrush", dark ? ThemeCatalog.SuccessFill.Dark : ThemeCatalog.SuccessFill.Light);
+
+        AppIcon.SetColors(LogoColorsFor(_theme, dark));
         SetBrush("SuccessTextBrush", dark ? ThemeCatalog.SuccessText.Dark : ThemeCatalog.SuccessText.Light);
     }
+
+    // Which colors replace the logo's purple and red in each theme. Graphite & Lime keeps the original logo.
+    // Every theme keeps it for now, until the design system defines the mapping.
+    static LogoColors? LogoColorsFor(ThemeDef theme, bool dark) => null;
 
     static void SetBrush(string key, Color color, double opacity = 1)
     {
@@ -107,9 +113,16 @@ static class AppTheme
     // while it's open, keeping the theme's colors.
     public static void Setup(Window window, TitleBar? titleBar = null)
     {
-        window.Icon = AppIcon.ImageSource;
-        if (titleBar is not null)
-            titleBar.Icon = new ImageIcon { Source = AppIcon.ImageSource, Width = 16, Height = 16 };
+        void ShowIcon()
+        {
+            window.Icon = AppIcon.ImageSource;
+            if (titleBar is not null)
+                titleBar.Icon = new ImageIcon { Source = AppIcon.ImageSource, Width = 16, Height = 16 };
+        }
+        ShowIcon();
+        // The logo follows the theme: replace the taskbar and title bar icons when it changes.
+        AppIcon.Changed += ShowIcon;
+        window.Closed += (_, _) => AppIcon.Changed -= ShowIcon;
         // Bento: a solid themed surface behind the tiles rather than Mica.
         window.SetResourceReference(Window.BackgroundProperty, "ThemeSurfaceBrush");
         window.Loaded += (_, _) => SystemThemeWatcher.Watch(window, WindowBackdropType.None, updateAccents: false);

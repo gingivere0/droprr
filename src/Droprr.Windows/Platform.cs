@@ -121,30 +121,6 @@ static class ClipboardHelper
     }
 }
 
-static class AppIcon
-{
-    // Artwork from file-swap-icon-pack/windows, embedded so tray and windows match the exe.
-    static Stream Open(string name) => typeof(AppIcon).Assembly.GetManifestResourceStream($"Droprr.{name}")!;
-
-    // The colored app icon at the small-icon size for the current DPI.
-    public static Icon CreateTrayIcon()
-    {
-        using var stream = Open("app.ico");
-        return new Icon(stream, System.Windows.Forms.SystemInformation.SmallIconSize);
-    }
-
-    static ImageSource? _imageSource;
-
-    public static ImageSource ImageSource => _imageSource ??= LoadImageSource();
-
-    static ImageSource LoadImageSource()
-    {
-        using var stream = Open("app.ico");
-        var decoder = new IconBitmapDecoder(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
-        return decoder.Frames[0];
-    }
-}
-
 static class StartWithWindows
 {
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";

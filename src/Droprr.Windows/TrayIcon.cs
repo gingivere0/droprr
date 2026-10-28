@@ -84,6 +84,7 @@ sealed class TrayIcon : IDisposable
                 ShowMenu();
         };
         _icon.BalloonTipClicked += (_, _) => OnNotificationClicked();
+        AppIcon.Changed += OnLogoChanged;
         UpdateRecent([]);
     }
 
@@ -213,8 +214,17 @@ sealed class TrayIcon : IDisposable
     [DllImport("user32.dll")]
     static extern bool SetForegroundWindow(IntPtr window);
 
+    // The tray icon follows the theme's logo colors.
+    void OnLogoChanged()
+    {
+        var old = _icon.Icon;
+        _icon.Icon = AppIcon.CreateTrayIcon();
+        old?.Dispose();
+    }
+
     public void Dispose()
     {
+        AppIcon.Changed -= OnLogoChanged;
         _menu.IsOpen = false;
         _anchor.Close();
         _icon.Visible = false;
