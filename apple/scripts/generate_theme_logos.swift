@@ -101,19 +101,44 @@ func write(_ rep: NSBitmapImageRep, _ url: URL, size: Int? = nil) {
 }
 
 let logo = NSBitmapImageRep(data: try! Data(contentsOf: pack.appendingPathComponent("brand/logo-transparent-1024.png")))!
-let icon = NSBitmapImageRep(data: try! Data(contentsOf: pack.appendingPathComponent("ios/AppIcon.appiconset/app-icon-1024.png")))!
+
+/// The phone icon: the theme's logo, large, on a soft tile of the theme's tint (iOS adds the rounded mask).
+func appIcon(logo: NSBitmapImageRep, background hexColor: String) -> NSBitmapImageRep {
+    let size = 1024
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8,
+                               samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                               bytesPerRow: 0, bitsPerPixel: 0)!
+    NSGraphicsContext.saveGraphicsState()
+    let ctx = NSGraphicsContext(bitmapImageRep: rep)!
+    NSGraphicsContext.current = ctx
+    let v = UInt32(hexColor.dropFirst(), radix: 16)!
+    let base = NSColor(srgbRed: CGFloat(v >> 16 & 0xFF) / 255, green: CGFloat(v >> 8 & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
+    let top = base.blended(withFraction: 0.35, of: .white)!, bottom = base.blended(withFraction: 0.06, of: .black)!
+    NSGradient(starting: top, ending: bottom)!.draw(in: NSRect(x: 0, y: 0, width: size, height: size), angle: -90)
+    let shadow = NSShadow()
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.18)
+    shadow.shadowBlurRadius = 36
+    shadow.shadowOffset = NSSize(width: 0, height: -14)
+    shadow.set()
+    let inset = CGFloat(size) * 0.05   // the logo art has its own padding; this leaves a comfortable margin
+    let img = NSImage(size: NSSize(width: logo.pixelsWide, height: logo.pixelsHigh)); img.addRepresentation(logo)
+    img.draw(in: NSRect(x: inset, y: inset, width: CGFloat(size) - inset * 2, height: CGFloat(size) - inset * 2))
+    NSGraphicsContext.restoreGraphicsState()
+    return rep
+}
 
 for id in order {
     let light = (list[id]!["light"] as! [String: String])
     let dir = pack.appendingPathComponent("themes/\(id)")
     try! FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    let (l, i): (NSBitmapImageRep, NSBitmapImageRep)
+    let l: NSBitmapImageRep
     if id == originalTheme {
-        (l, i) = (logo, icon)
+        l = logo
     } else {
-        let a = hex(light["accent"]!), s = hex(light["secondary"]!)
-        (l, i) = (recolor(logo, accent: a, secondary: s), recolor(icon, accent: a, secondary: s))
+        l = recolor(logo, accent: hex(light["accent"]!), secondary: hex(light["secondary"]!))
     }
+    // Graphite & Lime keeps the brand's lavender behind the original logo; others use their accent tint.
+    let i = appIcon(logo: l, background: id == originalTheme ? "#ECE6FF" : light["accentTint"]!)
     write(l, dir.appendingPathComponent("logo-1024.png"))
     write(l, dir.appendingPathComponent("menubar.png"), size: 18)
     write(l, dir.appendingPathComponent("menubar@2x.png"), size: 36)

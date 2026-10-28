@@ -6,12 +6,22 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Bindable var model: PhoneModel
     @State private var scanning = false
+    /// Debug builds accept `-DroprrTab 0|1|2` to open a tab (for screenshots).
+    @State private var tab: Int = {
+        #if DEBUG
+        return UserDefaults.standard.integer(forKey: "DroprrTab")
+        #else
+        return 0
+        #endif
+    }()
 
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             NavigationStack { SendTab(model: model) }
                 .tabItem { Label("Send", systemImage: "paperplane.fill") }
+                .tag(0)
             NavigationStack { ReceivedTab(model: model) }
+                .tag(1)
                 .tabItem { Label("Received", systemImage: "tray.and.arrow.down.fill") }
                 .badge(model.newItems.count)
             NavigationStack {
@@ -24,6 +34,7 @@ struct ContentView: View {
                     }
             }
             .tabItem { Label("Settings", systemImage: "gearshape.fill") }
+            .tag(2)
         }
         .tint(Theme.accentText)
         // The home-screen icon follows the theme too (alternate app icons).
@@ -154,6 +165,7 @@ private struct SendTab: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Space.xl) {
+                header
                 if desktops.isEmpty {
                     EmptyDevicesCard()
                 } else {
@@ -163,7 +175,8 @@ private struct SendTab: View {
                     SendStatusView(message: model.lastSendResult, progress: model.progress)
                 }
             }
-            .padding(Space.lg)
+            .padding(.horizontal, Space.lg)
+            .padding(.bottom, Space.lg)
         }
         .scrollDismissesKeyboard(.interactively)
         // The Send button stays pinned above the tab bar so it's always in reach.
@@ -177,9 +190,8 @@ private struct SendTab: View {
         }
         .sensoryFeedback(.selection, trigger: peerID)
         .background(backdrop)
-        .navigationTitle("Droprr")
+        .toolbar(.hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) { LogoBadge(size: 28).id(model.settings.theme) }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Done") { typing = false }
@@ -198,34 +210,65 @@ private struct SendTab: View {
         Theme.surface.ignoresSafeArea()
     }
 
+    /// Logo, a large "Send" title and who it's going to, like the Mac's Send window.
+    private var header: some View {
+        HStack(spacing: Space.md) {
+            LogoBadge(size: 44).id(model.settings.theme)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Send").font(.largeTitle.weight(.bold))
+                Text(peer.map { "To \($0.name)" } ?? "Pair a computer to start")
+                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, Space.sm)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    /// Device tiles like the Mac's: the selected one fills with the theme color.
     private var devicePicker: some View {
         VStack(alignment: .leading, spacing: Space.md) {
             SectionLabel("Send to")
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Space.md) {
-                    ForEach(desktops) { device in
-                        let selected = device.id == peer?.id
-                        Button {
-                            Motion.perform { peerID = device.id }
-                        } label: {
-                            HStack(spacing: Space.sm) {
-                                Image(systemName: Theme.symbol(for: device))
-                                Text(device.name).fontWeight(.semibold)
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: Space.md), GridItem(.flexible(), spacing: Space.md)],
+                      spacing: Space.md) {
+                ForEach(desktops) { device in
+                    let selected = device.id == peer?.id
+                    Button {
+                        Motion.perform { peerID = device.id }
+                    } label: {
+                        HStack(spacing: Space.md) {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(selected ? Theme.onAccent.opacity(0.18) : Theme.accentTint)
+                                .frame(width: 36, height: 36)
+                                .overlay {
+                                    Image(systemName: selected ? "checkmark" : Theme.symbol(for: device))
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(selected ? Theme.onAccent : Theme.accentText)
+                                }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(device.name).font(.subheadline.weight(.semibold))
+                                    .lineLimit(1).minimumScaleFactor(0.7)
+                                Text(Theme.platformName(device.platform)).font(.caption)
+                                    .foregroundStyle(selected ? Theme.onAccent.opacity(0.75) : Color.secondary)
                             }
-                            .padding(.horizontal, Space.lg)
-                            .padding(.vertical, Space.md)
-                            .foregroundStyle(selected ? Theme.onAccent : .primary)
-                            .background {
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(selected ? Theme.start : Theme.tile)
-                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .strokeBorder(selected ? .clear : Theme.stroke, lineWidth: 1))
-                            }
+                            Spacer(minLength: 0)
                         }
-                        .buttonStyle(.plain)
+                        .foregroundStyle(selected ? Theme.onAccent : Color.primary)
+                        .padding(Space.md)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(selected ? Theme.start : Theme.tile)
+                                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(selected ? .clear : Theme.stroke, lineWidth: 1))
+                        }
+                        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
+                    .buttonStyle(PressableStyle())
+                    .accessibilityLabel("\(device.name), \(Theme.platformName(device.platform))")
+                    .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
                 }
-                .padding(.vertical, Space.xs)
             }
         }
     }
@@ -233,12 +276,13 @@ private struct SendTab: View {
     /// Tapping a card selects it; nothing goes out until Send. Tap a selected card's × to clear it.
     /// Bento: Photos is the tall tile; Clipboard and Files stack beside it.
     private var actionGrid: some View {
-        HStack(spacing: Space.md) {
+        HStack(alignment: .top, spacing: Space.md) {
             PhotosPicker(selection: $photos, matching: .any(of: [.images, .videos])) {
                 ActionCardLabel(title: "Photos", symbol: "photo.fill.on.rectangle.fill",
                                 detail: photos.isEmpty ? "Pick photos or videos" : "\(photos.count) selected", selected: !photos.isEmpty)
             }
             .buttonStyle(PressableStyle())
+            .frame(height: 240)
             .overlay(alignment: .topTrailing) {
                 if !photos.isEmpty { ClearBadge { photos = [] } }
             }
@@ -254,11 +298,13 @@ private struct SendTab: View {
                         model.lastSendResult = "The clipboard is empty."
                     }
                 }
+                .frame(height: 114)
                 ActionCard(title: "Files", symbol: "folder.fill",
                            detail: files.isEmpty ? nil : "\(files.count) selected", selected: !files.isEmpty,
                            onClear: { files = [] }) {
                     importing = true
                 }
+                .frame(height: 114)
             }
         }
         .frame(height: 240)
@@ -266,15 +312,31 @@ private struct SendTab: View {
         .motion(Motion.standard, value: hasStaged)
     }
 
+    /// The theme's secondary-colored tile, like the Mac's message tile.
     private var composer: some View {
-        VStack(alignment: .leading, spacing: Space.md) {
-            SectionLabel("Text or link")
-            TextField("Type or paste something", text: $text, axis: .vertical)
-                .lineLimit(3...8)
+        HStack(alignment: .top, spacing: Space.md) {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Theme.secondaryText)
+                .frame(width: 32, height: 32)
+                .overlay {
+                    Image(systemName: "text.bubble.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.tile)
+                }
+                .accessibilityHidden(true)
+            TextField("Add a message or paste a link", text: $text, axis: .vertical)
+                .lineLimit(2...8)
                 .focused($typing)
-                .padding(Space.lg)
-                .background(Theme.tile, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
+                .padding(.top, 6)
         }
+        .padding(Space.lg)
+        .background {
+            RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+                .fill(Theme.secondaryTint)
+                .overlay(RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+                    .strokeBorder(typing ? Theme.secondaryText : .clear, lineWidth: 2))
+        }
+        .motion(Motion.fast, value: typing)
     }
 
     private var sendButton: some View {
@@ -541,7 +603,8 @@ private struct ReceivedTab: View {
             .buttonStyle(.plain)
             .foregroundStyle(Theme.accentText)
             .padding(.horizontal, Space.lg)
-            .padding(.bottom, Space.sm)
+            .padding(.vertical, Space.sm)
+            .background(Theme.surface)   // a solid band, so list rows don't show through
         }
         .sheet(item: Binding(get: { preview.map(PreviewFile.init) }, set: { preview = $0?.url })) { file in
             // A sheet instead of .quickLookPreview so photos and videos can be flicked down to close.
@@ -577,21 +640,29 @@ private struct ReceivedTab: View {
                 }
             } label: {
                 HStack(spacing: Space.md) {
-                    GlyphCircle(symbol: Theme.symbol(for: item), size: 36, filled: entry.isNew)
-                    VStack(alignment: .leading, spacing: Space.xs) {
+                    GlyphCircle(symbol: Theme.symbol(for: item), size: 36)
+                        .overlay(alignment: .topTrailing) {
+                            if entry.isNew {
+                                Circle().fill(Theme.start)
+                                    .overlay(Circle().strokeBorder(Theme.tile, lineWidth: 2))
+                                    .frame(width: 12, height: 12)
+                                    .offset(x: 4, y: -4)
+                                    .accessibilityLabel("New")
+                            }
+                        }
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(item.title)
                             .font(.body.weight(entry.isNew ? .semibold : .regular))
                             .foregroundStyle(.primary)
                             .lineLimit(2)
+                            .truncationMode(.middle)
                         Text(subtitle(entry))
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
-                    Spacer(minLength: 0)
-                    if entry.isNew {
-                        Circle().fill(Theme.accentText).frame(width: Space.sm, height: Space.sm)
-                            .accessibilityLabel("New")
-                    }
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.vertical, Space.xs)
                 .contentShape(Rectangle())
@@ -635,8 +706,8 @@ private struct ReceivedTab: View {
         case "url": "Link"
         default: "Text"
         }
-        let from = entry.source.map { " from \($0)" } ?? ""
-        return "\(kind)\(from) · \(entry.date.formatted(.relative(presentation: .named)))"
+        // "Type · time", like the Mac and PC lists; the sender shows in the context menu.
+        return "\(kind) · \(entry.date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated)))"
     }
 
     /// Opens On My iPhone › Droprr › Received in the Files app.

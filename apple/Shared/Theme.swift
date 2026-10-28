@@ -374,8 +374,10 @@ struct HoverButtonStyle: ButtonStyle {
             configuration.label
                 .padding(.horizontal, kind == .plain ? 4 : (compact ? 8 : 12))
                 .padding(.vertical, kind == .plain ? 3 : (compact ? 4 : 6))
+                // Tonal: accentText at rest, textPrimary on hover/press so contrast stays ≥ 4.5:1.
                 .foregroundStyle(kind == .prominent ? AnyShapeStyle(Theme.onPrimaryButton)
-                                 : kind == .secondary ? AnyShapeStyle(Theme.accentText) : AnyShapeStyle(.primary))
+                                 : kind == .secondary ? AnyShapeStyle(active || configuration.isPressed ? Color.primary : Theme.accentText)
+                                 : AnyShapeStyle(.primary))
                 .background {
                     let shape = RoundedRectangle(cornerRadius: Radius.button, style: .continuous)
                     switch kind {
@@ -386,7 +388,7 @@ struct HoverButtonStyle: ButtonStyle {
                     case .secondary:
                         // Tonal button (shared with Windows): accent tint, darker on hover/press.
                         shape.fill(Theme.accentTint)
-                            .overlay(shape.fill(Color.primary.opacity(configuration.isPressed ? 0.12 : active ? 0.06 : 0)))
+                            .overlay(shape.fill(Color.black.opacity(configuration.isPressed ? 0.08 : active ? 0.04 : 0)))
                     case .bordered:
                         shape.fill(Color.primary.opacity(configuration.isPressed ? 0.22 : active ? 0.15 : 0.07))
                     case .plain:

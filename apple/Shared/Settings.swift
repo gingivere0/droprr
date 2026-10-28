@@ -78,6 +78,20 @@ final class DroprrSettings {
             }
         }
 
+        #if DEBUG
+        // Debug builds: DROPRR_SEED=<plist> preloads settings for simulator screenshots.
+        if let seed = ProcessInfo.processInfo.environment["DROPRR_SEED"],
+           let values = NSDictionary(contentsOfFile: seed) as? [String: Any] {
+            for (key, value) in values {
+                if key.hasPrefix("tokens."), let token = value as? String {
+                    tokens.set(token, for: String(key.dropFirst("tokens.".count)))
+                } else {
+                    defaults.set(value, forKey: key)
+                }
+            }
+        }
+        #endif
+
         // Tokens: move any left in UserDefaults into the Keychain once, then delete them there.
         let legacyMain = defaults.string(forKey: "token")
         if let legacyMain, !legacyMain.isEmpty, tokens.get("main") == nil { tokens.set(legacyMain, for: "main") }
