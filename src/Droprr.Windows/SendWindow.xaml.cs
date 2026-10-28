@@ -84,7 +84,7 @@ public partial class SendWindow : Window
             Status.Text = "";
     }
 
-    void AddPaths(IEnumerable<string> paths)
+    internal void AddPaths(IEnumerable<string> paths)
     {
         var skippedFolders = false;
         foreach (var path in paths)

@@ -29,6 +29,7 @@ public partial class App : Application
     DispatcherTimer? _updateCheck;
     DispatcherTimer? _clipboardBatch;
     readonly List<string> _clipboardFiles = new();
+    readonly CancellationTokenSource _stopListening = new();
     FileSystemWatcher? _outboxWatcher;
 
     internal AppSettings Settings { get; private set; } = null!;
@@ -48,31 +49,19 @@ public partial class App : Application
             return;
         }
 
-        // Launched from Explorer's Send To menu: show the send window only, no tray or receiver.
-        var sendIndex = Array.IndexOf(e.Args, "--send");
-        if (sendIndex >= 0)
-        {
-            ShowSendWindow(e.Args.Skip(sendIndex + 1), exitOnClose: true);
-            return;
-        }
-
-        if (e.Args.Contains("--settings"))
-        {
-            ShowSettings();
-            _settingsWindow!.Closed += (_, _) => Shutdown();
-            return;
-        }
-
         // When taking over from an older build, let it finish exiting and release the lock and port first.
         await Task.Run(() => LiveUpdate.WaitForReplaced(e.Args));
 
         _instanceMutex = new Mutex(true, @"Local\Droprr.Tray", out var isFirstInstance);
         if (!isFirstInstance)
         {
-            MessageBox.Show("Droprr is already running in the system tray.", "Droprr");
+            // Already running: hand this launch to it (open Send, with any Send To files), then exit quietly.
+            if (!SingleInstance.TryForward(e.Args))
+                MessageBox.Show("Droprr is already running in the system tray.", "Droprr");
             Shutdown();
             return;
         }
+        SingleInstance.Listen(args => Dispatcher.BeginInvoke(() => HandleLaunch(args)), _stopListening.Token);
 
         // Conveniences: Droprr keeps running without them.
         try { Shortcuts.RegisterSendTo(); } catch { }
@@ -93,7 +82,25 @@ public partial class App : Application
             else if (window == "settings")
                 ShowSettings();
         }
+        // Started by the user rather than at sign-in or by an update: show something.
+        if (!e.Args.Contains("--background") && !e.Args.Contains("--replace"))
+            HandleLaunch(e.Args);
         try { LiveUpdate.RemoveOldVersions(); } catch { /* old folders are only clutter */ }
+    }
+
+    // A launch's command line: "--send <files>" from Explorer's Send To, "--settings", or nothing (Search,
+    // the Start menu, a double-click), which opens the Send window.
+    void HandleLaunch(string[] args)
+    {
+        if (args.Contains("--background"))
+            return;
+        if (args.Contains("--settings"))
+        {
+            ShowSettings();
+            return;
+        }
+        var sendIndex = Array.IndexOf(args, "--send");
+        ShowSendWindow(sendIndex >= 0 ? args.Skip(sendIndex + 1) : []);
     }
 
     // Keeps the tray's pending count current, whichever Droprr process queued or a phone fetched an item.
@@ -171,14 +178,12 @@ public partial class App : Application
 
     internal void ShowSettings()
     {
-        if (_settingsWindow is { IsLoaded: true })
+        if (_settingsWindow is not { IsLoaded: true })
         {
-            _settingsWindow.Activate();
-            return;
+            _settingsWindow = new SettingsWindow(this);
+            _settingsWindow.Show();
         }
-        _settingsWindow = new SettingsWindow(this);
-        _settingsWindow.Show();
-        _settingsWindow.Activate();
+        BringToFront(_settingsWindow);
     }
 
     // Fallback for phones that never called POST /pair: one that checks its inbox under an unknown name
@@ -230,22 +235,31 @@ public partial class App : Application
     // Raised on the UI thread after a device pairs, with its saved peer entry.
     internal event Action<Peer>? DevicePaired;
 
-    internal void ShowSendWindow(IEnumerable<string> files, bool exitOnClose = false)
+    // There's one Send window: opening it again adds any files to it and brings it to the front.
+    internal void ShowSendWindow(IEnumerable<string> files)
     {
-        // Opening it again from the tray brings the open one to the front instead of stacking windows.
         var paths = files.ToList();
-        if (paths.Count == 0 && _sendWindow is { IsLoaded: true })
+        if (_sendWindow is { IsLoaded: true })
         {
-            _sendWindow.Activate();
-            return;
+            _sendWindow.AddPaths(paths);
         }
-        var window = new SendWindow(SettingsStore.Load(), paths);
-        if (paths.Count == 0)
-            _sendWindow = window;
-        if (exitOnClose)
-            window.Closed += (_, _) => Shutdown();
-        window.Show();
+        else
+        {
+            _sendWindow = new SendWindow(SettingsStore.Load(), paths);
+            _sendWindow.Show();
+        }
+        BringToFront(_sendWindow);
+    }
+
+    static void BringToFront(Window window)
+    {
+        if (window.WindowState == WindowState.Minimized)
+            window.WindowState = WindowState.Normal;
         window.Activate();
+        // Flipping Topmost raises it even when Windows declines to give it focus.
+        window.Topmost = true;
+        window.Topmost = false;
+        window.Focus();
     }
 
     // Raised on the UI thread after Settings saves, so open windows can refresh.
@@ -357,6 +371,7 @@ public partial class App : Application
     internal async void ExitApp()
     {
         NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
+        _stopListening.Cancel();
         _outboxWatcher?.Dispose();
         _outboxPurge?.Stop();
         _tray?.Dispose();
