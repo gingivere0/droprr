@@ -480,6 +480,7 @@
 		963A352B97748B18405A3620 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-sunset AppIcon-cherry AppIcon-roseGold AppIcon-sage AppIcon-oliveMustard";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Config/iOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -506,6 +507,7 @@
 		451056732067D69511C0F813 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-sunset AppIcon-cherry AppIcon-roseGold AppIcon-sage AppIcon-oliveMustard";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Config/iOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;

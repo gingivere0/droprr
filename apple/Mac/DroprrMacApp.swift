@@ -44,7 +44,7 @@ private struct MenuBarLabel: View {
     var body: some View {
         // Seth prefers the colored logo over a monochrome template icon.
         Image(nsImage: {
-            let image = NSImage(named: "MenuBarIcon") ?? NSImage()
+            let image = NSImage(named: "MenuBarIcon-\(Theme.palette.id)") ?? NSImage()
             image.isTemplate = false
             image.size = NSSize(width: 18, height: 18)
             return image

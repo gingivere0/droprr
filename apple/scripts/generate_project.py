@@ -50,6 +50,7 @@ tset = {
    PRODUCT_BUNDLE_IDENTIFIER='"$(DROPRR_BUNDLE_PREFIX).droprr"', INFOPLIST_FILE='Config/iOS-Info.plist',
    CODE_SIGN_ENTITLEMENTS='Config/iOS.entitlements', INFOPLIST_KEY_CFBundleDisplayName='Droprr',
    ASSETCATALOG_COMPILER_APPICON_NAME='AppIcon',
+   ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES='"AppIcon-sunset AppIcon-cherry AppIcon-roseGold AppIcon-sage AppIcon-oliveMustard"',
    INFOPLIST_KEY_UILaunchScreen_Generation='YES', INFOPLIST_KEY_UIApplicationSceneManifest_Generation='YES',
    INFOPLIST_KEY_UISupportedInterfaceOrientations='"UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"',
    LD_RUNPATH_SEARCH_PATHS='"@executable_path/Frameworks"'),

@@ -179,7 +179,8 @@ struct LogoBadge: View {
     var size: CGFloat = 28
 
     var body: some View {
-        Image("Logo")
+        // Each theme has its own recolored logo (file-swap-icon-pack/themes).
+        Image("Logo-\(Theme.palette.id)")
             .resizable()
             .interpolation(.high)
             .scaledToFit()

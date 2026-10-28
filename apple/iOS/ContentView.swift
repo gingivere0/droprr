@@ -26,6 +26,9 @@ struct ContentView: View {
             .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
         .tint(Theme.accentText)
+        // The home-screen icon follows the theme too (alternate app icons).
+        .onAppear { AppIconSwitcher.apply(model.settings.theme) }
+        .onChange(of: model.settings.theme) { _, theme in AppIconSwitcher.apply(theme) }
         .environment(\.startPairing, { scanning = true })
         .environment(\.pairWithCode, { model.pair(with: $0) })
         .sheet(isPresented: $scanning) {
@@ -666,5 +669,15 @@ private struct QuickLookSheet: UIViewControllerRepresentable {
         init(url: URL) { self.url = url }
         func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
         func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { url as NSURL }
+    }
+}
+
+/// Switches the home-screen icon to the theme's recolored logo. Graphite & Lime uses the main icon.
+enum AppIconSwitcher {
+    @MainActor
+    static func apply(_ theme: String) {
+        let wanted: String? = theme == ThemePalette.defaultID ? nil : "AppIcon-\(theme)"
+        guard UIApplication.shared.supportsAlternateIcons, UIApplication.shared.alternateIconName != wanted else { return }
+        UIApplication.shared.setAlternateIconName(wanted) { _ in }
     }
 }

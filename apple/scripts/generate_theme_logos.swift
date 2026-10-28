@@ -118,5 +118,11 @@ for id in order {
     write(l, dir.appendingPathComponent("menubar.png"), size: 18)
     write(l, dir.appendingPathComponent("menubar@2x.png"), size: 36)
     write(i, dir.appendingPathComponent("app-icon-1024.png"))
+    // App icons must be opaque: flatten through JPEG with sips.
+    let flat = Process()
+    flat.executableURL = URL(fileURLWithPath: "/bin/sh")
+    let icon = dir.appendingPathComponent("app-icon-1024.png").path
+    flat.arguments = ["-c", "sips -s format jpeg -s formatOptions best '\(icon)' --out /tmp/droprr-flat.jpg >/dev/null && sips -s format png /tmp/droprr-flat.jpg --out '\(icon)' >/dev/null"]
+    try! flat.run(); flat.waitUntilExit()
     print("wrote", id)
 }
