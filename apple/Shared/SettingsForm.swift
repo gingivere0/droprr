@@ -14,6 +14,7 @@ struct SettingsForm<Extra: View>: View {
     @State private var editing: Peer?
     @State private var pingResults: [UUID: PingResult] = [:]
     @State private var showToken = false
+    @State private var removing: Peer?
 
     init(settings: DroprrSettings, @ViewBuilder extra: () -> Extra = { EmptyView() }) {
         self.settings = settings
@@ -26,7 +27,12 @@ struct SettingsForm<Extra: View>: View {
                 ForEach(settings.peers) { peer in
                     PeerRow(peer: peer, result: pingResults[peer.id],
                             onTest: { Task { await ping(peer) } },
-                            onEdit: { editing = peer })
+                            onEdit: { editing = peer },
+                            onRemove: { removing = peer })
+                        .contextMenu {
+                            Button("Edit…") { editing = peer }
+                            Button("Remove \(peer.name)", role: .destructive) { removing = peer }
+                        }
                 }
                 .onDelete { settings.peers.remove(atOffsets: $0) }
                 Button {
@@ -103,8 +109,21 @@ struct SettingsForm<Extra: View>: View {
             }
         }
         .formStyle(.grouped)
+        .confirmationDialog("Remove \(removing?.name ?? "device")?", isPresented: Binding(
+            get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
+            Button("Remove", role: .destructive) {
+                if let peer = removing { settings.peers.removeAll { $0.id == peer.id } }
+                removing = nil
+            }
+            Button("Cancel", role: .cancel) { removing = nil }
+        } message: {
+            Text(removing?.isPhone == true
+                 ? "Anything waiting for it is discarded within 7 days. If the iPhone checks in again, it's added back."
+                 : "You can add it again later with its Tailscale name.")
+        }
         .sheet(item: $editing) { peer in
-            PeerEditor(peer: peer, isNew: !settings.peers.contains { $0.id == peer.id }) { saved in
+            PeerEditor(peer: peer, isNew: !settings.peers.contains { $0.id == peer.id },
+                       onRemove: { editing = nil; removing = peer }) { saved in
                 if let saved {
                     if let i = settings.peers.firstIndex(where: { $0.id == saved.id }) {
                         settings.peers[i] = saved
@@ -138,6 +157,7 @@ private struct PeerRow: View {
     var result: PingResult?
     var onTest: () -> Void
     var onEdit: () -> Void
+    var onRemove: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -168,6 +188,12 @@ private struct PeerRow: View {
                 #if os(macOS)
                 .hoverHint("Edit or rename this device")
                 #endif
+            #if os(macOS)
+            Button(action: onRemove) { Image(systemName: "trash") }
+                .buttonStyle(HoverButtonStyle(.plain))
+                .foregroundStyle(.red)
+                .hoverHint("Remove this device")
+            #endif
         }
         .padding(.vertical, 2)
     }
@@ -189,6 +215,7 @@ private struct PeerRow: View {
 private struct PeerEditor: View {
     @State var peer: Peer
     var isNew: Bool
+    var onRemove: () -> Void
     var done: (Peer?) -> Void
 
     var body: some View {
@@ -215,6 +242,12 @@ private struct PeerEditor: View {
                         Text("Items you send to an iPhone wait on this device until Droprr opens on the phone.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
+                    }
+                }
+                if !isNew {
+                    Section {
+                        Button("Remove Device", role: .destructive, action: onRemove)
+                            .foregroundStyle(.red)
                     }
                 }
             }
