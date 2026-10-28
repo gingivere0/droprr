@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import VisionKit
 
@@ -68,3 +69,26 @@ private struct QRScanner: UIViewControllerRepresentable {
         }
     }
 }
+
+private struct StartPairingKey: EnvironmentKey {
+    static let defaultValue: () -> Void = {}
+}
+
+private struct PairWithCodeKey: EnvironmentKey {
+    static let defaultValue: (String) -> Void = { _ in }
+}
+
+extension EnvironmentValues {
+    /// Applies a scanned pairing code; used by the Add Device screen's scanner.
+    var pairWithCode: (String) -> Void {
+        get { self[PairWithCodeKey.self] }
+        set { self[PairWithCodeKey.self] = newValue }
+    }
+
+    var startPairing: () -> Void {
+        get { self[StartPairingKey.self] }
+        set { self[StartPairingKey.self] = newValue }
+    }
+}
+
+#endif

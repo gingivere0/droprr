@@ -64,6 +64,18 @@ struct DroprrClient {
         try check(response, data)
     }
 
+    /// Tells a desktop about this device so pairing works both ways (POST /pair). Returns the desktop's name.
+    @discardableResult
+    func pair(name: String, platform: String) async throws -> String {
+        var request = try makeRequest(path: "/pair", method: "POST")
+        request.timeoutInterval = 5
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name, "platform": platform])
+        let (data, response) = try await Self.session.data(for: request)
+        try check(response, data)
+        return ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["name"] as? String ?? peer.name
+    }
+
     // MARK: Inbox (phone pull, see docs/PROTOCOL.md)
 
     struct InboxItem: Decodable, Identifiable {

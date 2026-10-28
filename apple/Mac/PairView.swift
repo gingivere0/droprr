@@ -6,6 +6,7 @@ struct PairView: View {
     @Bindable var model: MacModel
     @State private var address = PairingInfo.tailscaleAddress()
     @State private var revealed = false
+    @Environment(\.dismissWindow) private var dismissWindow
 
     private var pairing: PairingInfo? {
         guard let address, !model.settings.token.isEmpty else { return nil }
@@ -59,6 +60,27 @@ struct PairView: View {
         }
         .padding(24)
         .frame(width: 340)
+        .onAppear { model.lastPaired = nil; revealed = false }
+        .onChange(of: model.lastPaired) { _, name in
+            // A phone scanned the code and introduced itself: confirm, then close.
+            guard name != nil else { return }
+            Task {
+                try? await Task.sleep(for: .seconds(1.5))
+                dismissWindow(id: "pair")
+            }
+        }
+        .overlay {
+            if let name = model.lastPaired {
+                VStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 56)).foregroundStyle(Theme.gradient)
+                    Text("Paired with \(name)").font(.title3.weight(.semibold))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.regularMaterial)
+                .transition(.opacity)
+            }
+        }
+        .animation(.default, value: model.lastPaired)
     }
 
     private func problem(_ message: String, button: String, action: @escaping () -> Void) -> some View {

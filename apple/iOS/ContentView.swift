@@ -26,6 +26,7 @@ struct ContentView: View {
             .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
         .environment(\.startPairing, { scanning = true })
+        .environment(\.pairWithCode, { model.pair(with: $0) })
         .sheet(isPresented: $scanning) {
             PairingScannerSheet { model.pair(with: $0) }
         }
@@ -36,17 +37,6 @@ struct ContentView: View {
         } message: {
             Text(model.pairingMessage ?? "")
         }
-    }
-}
-
-private struct StartPairingKey: EnvironmentKey {
-    static let defaultValue: () -> Void = {}
-}
-
-extension EnvironmentValues {
-    var startPairing: () -> Void {
-        get { self[StartPairingKey.self] }
-        set { self[StartPairingKey.self] = newValue }
     }
 }
 

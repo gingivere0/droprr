@@ -10,6 +10,14 @@ protocol OutboxServing: AnyObject {
     func enqueue(_ items: [ReceivedItem], forPeerID id: String) throws
 }
 
+/// A device introducing itself after scanning this desktop's pairing code (POST /pair).
+struct PairRequest {
+    var name: String
+    var platform: String
+    var host: String   // empty for phones
+    var port: Int
+}
+
 struct ReceivedItem: Identifiable {
     enum Kind {
         case file(URL)
@@ -41,6 +49,8 @@ final class DroprrReceiver {
     var onStateChange: (String) -> Void = { _ in }
     /// Desktops serve the phone inbox from this; nil (iPhone) means /inbox is 404.
     var outbox: OutboxServing?
+    /// Desktops handle POST /pair with this. Called on the main queue.
+    var onPair: ((PairRequest) -> Void)?
 
     init(settings: DroprrSettings, inbox: URL) {
         self.settings = settings
@@ -78,6 +88,8 @@ final class DroprrReceiver {
         case ("GET", "ping") where route.segments.count == 1,
              ("POST", "send") where route.segments.count == 1:
             return nil
+        case ("POST", "pair") where route.segments.count == 1:
+            return onPair == nil ? .json(404, ["ok": false, "error": "not found"]) : nil
         case ("POST", "outbox") where route.segments.count == 2:
             // Loopback-only hand-off from the Mac share extension: queue for a phone peer.
             return outbox != nil && Self.isLoopback(request.remoteHost) ? nil : .json(404, ["ok": false, "error": "not found"])
@@ -132,6 +144,31 @@ final class DroprrReceiver {
         let route = Route(request)
         if route.segments.first == "inbox", let outbox {
             return handleInbox(request, route, outbox)
+        }
+        if route.segments.first == "pair", let onPair {
+            guard let body = request.bodyFile, let data = try? Data(contentsOf: body),
+                  let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                return .json(400, ["ok": false, "error": "expected a JSON body"])
+            }
+            guard let name = (json["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+                return .json(400, ["ok": false, "error": "missing name"])
+            }
+            guard let platform = json["platform"] as? String, ["ios", "macos", "windows"].contains(platform) else {
+                return .json(400, ["ok": false, "error": "platform must be ios, macos or windows"])
+            }
+            let host = (json["host"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if platform != "ios" && host.isEmpty {
+                return .json(400, ["ok": false, "error": "computers must send host"])
+            }
+            var port = DroprrDefaults.port
+            if let raw = json["port"] {
+                guard let value = raw as? Int, (1...65535).contains(value) else {
+                    return .json(400, ["ok": false, "error": "bad port"])
+                }
+                port = value
+            }
+            DispatchQueue.main.async { onPair(PairRequest(name: name, platform: platform, host: host, port: port)) }
+            return .json(200, ["ok": true, "name": settings.deviceName])
         }
         if route.segments.first == "outbox", let outbox {
             let temp = FileManager.default.temporaryDirectory.appendingPathComponent("droprr-fwd-\(UUID().uuidString)")

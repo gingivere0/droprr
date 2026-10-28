@@ -217,10 +217,26 @@ private struct PeerEditor: View {
     var isNew: Bool
     var onRemove: () -> Void
     var done: (Peer?) -> Void
+    #if os(iOS)
+    @Environment(\.pairWithCode) private var pairWithCode
+    @State private var scanning = false
+    #endif
 
     var body: some View {
         NavigationStack {
             Form {
+                #if os(iOS)
+                if isNew {
+                    Section {
+                        Button { scanning = true } label: {
+                            Label("Scan Pairing Code", systemImage: "qrcode.viewfinder")
+                                .font(.body.weight(.semibold))
+                        }
+                    } footer: {
+                        Text("On the computer, open Droprr and choose Pair a Phone. Or fill in the details below.")
+                    }
+                }
+                #endif
                 Section {
                     TextField("Name", text: $peer.name)
                     Toggle("This is an iPhone", isOn: $peer.isPhone)
@@ -255,6 +271,15 @@ private struct PeerEditor: View {
             }
             .formStyle(.grouped)
             .navigationTitle(isNew ? "Add Device" : peer.name)
+            #if os(iOS)
+            .sheet(isPresented: $scanning) {
+                PairingScannerSheet { code in
+                    done(nil)
+                    // Let this screen close before the pairing result is shown.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { pairWithCode(code) }
+                }
+            }
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { done(nil) } }
                 ToolbarItem(placement: .confirmationAction) {

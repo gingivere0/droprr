@@ -130,7 +130,10 @@ final class PhoneModel {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         Task {
             do {
-                let ping = try await DroprrClient(peer: peer, token: settings.token).ping()
+                let client = DroprrClient(peer: peer, token: settings.token)
+                // Pair both ways: the desktop adds this phone too.
+                try? await client.pair(name: settings.deviceName, platform: DroprrSettings.platform)
+                let ping = try await client.ping()
                 if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) {
                     settings.peers[i].platform = ping.platform
                     settings.peers[i].remoteName = ping.name

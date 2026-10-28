@@ -1,6 +1,7 @@
 import AppKit
 import ServiceManagement
 import SwiftUI
+import UserNotifications
 
 @main
 struct DroprrMacApp: App {
@@ -95,6 +96,7 @@ final class MacModel {
         defer { Self.current = self }
         receiver = DroprrReceiver(settings: settings, inbox: Self.inbox)
         receiver.outbox = outbox
+        receiver.onPair = { [weak self] in self?.paired($0) }
         receiver.onStateChange = { [weak self] state in
             self?.status = state
             self?.isListening = state.hasPrefix("Listening")
@@ -124,6 +126,31 @@ final class MacModel {
         withAnimation { recent.insert(item, at: 0) }
         recent = Array(recent.prefix(8))
         Notifier.shared.notify(item)
+    }
+
+    /// The name of the last device that paired, so an open Pair window can confirm and close.
+    var lastPaired: String?
+
+    /// A device paired with this Mac (POST /pair): add it, or update the peer with that name.
+    private func paired(_ request: PairRequest) {
+        if let i = settings.peers.firstIndex(where: { $0.matches(deviceName: request.name) }) {
+            settings.peers[i].platform = request.platform
+            settings.peers[i].remoteName = request.name
+            // Keep a host we already have for a known computer.
+            if settings.peers[i].host.isEmpty { settings.peers[i].host = request.host }
+            if request.platform != "ios" && settings.peers[i].host == request.host { settings.peers[i].port = request.port }
+        } else {
+            settings.peers.append(Peer(name: request.name, host: request.host, port: request.port,
+                                       platform: request.platform, remoteName: request.name))
+        }
+        lastPaired = request.name
+        lastSendResult = "\(request.name) paired."
+        let content = UNMutableNotificationContent()
+        content.title = "\(request.name) paired"
+        content.body = request.platform == "ios"
+            ? "Items you send to it wait here until Droprr opens on the phone."
+            : "You can send to it now."
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
 
     func open(_ item: ReceivedItem) {
