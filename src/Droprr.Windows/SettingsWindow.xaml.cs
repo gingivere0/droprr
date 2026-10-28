@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Windows;
+using System.Windows.Input;
 using Microsoft.Win32;
 
 namespace Droprr;
@@ -35,11 +36,8 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         ShowToken();
 
         // Esc closes without saving, unless something inside used it first (like cancelling a cell edit).
-        KeyDown += (_, e) =>
-        {
-            if (e.Key == System.Windows.Input.Key.Escape && !e.Handled)
-                Close();
-        };
+        CommandBindings.Add(new CommandBinding(ApplicationCommands.Close, (_, _) => Close()));
+        InputBindings.Add(new KeyBinding(ApplicationCommands.Close, Key.Escape, ModifierKeys.None));
 
         // Show a device the moment it pairs, without losing edits made here that aren't saved yet.
         app.DevicePaired += OnDevicePaired;

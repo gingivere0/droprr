@@ -57,7 +57,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Couldn't read {SettingsStore.FilePath}:\n{ex.Message}", "Droprr");
+            await AppTheme.ShowMessageAsync("Droprr couldn't start", $"Couldn't read {SettingsStore.FilePath}:\n{ex.Message}");
             Shutdown(1);
             return;
         }
@@ -81,7 +81,7 @@ public partial class App : Application
         {
             // Already running: hand this launch to it (open Send, with any Send To files), then exit quietly.
             if (!SingleInstance.TryForward(e.Args))
-                MessageBox.Show("Droprr is already running in the system tray.", "Droprr");
+                await AppTheme.ShowMessageAsync("Droprr", "Droprr is already running in the system tray.");
             Shutdown();
             return;
         }

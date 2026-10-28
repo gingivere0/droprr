@@ -13,6 +13,10 @@
     <Color x:Key="AccentTextLight">#5C21F7</Color>
     <Color x:Key="AccentTextDark">#A98BFF</Color>
     <SolidColorBrush x:Key="BrandCoralBrush" Color="{StaticResource BrandCoral}" />
+    <!-- accent.tint: violet at 12% (light) or 20% (dark). AppTheme swaps this brush when the theme changes. -->
+    <sys:Double x:Key="AccentTintOpacityLight">0.12</sys:Double>
+    <sys:Double x:Key="AccentTintOpacityDark">0.20</sys:Double>
+    <SolidColorBrush x:Key="AccentTintBrush" Color="{StaticResource BrandViolet}" Opacity="0.12" />
     <SolidColorBrush x:Key="QrPlateBrush" Color="#FFFFFF" />
 
     <!-- font.family, font.role (Windows) -->

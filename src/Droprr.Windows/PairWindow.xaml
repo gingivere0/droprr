@@ -13,7 +13,7 @@
 
             <Border x:Name="CodePanel" CornerRadius="{StaticResource RadiusFeature}" Background="{StaticResource QrPlateBrush}"
                     Padding="{StaticResource FeaturePadding}" HorizontalAlignment="Center">
-                <Image x:Name="Code" Width="280" Height="280" RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                <Image x:Name="Code" Width="280" Height="280" AutomationProperties.Name="Pairing QR code" RenderOptions.BitmapScalingMode="NearestNeighbor" />
             </Border>
             <Grid x:Name="PairedPanel" Visibility="Collapsed" Height="312">
                 <StackPanel VerticalAlignment="Center">

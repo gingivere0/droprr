@@ -12,6 +12,10 @@
     <Version>0.2.0</Version>
     <IconPack>..\..\file-swap-icon-pack\windows\</IconPack>
     <ApplicationIcon>$(IconPack)app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WFO0003 suggests WinForms' ApplicationHighDpiMode instead of the manifest, but that only applies through
+         WinForms' own startup. This is a WPF app (WinForms is only the tray icon), so the manifest sets DPI awareness. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

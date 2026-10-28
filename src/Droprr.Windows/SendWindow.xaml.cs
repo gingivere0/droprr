@@ -1,11 +1,13 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using Microsoft.Win32;
+using Wpf.Ui.Controls;
 
 namespace Droprr;
 
@@ -18,6 +20,10 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
 {
     AppSettings _settings;
     readonly ObservableCollection<FileEntry> _files = new();
+    readonly ObservableCollection<Peer> _peers = new();
+
+    static readonly RoutedUICommand SendCommand = new("Send", nameof(SendCommand), typeof(SendWindow));
+    static readonly RoutedUICommand PasteCommand = new("Paste", nameof(PasteCommand), typeof(SendWindow));
 
     public SendWindow(AppSettings settings, IEnumerable<string> files)
     {
@@ -25,6 +31,16 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         AppTheme.Setup(this, AppTitleBar);
         _settings = settings;
 
+        // Keyboard: Ctrl+Enter sends from anywhere (Enter alone sends unless the text box takes it as a new
+        // line), Ctrl+V pastes files or text when the text box doesn't take it, and Esc closes.
+        CommandBindings.Add(new CommandBinding(SendCommand, (_, _) => OnSend(this, new RoutedEventArgs())));
+        CommandBindings.Add(new CommandBinding(PasteCommand, (_, _) => OnPaste(this, new RoutedEventArgs())));
+        CommandBindings.Add(new CommandBinding(ApplicationCommands.Close, (_, _) => Close()));
+        InputBindings.Add(new KeyBinding(SendCommand, Key.Enter, ModifierKeys.Control));
+        InputBindings.Add(new KeyBinding(PasteCommand, Key.V, ModifierKeys.Control));
+        InputBindings.Add(new KeyBinding(ApplicationCommands.Close, Key.Escape, ModifierKeys.None));
+
+        PeerBox.ItemsSource = _peers;
         FileList.ItemsSource = _files;
         _files.CollectionChanged += (_, _) => DropHint.Visibility = _files.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         AddPaths(files);
@@ -43,35 +59,43 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
     void ShowPeers()
     {
         var selected = (PeerBox.SelectedItem as Peer)?.Name;
+        _peers.Clear();
         foreach (var peer in _settings.Peers)
+        {
             peer.Waiting = peer.IsPhone ? Outbox.List(peer.Name).Count : 0;
-        PeerBox.ItemsSource = null;
-        PeerBox.ItemsSource = _settings.Peers;
-        PeerBox.SelectedItem = _settings.Peers.FirstOrDefault(p => p.Name == selected) ?? _settings.Peers.FirstOrDefault();
-        EmptyState.Visibility = _settings.Peers.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        ShowWaitingBadge();
+            _peers.Add(peer);
+        }
+        PeerBox.SelectedItem = _peers.FirstOrDefault(p => p.Name == selected) ?? _peers.FirstOrDefault();
+        PeerBox.Visibility = _peers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        EmptyState.Visibility = _peers.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    void ShowWaitingBadge()
-    {
-        if (PeerBox.SelectedItem is Peer { IsPhone: true, Waiting: > 0 } phone)
-        {
-            WaitingText.Text = $"{phone.Waiting} waiting";
-            WaitingBadge.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            WaitingBadge.Visibility = Visibility.Collapsed;
-        }
-    }
-
+    // The "N waiting x" badge on a phone's card clears that phone's queue right away.
     void OnClearWaiting(object sender, RoutedEventArgs e)
     {
-        if (PeerBox.SelectedItem is not Peer { IsPhone: true } phone)
+        if ((sender as FrameworkElement)?.DataContext is not Peer { IsPhone: true } phone)
             return;
-        ((App)Application.Current).ClearWaiting(phone.Name);
+        if (Application.Current is App app)
+            app.ClearWaiting(phone.Name);
+        else
+            Outbox.Clear(phone.Name);
         ShowPeers();
     }
+
+    void ShowStatus(InfoBarSeverity severity, string message)
+    {
+        StatusBar.Severity = severity;
+        StatusBar.Title = severity switch
+        {
+            InfoBarSeverity.Error => "Couldn't send",
+            InfoBarSeverity.Success => "Sent",
+            _ => "",
+        };
+        StatusBar.Message = message;
+        StatusBar.IsOpen = true;
+    }
+
+    void HideStatus() => StatusBar.IsOpen = false;
 
     void OnSettingsSaved()
     {
@@ -101,8 +125,6 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
 
     string TokenFor(Peer peer) => string.IsNullOrEmpty(peer.Token) ? _settings.Token : peer.Token;
 
-    void OnPeerChanged(object sender, SelectionChangedEventArgs e) => ShowWaitingBadge();
-
     internal void AddPaths(IEnumerable<string> paths)
     {
         var skippedFolders = false;
@@ -114,19 +136,34 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
                 _files.Add(new FileEntry(path));
         }
         if (skippedFolders)
-            Status.Text = "Folders aren't supported yet, so they were skipped.";
+            ShowStatus(InfoBarSeverity.Warning, "Folders aren't supported yet, so they were skipped.");
     }
+
+    static bool CanDrop(DragEventArgs e) =>
+        e.Data.GetDataPresent(DataFormats.FileDrop) || e.Data.GetDataPresent(DataFormats.UnicodeText);
+
+    // The drop zone's dashed border turns accent-colored, with an accent tint, while something droppable is over the window.
+    void HighlightDropZone(bool on)
+    {
+        DropBorder.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty,
+            on ? "AccentFillColorDefaultBrush" : "ControlStrongStrokeColorDefaultBrush");
+        DropBorder.SetResourceReference(System.Windows.Shapes.Shape.FillProperty,
+            on ? "AccentTintBrush" : "CardBackgroundFillColorDefaultBrush");
+    }
+
+    void OnDragEnter(object sender, DragEventArgs e) => HighlightDropZone(CanDrop(e));
+
+    void OnDragLeave(object sender, DragEventArgs e) => HighlightDropZone(false);
 
     void OnDragOver(object sender, DragEventArgs e)
     {
-        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) || e.Data.GetDataPresent(DataFormats.UnicodeText)
-            ? DragDropEffects.Copy
-            : DragDropEffects.None;
+        e.Effects = CanDrop(e) ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
     void OnDrop(object sender, DragEventArgs e)
     {
+        HighlightDropZone(false);
         if (e.Data.GetData(DataFormats.FileDrop) is string[] paths)
             AddPaths(paths);
         else if (e.Data.GetData(DataFormats.UnicodeText) is string text)
@@ -153,15 +190,17 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
 
     async void OnSend(object sender, RoutedEventArgs e)
     {
+        if (!SendButton.IsEnabled)
+            return;
         if (PeerBox.SelectedItem is not Peer peer)
         {
-            Status.Text = "Pick a device first.";
+            ShowStatus(InfoBarSeverity.Informational, "Pick a device first.");
             return;
         }
         var text = MessageText.Text.Trim();
         if (_files.Count == 0 && text.Length == 0)
         {
-            Status.Text = "Add files or type some text first.";
+            ShowStatus(InfoBarSeverity.Informational, "Add files or type some text first.");
             return;
         }
 
@@ -178,7 +217,7 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         Progress.Value = 0;
         Progress.Visibility = paths.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         // Queuing for a phone is quiet: its "N waiting" badge and the tray count show the result.
-        Status.Text = peer.IsPhone ? "" : $"Sending to {peer.Name}…";
+        HideStatus();
         try
         {
             if (peer.IsPhone)
@@ -195,14 +234,14 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
                     await Sender.SendFilesAsync(peer, TokenFor(peer), paths, progress);
                 if (text.Length > 0)
                     await Sender.SendTextAsync(peer, TokenFor(peer), text);
-                Status.Text = $"Sent to {peer.Name}.";
+                ShowStatus(InfoBarSeverity.Success, $"Sent to {peer.Name}.");
             }
             _files.Clear();
             MessageText.Clear();
         }
         catch (Exception ex)
         {
-            Status.Text = $"Couldn't send to {peer.Name}: {ex.Message}";
+            ShowStatus(InfoBarSeverity.Error, $"{peer.Name}: {ex.Message}");
         }
         finally
         {

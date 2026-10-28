@@ -32,6 +32,15 @@ public sealed class Peer
     public int Waiting { get; set; }
 
     [JsonIgnore]
+    public bool HasWaiting => Waiting > 0;
+
+    [JsonIgnore]
+    public string WaitingLabel => $"{Waiting} waiting";
+
+    [JsonIgnore]
+    public string ClearWaitingLabel => $"Clear {Waiting} item{(Waiting == 1 ? "" : "s")} waiting for {Name}";
+
+    [JsonIgnore]
     public string Note => !IsPhone ? Host
         : Waiting > 0 ? $"iPhone · {Waiting} waiting"
         : "iPhone";
