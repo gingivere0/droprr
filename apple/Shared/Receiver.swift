@@ -17,9 +17,9 @@ struct ReceivedItem: Identifiable {
         case url(URL)
     }
 
-    let id = UUID()
+    var id = UUID()
     let kind: Kind
-    let date = Date()
+    var date = Date()
 
     var title: String {
         switch kind {

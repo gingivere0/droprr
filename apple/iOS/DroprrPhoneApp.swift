@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UserNotifications
 
 @main
 struct DroprrPhoneApp: App {
@@ -12,14 +13,8 @@ struct DroprrPhoneApp: App {
                 .tint(Theme.start)
         }
         .onChange(of: scenePhase) { _, phase in
-            // iOS can't keep a listener alive in the background, so receive only while open,
-            // and collect anything the desktops queued for us each time the app comes forward.
-            if phase == .active {
-                model.startReceiving()
-                Task { await model.collectInbox() }
-            } else if phase == .background {
-                model.stopReceiving()
-            }
+            // Desktops always queue items for a phone, so collect them each time the app comes forward.
+            if phase == .active { Task { await model.collectInbox() } }
         }
     }
 }
@@ -28,48 +23,88 @@ struct DroprrPhoneApp: App {
 @MainActor
 final class PhoneModel {
     let settings = DroprrSettings.shared
-    var status = "Not receiving"
-    var isListening = false
-    var received: [ReceivedItem] = []
+    var history: [HistoryEntry] = []
     var lastSendResult: String?
     var progress: Double?
     var sending = false
     var collecting = false
     var lastCollect: String?
 
-    @ObservationIgnored private var receiver: DroprrReceiver!
-
     /// Visible in the Files app under On My iPhone › Droprr.
-    static var inbox: URL {
+    nonisolated static var inbox: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Received")
     }
 
+    private static var historyURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("history.json")
+    }
+
+    static let historyLimit = 30
+
     init() {
-        receiver = DroprrReceiver(settings: settings, inbox: Self.inbox)
-        receiver.onStateChange = { [weak self] state in
-            self?.status = state
-            self?.isListening = state.hasPrefix("Listening")
+        if let data = try? Data(contentsOf: Self.historyURL),
+           let saved = try? JSONDecoder().decode([HistoryEntry].self, from: data) {
+            history = saved.filter(\.isAvailable)
         }
-        receiver.onItem = { [weak self] in self?.handle($0) }
-        Notifier.shared.requestPermission()
     }
 
-    func startReceiving() { receiver.start() }
+    var newItems: [HistoryEntry] { history.filter(\.isNew) }
+    var seenItems: [HistoryEntry] { history.filter { !$0.isNew } }
 
-    func stopReceiving() {
-        receiver.stop()
-        isListening = false
-        status = "Not receiving"
+    private func record(_ item: ReceivedItem, from source: String?) {
+        withAnimation {
+            history.insert(HistoryEntry(item, source: source), at: 0)
+            trimAndSave()
+        }
+        // No notification here: items only arrive while the app is open, and the New list shows them.
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
     }
 
-    private func handle(_ item: ReceivedItem, from source: String? = nil) {
-        switch item.kind {
+    /// Tapping an item: copy text and links, then move it out of New and clear its notification.
+    func use(_ entry: HistoryEntry) {
+        switch entry.item.kind {
         case .text(let text): Clipboard.copy(text: text)
         case .url(let url): Clipboard.copy(url: url)
         case .file: break
         }
-        withAnimation { received.insert(item, at: 0) }
-        Notifier.shared.notify(item, from: source)
+        markSeen(entry)
+    }
+
+    func markSeen(_ entry: HistoryEntry) {
+        guard let i = history.firstIndex(where: { $0.id == entry.id }), history[i].isNew else { return }
+        withAnimation { history[i].isNew = false }
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [entry.id.uuidString])
+        trimAndSave()
+    }
+
+    func markAllSeen() {
+        let ids = newItems.map(\.id.uuidString)
+        withAnimation { for i in history.indices { history[i].isNew = false } }
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids)
+        trimAndSave()
+    }
+
+    func delete(_ entry: HistoryEntry) {
+        withAnimation { history.removeAll { $0.id == entry.id } }
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [entry.id.uuidString])
+        trimAndSave()
+    }
+
+    func clearHistory() {
+        withAnimation { history.removeAll { !$0.isNew } }
+        trimAndSave()
+    }
+
+    /// Keeps every new item plus the most recent seen ones. Received files stay in the Files app.
+    private func trimAndSave() {
+        var seen = 0
+        history = history.filter { entry in
+            if entry.isNew { return true }
+            seen += 1
+            return seen <= Self.historyLimit
+        }
+        try? FileManager.default.createDirectory(at: Self.historyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(history) { try? data.write(to: Self.historyURL, options: .atomic) }
     }
 
     // MARK: Inbox
@@ -102,7 +137,7 @@ final class PhoneModel {
                         item = ReceivedItem(kind: .text(entry.content ?? ""))
                     }
                     try await client.acknowledge(entry)
-                    handle(item, from: peer.name)
+                    record(item, from: peer.name)
                     count += 1
                 } catch {
                     continue   // left in the outbox; we'll try again next time
@@ -159,5 +194,43 @@ final class PhoneModel {
             return .files([file])
         }
         return nil
+    }
+}
+
+/// One received item in the Received tab. Files are stored by name, since the app's
+/// container path changes between installs.
+struct HistoryEntry: Codable, Identifiable {
+    var id: UUID
+    var date: Date
+    var source: String?
+    var isNew: Bool
+    var type: String      // file, text, url
+    var value: String     // file name, text, or link
+
+    init(_ item: ReceivedItem, source: String?) {
+        id = item.id
+        date = item.date
+        self.source = source
+        isNew = true
+        switch item.kind {
+        case .file(let url): type = "file"; value = url.lastPathComponent
+        case .text(let text): type = "text"; value = text
+        case .url(let url): type = "url"; value = url.absoluteString
+        }
+    }
+
+    var item: ReceivedItem {
+        let kind: ReceivedItem.Kind
+        switch type {
+        case "file": kind = .file(PhoneModel.inbox.appendingPathComponent(value))
+        case "url": kind = URL(string: value).map { .url($0) } ?? .text(value)
+        default: kind = .text(value)
+        }
+        return ReceivedItem(id: id, kind: kind, date: date)
+    }
+
+    /// Files deleted in the Files app drop out of the list.
+    var isAvailable: Bool {
+        type != "file" || FileManager.default.fileExists(atPath: PhoneModel.inbox.appendingPathComponent(value).path)
     }
 }

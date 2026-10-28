@@ -1,4 +1,5 @@
 import PhotosUI
+import QuickLook
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -11,7 +12,7 @@ struct ContentView: View {
                 .tabItem { Label("Send", systemImage: "paperplane.fill") }
             NavigationStack { ReceivedTab(model: model) }
                 .tabItem { Label("Received", systemImage: "tray.and.arrow.down.fill") }
-                .badge(model.received.count)
+                .badge(model.newItems.count)
             NavigationStack {
                 SettingsForm(settings: model.settings).navigationTitle("Settings")
             }
@@ -255,55 +256,149 @@ private struct EmptyDevicesCard: View {
 
 private struct ReceivedTab: View {
     @Bindable var model: PhoneModel
+    @State private var preview: URL?
+    @State private var toast: String?
 
     var body: some View {
         List {
             Section {
                 HStack(spacing: 12) {
-                    GlyphCircle(symbol: model.isListening ? "antenna.radiowaves.left.and.right" : "moon.zzz.fill",
-                                size: 36, filled: model.isListening)
+                    GlyphCircle(symbol: "arrow.down.circle", size: 36)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(model.isListening ? "Receiving while open" : "Not receiving").font(.body.weight(.medium))
-                        Text(model.collecting ? "Checking your computers…" : (model.lastCollect ?? "Pull down to check your computers"))
+                        Text(model.collecting ? "Checking your computers…" : (model.lastCollect ?? "Pull down to check"))
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Text("Your PC and Mac hold items until this app opens.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     if model.collecting { ProgressView() }
                 }
-            } footer: {
-                Text("Files are saved in Files › On My iPhone › Droprr › Received. Text and links are copied.")
             }
 
-            if model.received.isEmpty {
+            if model.history.isEmpty {
                 Section {
                     ContentUnavailableView("Nothing yet", systemImage: "tray",
                                            description: Text("Things sent to this iPhone appear here."))
                 }
-            } else {
-                Section("Recent") {
-                    ForEach(model.received) { item in
-                        row(item)
+            }
+
+            if !model.newItems.isEmpty {
+                Section {
+                    ForEach(model.newItems) { row($0) }
+                } header: {
+                    HStack {
+                        Text("New")
+                        Spacer()
+                        Button("Mark all as seen") { model.markAllSeen() }
+                            .font(.caption)
+                            .textCase(nil)
                     }
+                } footer: {
+                    Text("Tap text or a link to copy it. Tap a file to open it.")
+                }
+            }
+
+            if !model.seenItems.isEmpty {
+                Section {
+                    ForEach(model.seenItems) { row($0) }
+                } header: {
+                    HStack {
+                        Text("History")
+                        Spacer()
+                        Button("Clear") { model.clearHistory() }
+                            .font(.caption)
+                            .textCase(nil)
+                    }
+                } footer: {
+                    Text("The last \(PhoneModel.historyLimit) items. Files stay in Files › On My iPhone › Droprr › Received.")
                 }
             }
         }
         .navigationTitle("Received")
         .refreshable { await model.collectInbox() }
-    }
-
-    @ViewBuilder private func row(_ item: ReceivedItem) -> some View {
-        let label = HStack(spacing: 12) {
-            GlyphCircle(symbol: Theme.symbol(for: item), size: 34)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title).lineLimit(2).foregroundStyle(.primary)
-                Text(item.subtitle).font(.caption).foregroundStyle(.secondary)
+        .quickLookPreview($preview)
+        .overlay(alignment: .bottom) {
+            if let toast {
+                Label(toast, systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Theme.gradient, in: Capsule())
+                    .padding(.bottom, 16)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        switch item.kind {
-        case .file(let url): ShareLink(item: url) { label }
-        case .url(let url): Link(destination: url) { label }
-        case .text(let text): Button { Clipboard.copy(text: text) } label: { label }
+        .animation(.spring(duration: 0.3), value: toast)
+    }
+
+    private func row(_ entry: HistoryEntry) -> some View {
+        let item = entry.item
+        return Button {
+            model.use(entry)
+            switch item.kind {
+            case .file(let url): preview = url
+            case .text: show("Copied")
+            case .url: show("Link copied")
+            }
+        } label: {
+            HStack(spacing: 12) {
+                GlyphCircle(symbol: Theme.symbol(for: item), size: 36, filled: entry.isNew)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title)
+                        .font(.body.weight(entry.isNew ? .semibold : .regular))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                    Text(subtitle(entry))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                if entry.isNew {
+                    Circle().fill(Theme.start).frame(width: 9, height: 9)
+                }
+            }
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) { model.delete(entry) } label: { Label("Remove", systemImage: "trash") }
+        }
+        .swipeActions(edge: .leading) {
+            if entry.isNew {
+                Button { model.markSeen(entry) } label: { Label("Seen", systemImage: "checkmark") }
+                    .tint(Theme.start)
+            }
+        }
+        .contextMenu {
+            if case .url(let url) = item.kind {
+                Link(destination: url) { Label("Open Link", systemImage: "safari") }
+            }
+            if case .file(let url) = item.kind {
+                ShareLink(item: url) { Label("Share…", systemImage: "square.and.arrow.up") }
+            }
+            Button(role: .destructive) { model.delete(entry) } label: { Label("Remove", systemImage: "trash") }
+        }
+    }
+
+    private func subtitle(_ entry: HistoryEntry) -> String {
+        let kind = switch entry.type {
+        case "file": "File"
+        case "url": "Link"
+        default: "Text"
+        }
+        let from = entry.source.map { " from \($0)" } ?? ""
+        return "\(kind)\(from) · \(entry.date.formatted(.relative(presentation: .named)))"
+    }
+
+    private func show(_ message: String) {
+        toast = message
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            if toast == message { toast = nil }
         }
     }
 }
