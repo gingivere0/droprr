@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace Droprr;
@@ -12,7 +13,10 @@ sealed class TrayIcon : IDisposable
     readonly NotifyIcon _icon;
     readonly ToolStripMenuItem _status;
     readonly ToolStripMenuItem _recentMenu;
+    readonly ToolStripMenuItem _pending = new() { Enabled = false, Visible = false };
     ReceivedItem? _lastNotified;
+    string _statusText = "Starting…";
+    string _pendingText = "";
 
     public TrayIcon(App app)
     {
@@ -22,6 +26,7 @@ sealed class TrayIcon : IDisposable
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(_status);
+        menu.Items.Add(_pending);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Send to device…", null, (_, _) => app.ShowSendWindow([]));
         menu.Items.Add(_recentMenu);
@@ -50,9 +55,22 @@ sealed class TrayIcon : IDisposable
 
     public void SetStatus(string text)
     {
+        _statusText = text;
         _status.Text = text;
-        _icon.Text = Truncate($"Droprr: {text}", 127);
+        UpdateTooltip();
     }
+
+    // Shows how many items are waiting for each phone to check in.
+    public void SetPending(IReadOnlyList<(string Peer, int Count)> pending)
+    {
+        _pendingText = string.Join(", ", pending.Select(p => $"{p.Count} waiting for {p.Peer}"));
+        _pending.Text = _pendingText;
+        _pending.Visible = _pendingText.Length > 0;
+        UpdateTooltip();
+    }
+
+    void UpdateTooltip() =>
+        _icon.Text = Truncate(_pendingText.Length > 0 ? $"Droprr: {_statusText}\n{_pendingText}" : $"Droprr: {_statusText}", 127);
 
     public void Notify(string title, string text, ReceivedItem? item = null)
     {

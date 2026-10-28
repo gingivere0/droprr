@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -12,6 +13,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
@@ -21,6 +23,8 @@ namespace Droprr;
 public enum ItemKind { File, Text, Url }
 
 public sealed record ReceivedItem(ItemKind Kind, string Display, string? Path, string? Content);
+
+public sealed record TransferProgress(Guid Id, long Received, long? Total, bool Done);
 
 sealed record SendBody(string? Type, string? Content);
 
@@ -37,6 +41,12 @@ sealed class ReceiverServer : IAsyncDisposable
     public ReceiverServer(AppSettings settings) => _settings = settings;
 
     public event Action<ReceivedItem>? ItemReceived;
+
+    // Raised on a server thread with the device name a phone asked for in GET /inbox.
+    public event Action<string>? InboxPolled;
+
+    // Raised on a server thread, at most every 200 ms per request, and once more when it ends.
+    public event Action<TransferProgress>? ReceiveProgress;
 
     public IReadOnlyList<IPAddress> TailscaleAddresses { get; private set; } = [];
 
@@ -83,6 +93,10 @@ sealed class ReceiverServer : IAsyncDisposable
         app.MapGet("/ping", () => Results.Json(new { name = _settings.DeviceName, version = Version, platform = "windows" }));
         app.MapFallback(() => Error("not found", StatusCodes.Status404NotFound));
         app.MapPost("/send", (Func<HttpContext, Task<IResult>>)HandleSendAsync);
+        app.MapGet("/inbox", (Func<HttpContext, IResult>)ListInbox);
+        app.MapGet("/inbox/{id}", (Func<string, IResult>)DownloadInboxItem);
+        app.MapDelete("/inbox/{id}", (string id) =>
+            Outbox.Delete(id) ? Results.Json(new { ok = true }) : Error("unknown or expired item", StatusCodes.Status404NotFound));
 
         await app.StartAsync();
         _app = app;
@@ -97,12 +111,69 @@ sealed class ReceiverServer : IAsyncDisposable
         return CryptographicOperations.FixedTimeEquals(given, Encoding.UTF8.GetBytes(_settings.Token));
     }
 
+    IResult ListInbox(HttpContext context)
+    {
+        var device = context.Request.Query["for"].ToString().Trim();
+        if (device.Length == 0)
+            return Error("missing ?for=<device name>", StatusCodes.Status400BadRequest);
+
+        InboxPolled?.Invoke(device);
+        var items = Outbox.List(device).Select(item => item.Type == "file"
+            ? (object)new { id = item.Id, type = item.Type, name = item.Name, size = item.Size, created = Iso8601(item.Created) }
+            : new { id = item.Id, type = item.Type, name = item.Name, size = item.Size, content = item.Content, created = Iso8601(item.Created) });
+        return Results.Json(new { ok = true, items });
+    }
+
+    static IResult DownloadInboxItem(string id)
+    {
+        if (Outbox.Find(id) is not { } found)
+            return Error("unknown or expired item", StatusCodes.Status404NotFound);
+        if (found.Item.Type != "file")
+            return Results.Text(found.Item.Content, "text/plain; charset=utf-8");
+
+        if (!ContentTypes.TryGetContentType(found.Item.Name, out var contentType))
+            contentType = "application/octet-stream";
+        var stream = new FileStream(found.DataPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 81920, useAsync: true);
+        return Results.Stream(stream, contentType, found.Item.Name, enableRangeProcessing: true);
+    }
+
+    static readonly FileExtensionContentTypeProvider ContentTypes = new();
+
+    static string Iso8601(DateTime time) =>
+        time.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+
     async Task<IResult> HandleSendAsync(HttpContext context)
     {
         var request = context.Request;
         var folder = _settings.ResolveSaveFolder();
         Directory.CreateDirectory(folder);
 
+        // Report progress for the whole request body, whatever its format.
+        var transfer = Guid.NewGuid();
+        var total = request.ContentLength;
+        long received = 0;
+        var lastReport = Environment.TickCount64;
+        request.Body = new ProgressStream(request.Body, n =>
+        {
+            received += n;
+            if (Environment.TickCount64 - lastReport < 200)
+                return;
+            lastReport = Environment.TickCount64;
+            ReceiveProgress?.Invoke(new TransferProgress(transfer, received, total, Done: false));
+        });
+        try
+        {
+            return await ReceiveAsync(context, folder);
+        }
+        finally
+        {
+            ReceiveProgress?.Invoke(new TransferProgress(transfer, received, total, Done: true));
+        }
+    }
+
+    async Task<IResult> ReceiveAsync(HttpContext context, string folder)
+    {
+        var request = context.Request;
         List<ReceivedItem> items;
         try
         {

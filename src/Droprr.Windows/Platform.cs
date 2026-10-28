@@ -135,7 +135,11 @@ static class AppIcon
         }
     }
 
-    public static ImageSource CreateImageSource()
+    static ImageSource? _imageSource;
+
+    public static ImageSource ImageSource => _imageSource ??= CreateImageSource();
+
+    static ImageSource CreateImageSource()
     {
         using var icon = Create();
         return Imaging.CreateBitmapSourceFromHIcon(icon.Handle, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());

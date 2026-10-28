@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.Win32;
 
 namespace Droprr;
@@ -21,7 +22,7 @@ public partial class SendWindow : Window
     public SendWindow(AppSettings settings, IEnumerable<string> files)
     {
         InitializeComponent();
-        Icon = AppIcon.CreateImageSource();
+        Icon = AppIcon.ImageSource;
         _settings = settings;
 
         FileList.ItemsSource = _files;
@@ -32,7 +33,37 @@ public partial class SendWindow : Window
         if (settings.Peers.Count > 0)
             PeerBox.SelectedIndex = 0;
         else
-            Status.Text = "No devices yet. Add peers to settings.json (tray menu > Edit settings).";
+            Status.Text = "No devices yet. Add one in Settings (tray menu), or run \"Get from PC\" on your iPhone once.";
+
+        Loaded += async (_, _) => await LearnPlatformsAsync();
+    }
+
+    // Ask desktops what they are, so phones (which never answer) are the only ones queued.
+    async System.Threading.Tasks.Task LearnPlatformsAsync()
+    {
+        foreach (var peer in _settings.Peers.Where(p => p.Platform.Length == 0 && p.Host.Length > 0).ToList())
+        {
+            var platform = await Sender.PingAsync(peer, TokenFor(peer));
+            if (string.IsNullOrEmpty(platform))
+                continue;
+            peer.Platform = platform;
+            SettingsStore.Update(s =>
+            {
+                if (s.FindPeer(peer.Name) is { } saved)
+                    saved.Platform = platform;
+            });
+        }
+        PeerBox.Items.Refresh();
+    }
+
+    string TokenFor(Peer peer) => string.IsNullOrEmpty(peer.Token) ? _settings.Token : peer.Token;
+
+    void OnPeerChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (PeerBox.SelectedItem is Peer { IsPhone: true } phone)
+            Status.Text = $"{phone.Name} can't receive directly. Items wait on this PC until it runs \"Get from PC\" (kept for 7 days).";
+        else if (Status.Text.Contains("can't receive directly"))
+            Status.Text = "";
     }
 
     void AddPaths(IEnumerable<string> paths)
@@ -97,16 +128,37 @@ public partial class SendWindow : Window
             return;
         }
 
-        var token = string.IsNullOrEmpty(peer.Token) ? _settings.Token : peer.Token;
+        var paths = _files.Select(f => f.FullPath).ToList();
+        var total = Math.Max(1, paths.Sum(p => new FileInfo(p).Length));
+        long done = 0;
+        var progress = new Progress<long>(n =>
+        {
+            done += n;
+            Progress.Value = 100.0 * done / total;
+        });
+
         SendButton.IsEnabled = false;
-        Status.Text = $"Sending to {peer.Name}…";
+        Progress.Value = 0;
+        Progress.Visibility = paths.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        Status.Text = peer.IsPhone ? $"Queuing for {peer.Name}…" : $"Sending to {peer.Name}…";
         try
         {
-            if (_files.Count > 0)
-                await Sender.SendFilesAsync(peer, token, _files.Select(f => f.FullPath).ToList());
-            if (text.Length > 0)
-                await Sender.SendTextAsync(peer, token, text);
-            Status.Text = $"Sent to {peer.Name}.";
+            if (peer.IsPhone)
+            {
+                foreach (var path in paths)
+                    await Outbox.EnqueueFileAsync(peer.Name, path, progress);
+                if (text.Length > 0)
+                    Outbox.EnqueueText(peer.Name, Sender.TextType(text), text);
+                Status.Text = $"Queued for {peer.Name}. It arrives when your phone runs \"Get from PC\".";
+            }
+            else
+            {
+                if (paths.Count > 0)
+                    await Sender.SendFilesAsync(peer, TokenFor(peer), paths, progress);
+                if (text.Length > 0)
+                    await Sender.SendTextAsync(peer, TokenFor(peer), text);
+                Status.Text = $"Sent to {peer.Name}.";
+            }
             _files.Clear();
             MessageText.Clear();
         }
@@ -117,6 +169,7 @@ public partial class SendWindow : Window
         finally
         {
             SendButton.IsEnabled = true;
+            Progress.Visibility = Visibility.Collapsed;
         }
     }
 }

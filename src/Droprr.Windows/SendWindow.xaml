@@ -1,11 +1,12 @@
 ﻿<Window x:Class="Droprr.SendWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Send with Droprr" Width="460" Height="540" MinWidth="360" MinHeight="440"
+        Title="Send with Droprr" Width="480" Height="600" MinWidth="380" MinHeight="500"
         WindowStartupLocation="CenterScreen" AllowDrop="True"
         DragOver="OnDragOver" Drop="OnDrop">
-    <Grid Margin="16">
+    <Grid Margin="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -15,32 +16,47 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <DockPanel Grid.Row="0" Margin="0,0,0,12">
-            <TextBlock Text="To" VerticalAlignment="Center" Margin="0,0,8,0" />
-            <ComboBox x:Name="PeerBox" DisplayMemberPath="Name" />
-        </DockPanel>
+        <TextBlock Grid.Row="0" Text="Send to" Margin="0,0,0,6" Opacity="0.8" />
+        <ComboBox Grid.Row="1" x:Name="PeerBox" Margin="0,0,0,16" SelectionChanged="OnPeerChanged">
+            <ComboBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Note}" FontSize="12" Opacity="0.7" />
+                    </StackPanel>
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
 
-        <Grid Grid.Row="1">
-            <Rectangle Stroke="Gray" StrokeThickness="1.5" StrokeDashArray="4 3" RadiusX="6" RadiusY="6" />
-            <ListBox x:Name="FileList" DisplayMemberPath="Name" Margin="6" BorderThickness="0" Background="Transparent" />
-            <TextBlock x:Name="DropHint" Text="Drop files here" Foreground="Gray"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" />
-        </Grid>
+        <Border Grid.Row="2" x:Name="DropZone" CornerRadius="8" BorderThickness="1.5"
+                BorderBrush="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}">
+            <Grid>
+                <ListBox x:Name="FileList" DisplayMemberPath="Name" Margin="4" BorderThickness="0" Background="Transparent" />
+                <StackPanel x:Name="DropHint" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                    <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="32"
+                               HorizontalAlignment="Center" Opacity="0.6" />
+                    <TextBlock Text="Drop files here" Margin="0,8,0,0" Opacity="0.7" HorizontalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+        </Border>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,12">
-            <Button Content="Add files…" Padding="10,3" Click="OnAddFiles" />
-            <Button Content="Clear" Padding="10,3" Margin="8,0,0,0" Click="OnClearFiles" />
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,16">
+            <Button Content="Add files…" Padding="12,5" Click="OnAddFiles" />
+            <Button Content="Clear" Padding="12,5" Margin="8,0,0,0" Click="OnClearFiles" />
         </StackPanel>
 
-        <TextBlock Grid.Row="3" Text="Text or link" Margin="0,0,0,4" />
-        <TextBox Grid.Row="4" x:Name="MessageText" AcceptsReturn="True" TextWrapping="Wrap"
+        <TextBlock Grid.Row="4" Text="Text or link" Margin="0,0,0,6" Opacity="0.8" />
+        <TextBox Grid.Row="5" x:Name="MessageText" AcceptsReturn="True" TextWrapping="Wrap"
                  VerticalScrollBarVisibility="Auto" />
 
-        <DockPanel Grid.Row="5" Margin="0,12,0,0" LastChildFill="False">
-            <Button Content="Paste" Padding="10,3" Click="OnPaste" />
-            <Button x:Name="SendButton" DockPanel.Dock="Right" Content="Send" Padding="18,3" IsDefault="True" Click="OnSend" />
+        <DockPanel Grid.Row="6" Margin="0,16,0,0" LastChildFill="False">
+            <Button Content="Paste" Padding="12,5" Click="OnPaste" />
+            <Button x:Name="SendButton" DockPanel.Dock="Right" Content="Send" Padding="24,5" IsDefault="True" Click="OnSend" />
         </DockPanel>
 
-        <TextBlock Grid.Row="6" x:Name="Status" Margin="0,10,0,0" TextWrapping="Wrap" />
+        <StackPanel Grid.Row="7" Margin="0,12,0,0">
+            <ProgressBar x:Name="Progress" Height="4" Visibility="Collapsed" Margin="0,0,0,8" />
+            <TextBlock x:Name="Status" TextWrapping="Wrap" />
+        </StackPanel>
     </Grid>
 </Window>

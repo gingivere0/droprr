@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
 using System.Threading;
@@ -18,6 +19,9 @@ public partial class App : Application
     ReceiverServer? _receiver;
     TrayIcon? _tray;
     DispatcherTimer? _networkDebounce;
+    DispatcherTimer? _outboxRefresh;
+    DispatcherTimer? _outboxPurge;
+    FileSystemWatcher? _outboxWatcher;
 
     internal AppSettings Settings { get; private set; } = null!;
 
@@ -54,8 +58,55 @@ public partial class App : Application
         try { SendToMenu.Register(); } catch { /* the Send To entry is a convenience; keep running without it */ }
 
         _tray = new TrayIcon(this);
+        WatchOutbox();
         await StartReceiverAsync();
         NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
+    }
+
+    // Keeps the tray's pending count current, whichever Droprr process queued or a phone fetched an item.
+    void WatchOutbox()
+    {
+        Directory.CreateDirectory(Outbox.Root);
+        _outboxRefresh = new DispatcherTimer(TimeSpan.FromMilliseconds(500), DispatcherPriority.Background, (_, _) =>
+        {
+            _outboxRefresh!.Stop();
+            _tray?.SetPending(Outbox.PendingByPeer());
+        }, Dispatcher);
+        _outboxWatcher = new FileSystemWatcher(Outbox.Root, "*.json") { IncludeSubdirectories = true, EnableRaisingEvents = true };
+        FileSystemEventHandler changed = (_, _) => Dispatcher.BeginInvoke(() =>
+        {
+            _outboxRefresh.Stop();
+            _outboxRefresh.Start();
+        });
+        _outboxWatcher.Created += changed;
+        _outboxWatcher.Deleted += changed;
+        _outboxWatcher.Renamed += (s, e) => changed(s, e);
+
+        // Expired items are also dropped whenever a phone lists its inbox; this catches phones that never return.
+        _outboxPurge = new DispatcherTimer(TimeSpan.FromHours(1), DispatcherPriority.Background, (_, _) =>
+        {
+            Outbox.PurgeExpired();
+            _tray?.SetPending(Outbox.PendingByPeer());
+        }, Dispatcher);
+        Outbox.PurgeExpired();
+        _tray?.SetPending(Outbox.PendingByPeer());
+    }
+
+    // A phone that checks in under an unknown name becomes an iPhone peer, so the Send window offers it.
+    void OnInboxPolled(string device)
+    {
+        var known = Settings.FindPeer(device);
+        if (known is { IsPhone: true })
+            return;
+        Settings = SettingsStore.Update(s =>
+        {
+            if (s.FindPeer(device) is { } peer)
+                peer.IsPhone = true;
+            else
+                s.Peers.Add(new Peer { Name = device, Platform = "ios" });
+        });
+        if (known is null)
+            _tray?.Notify("New device", $"{device} checked in and can now receive from this PC.");
     }
 
     internal void ShowSendWindow(IEnumerable<string> files, bool exitOnClose = false)
@@ -91,6 +142,7 @@ public partial class App : Application
 
         var receiver = new ReceiverServer(Settings);
         receiver.ItemReceived += item => Dispatcher.BeginInvoke(() => OnItemReceived(item));
+        receiver.InboxPolled += device => Dispatcher.BeginInvoke(() => OnInboxPolled(device));
         try
         {
             await receiver.StartAsync();
@@ -149,6 +201,8 @@ public partial class App : Application
     internal async void ExitApp()
     {
         NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
+        _outboxWatcher?.Dispose();
+        _outboxPurge?.Stop();
         _tray?.Dispose();
         _tray = null;
         if (_receiver is not null)
