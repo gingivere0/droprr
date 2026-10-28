@@ -1,6 +1,6 @@
 # Droprr protocol
 
-Version 1. Every Droprr receiver (Windows, macOS, and any future iOS app) must implement exactly this.
+Version 1. The Windows and Mac apps implement all of it. The iPhone app receives directly only while it's open, and otherwise collects items through the [inbox](#inbox-phone-pull).
 
 Devices talk over plain HTTP inside a Tailscale network. Tailscale's WireGuard tunnel already encrypts and authenticates the connection between devices, and a shared bearer token keeps other devices on the tailnet out.
 
@@ -12,6 +12,19 @@ Devices talk over plain HTTP inside a Tailscale network. Tailscale's WireGuard t
 - **Auth:** every request, including `/ping`, must send `Authorization: Bearer <token>`. A missing or wrong token gets `401`.
 - **Encoding:** JSON bodies and responses are UTF-8 with `Content-Type: application/json`.
 
+## Endpoints
+
+| Endpoint | Purpose |
+| --- | --- |
+| [`GET /ping`](#get-ping) | Check that a device is reachable and the token is right. |
+| [`POST /send`](#post-send) | Send files, text, or links. Also accepts [lenient inputs](#lenient-inputs). |
+| [`POST /pair`](#post-pair) | Introduce yourself after scanning a [pairing QR](#pairing-qr). |
+| [`GET /inbox?for=<name>`](#get-inboxfordevice-name) | A phone lists items a desktop queued for it. |
+| [`GET /inbox/<id>`](#get-inboxid) | Download one queued item. |
+| [`DELETE /inbox/<id>`](#delete-inboxid) | Acknowledge a queued item so it's removed. |
+
+All of them require the bearer token and use the error shape below.
+
 ## Errors
 
 Every error response, on any endpoint, has a 4xx or 5xx status and this body:
@@ -22,7 +35,7 @@ Every error response, on any endpoint, has a 4xx or 5xx status and this body:
 
 | Status | Meaning |
 | --- | --- |
-| `400` | Bad body: empty content, unknown `type`, invalid URL, malformed JSON, or no items. |
+| `400` | Bad request: empty content, unknown `type`, invalid URL, malformed JSON, no items, a missing `?for=`, or invalid `/pair` fields. |
 | `401` | Missing or wrong token. |
 | `404` | Unknown path. |
 | `500` | The receiver failed, for example while writing to disk. |
@@ -282,5 +295,6 @@ A desktop also still adds an unknown name that calls `GET /inbox?for=` as an `"i
 ## Implementation notes
 
 - **Binding:** a listener may bind to all interfaces (`0.0.0.0` or `::`) instead of specific addresses, as long as it immediately drops any connection whose source address isn't loopback, in `100.64.0.0/10` (Tailscale IPv4), or in `fd7a:115c:a1e0::/48` (Tailscale IPv6). This helps on platforms where the Tailscale address is hard to find or changes often.
-- **Peer platforms:** a desktop stores each peer's `platform` from its last successful `/ping`, and its peer editor has an "iPhone" toggle that sets `"platform": "ios"`. When `GET /inbox?for=<name>` arrives with a name that isn't a known peer, the desktop adds it as an `"ios"` peer, so it can be picked as a send target. None of this changes the wire format.
+- **Peer platforms:** a desktop records each peer's `platform` from `POST /pair` or its last successful `/ping`, and its peer editor has an "iPhone" toggle that sets `"platform": "ios"`. When `GET /inbox?for=<name>` arrives with a name that isn't a known peer, the desktop adds it as an `"ios"` peer, so it can be picked as a send target. None of this changes the wire format.
+- **Private endpoints:** an app may add loopback-only endpoints for its own parts, such as the Mac share extension handing items to the Mac app's outbox. They aren't part of this protocol, and other devices must not rely on them.
 - **Link files:** platforms may save links in their native shortcut format. Windows saves `Link <date time>.url`, and macOS saves `Link <date time>.webloc`.

@@ -1,12 +1,14 @@
-# iPhone Share Sheet shortcut
+# iPhone shortcuts (optional)
 
-This shortcut sends photos and files you share on the iPhone to the PC running Droprr. Start with the basic version below. Once it works, you can add [text and links](#optional-text-and-links).
+> **You probably don't need these.** The Droprr iPhone app (see [apple/README.md](../apple/README.md)) sends from the share sheet and collects queued items on its own. These Shortcuts-only versions are for an iPhone without the app.
+
+The "Send to PC" shortcut sends photos and files you share on the iPhone to the PC running Droprr. Start with the basic version below. Once it works, you can add [text and links](#optional-text-and-links). The ["Get from PC"](#get-from-pc-pick-up-items-sent-to-the-phone) shortcut collects items the PC queued for the phone.
 
 ## Before you start
 
 1. Tailscale is installed and connected on both the iPhone and the PC.
 2. Droprr is running on the PC, and the Windows Firewall rule from the README is in place.
-3. Get the token: right-click Droprr's tray icon and choose **Copy token**. It's also in `%APPDATA%\Droprr\settings.json`.
+3. Get the token: right-click Droprr's tray icon, choose **Settings…**, and click **Copy** next to the token.
 4. Note the PC's address: its Tailscale name (for example `my-pc`) or its Tailscale IP, both shown in the Tailscale app.
 
 In the steps below, replace `<pc>` with that name or IP, and `<token>` with the token.
