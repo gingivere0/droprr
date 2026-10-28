@@ -192,10 +192,15 @@ final class MacModel {
 
     func open(_ item: ReceivedItem) {
         switch item.kind {
-        case .file(let url): NSWorkspace.shared.activateFileViewerSelecting([url])
+        case .file(let url): NSWorkspace.shared.open(url)   // quarantined, so macOS warns before risky files run
         case .url(let url): Links.open(url)
         case .text: Clipboard.copy(item)
         }
+    }
+
+    /// Removes an item from the Received list; the file itself stays in Downloads › Droprr.
+    func removeRecent(_ item: ReceivedItem) {
+        Motion.perform { recent.removeAll { $0.id == item.id } }
     }
 
     func waiting(for peer: Peer) -> Int {

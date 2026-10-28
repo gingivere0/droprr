@@ -566,35 +566,49 @@ private struct ReceivedTab: View {
 
     private func row(_ entry: HistoryEntry) -> some View {
         let item = entry.item
-        return Button {
-            model.use(entry)
-            switch item.kind {
-            case .file(let url): preview = url
-            case .text: show("Copied")
-            case .url: show("Link copied")
-            }
-        } label: {
-            HStack(spacing: Space.md) {
-                GlyphCircle(symbol: Theme.symbol(for: item), size: 36, filled: entry.isNew)
-                VStack(alignment: .leading, spacing: Space.xs) {
-                    Text(item.title)
-                        .font(.body.weight(entry.isNew ? .semibold : .regular))
-                        .foregroundStyle(.primary)
-                        .lineLimit(2)
-                    Text(subtitle(entry))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        // Like Chrome's downloads: tap the row to open; buttons copy, show in Files, or remove from the list.
+        return HStack(spacing: Space.xs) {
+            Button {
+                model.use(entry)
+                switch item.kind {
+                case .file(let url): preview = url
+                case .text: show("Copied")
+                case .url: show("Link copied")
                 }
-                Spacer(minLength: 0)
-                if entry.isNew {
-                    Circle().fill(Theme.accentText).frame(width: Space.sm, height: Space.sm)
-                        .accessibilityLabel("New")
+            } label: {
+                HStack(spacing: Space.md) {
+                    GlyphCircle(symbol: Theme.symbol(for: item), size: 36, filled: entry.isNew)
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        Text(item.title)
+                            .font(.body.weight(entry.isNew ? .semibold : .regular))
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                        Text(subtitle(entry))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    if entry.isNew {
+                        Circle().fill(Theme.accentText).frame(width: Space.sm, height: Space.sm)
+                            .accessibilityLabel("New")
+                    }
                 }
+                .padding(.vertical, Space.xs)
+                .contentShape(Rectangle())
             }
-            .padding(.vertical, Space.xs)
-            .contentShape(Rectangle())
+            .buttonStyle(.borderless)
+            .tint(.primary)
+
+            RowIconButton(symbol: "doc.on.doc", label: "Copy") {
+                Clipboard.copy(item)
+                model.markSeen(entry)
+                show("Copied")
+            }
+            if case .file = item.kind {
+                RowIconButton(symbol: "folder", label: "Show in Files") { openReceivedFolder() }
+            }
+            RowIconButton(symbol: "xmark", label: "Remove from list") { model.delete(entry) }
         }
-        .buttonStyle(.plain)
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) { model.delete(entry) } label: { Label("Remove", systemImage: "trash") }
         }
@@ -679,5 +693,24 @@ enum AppIconSwitcher {
         let wanted: String? = theme == ThemePalette.defaultID ? nil : "AppIcon-\(theme)"
         guard UIApplication.shared.supportsAlternateIcons, UIApplication.shared.alternateIconName != wanted else { return }
         UIApplication.shared.setAlternateIconName(wanted) { _ in }
+    }
+}
+
+/// A small icon button in a Received row with a 44-pt tap target.
+private struct RowIconButton: View {
+    var symbol: String
+    var label: String
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.accentText)
+                .frame(width: 36, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(label)
     }
 }

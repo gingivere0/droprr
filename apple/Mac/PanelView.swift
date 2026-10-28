@@ -32,7 +32,7 @@ struct PanelView: View {
                 sectionTitle("Received")
                 VStack(spacing: Space.xs) {
                     ForEach(model.recent) { item in
-                        RecentRow(item: item) { model.open(item) }
+                        RecentRow(item: item, onOpen: { model.open(item) }, onRemove: { model.removeRecent(item) })
                     }
                 }
             }
@@ -220,37 +220,71 @@ private struct TileAction: View {
     }
 }
 
+/// A received item, like Chrome's downloads list: click the row to open it; the buttons copy it,
+/// show it in Finder (files only) or remove it from the list (the file itself is kept).
 private struct RecentRow: View {
     var item: ReceivedItem
-    var action: () -> Void
+    var onOpen: () -> Void
+    var onRemove: () -> Void
     @State private var hovering = false
+
+    private var file: URL? {
+        if case .file(let url) = item.kind { return url }
+        return nil
+    }
+
+    var body: some View {
+        HStack(spacing: Space.xs) {
+            Button(action: onOpen) {
+                HStack(spacing: Space.md) {
+                    GlyphCircle(symbol: Theme.symbol(for: item), size: 26)
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        Text(item.title).font(.callout).lineLimit(1).truncationMode(.middle)
+                        Text(item.subtitle).font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .hoverHint(openHint)
+
+            RowAction(symbol: "doc.on.doc", label: "Copy") { Clipboard.copy(item) }
+            if let file {
+                RowAction(symbol: "folder", label: "Show in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([file])
+                }
+            }
+            RowAction(symbol: "xmark", label: "Remove from list", action: onRemove)
+        }
+        .padding(.horizontal, Space.sm)
+        .padding(.vertical, Space.xs)
+        .background(hovering ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
+        .onHover { hovering = $0 }
+    }
+
+    private var openHint: String {
+        switch item.kind {
+        case .file: return "Open"
+        case .url: return "Open the link"
+        case .text: return "Copy the text"
+        }
+    }
+}
+
+private struct RowAction: View {
+    var symbol: String
+    var label: String
+    var action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: Space.md) {
-                GlyphCircle(symbol: Theme.symbol(for: item), size: 26)
-                VStack(alignment: .leading, spacing: Space.xs) {
-                    Text(item.title).font(.callout).lineLimit(1)
-                    Text(item.subtitle).font(.caption2).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, Space.sm)
-            .padding(.vertical, Space.xs)
-            .background(hovering ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
-            .contentShape(Rectangle())
+            Image(systemName: symbol).font(.caption.weight(.semibold)).frame(width: 18, height: 18)
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .hoverHint(hintText)
-    }
-
-    private var hintText: String {
-        switch item.kind {
-        case .file: return "Show in Finder"
-        case .url: return "Open the link"
-        case .text: return "Copy the text again"
-        }
+        .buttonStyle(HoverButtonStyle(.plain))
+        .foregroundStyle(.secondary)
+        .accessibilityLabel(label)
+        .hoverHint(label)
     }
 }
 
