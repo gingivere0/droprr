@@ -72,8 +72,7 @@ struct PanelView: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             Button("Open Settings…", action: showSettings)
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.start)
+                .buttonStyle(HoverButtonStyle(.prominent))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
@@ -113,11 +112,12 @@ private struct DeviceTile: View {
     var waiting: Int
     var onClipboard: () -> Void
     var onFiles: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
-                GlyphCircle(symbol: Theme.symbol(for: peer), size: 30)
+                GlyphCircle(symbol: Theme.symbol(for: peer), size: 30, filled: hovering)
                 Spacer()
                 if waiting > 0 {
                     Text("\(waiting) waiting")
@@ -138,10 +138,15 @@ private struct DeviceTile: View {
         .padding(10)
         .background {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.background.secondary)
+                .fill(hovering ? AnyShapeStyle(Theme.start.opacity(0.07)) : AnyShapeStyle(.background.secondary))
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(.quaternary, lineWidth: 1))
+                    .strokeBorder(hovering ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.quaternary), lineWidth: 1))
         }
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        // Clicking anywhere outside the two buttons chooses files to send.
+        .onTapGesture(perform: onFiles)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: hovering)
     }
 }
 
@@ -156,8 +161,7 @@ private struct TileAction: View {
                 .labelStyle(.iconOnly)
                 .frame(maxWidth: .infinity, minHeight: 22)
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
+        .buttonStyle(HoverButtonStyle(.bordered, compact: true))
         .hoverHint(label == "Clipboard" ? "Send what's on the clipboard" : "Choose files to send")
     }
 }

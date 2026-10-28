@@ -29,6 +29,7 @@ struct SendView: View {
                     openSettings()
                     bringToFront()
                 }
+                .buttonStyle(HoverButtonStyle(.prominent))
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 12)], spacing: 12) {
                     ForEach(model.settings.peers) { peer in
@@ -56,6 +57,7 @@ struct SendView: View {
                             guard let peer = textPeer else { return }
                             Task { await model.sendClipboard(to: peer) }
                         }
+                        .buttonStyle(HoverButtonStyle(.bordered))
                         Button {
                             guard let peer = textPeer else { return }
                             let value = text
@@ -71,8 +73,7 @@ struct SendView: View {
                         } label: {
                             Label("Send", systemImage: "paperplane.fill")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Theme.start)
+                        .buttonStyle(HoverButtonStyle(.prominent))
                         .keyboardShortcut(.return, modifiers: .command)
                         .disabled(text.isEmpty)
                     }

@@ -139,6 +139,55 @@ private struct HoverHint: ViewModifier {
     }
 }
 
+/// Mac buttons that visibly shade on hover, so it's clear what's clickable.
+struct HoverButtonStyle: ButtonStyle {
+    enum Kind { case bordered, prominent, plain }
+    var kind: Kind
+    var compact = false
+
+    init(_ kind: Kind, compact: Bool = false) {
+        self.kind = kind
+        self.compact = compact
+    }
+
+    func makeBody(configuration: Configuration) -> some View {
+        HoverBody(configuration: configuration, kind: kind, compact: compact)
+    }
+
+    private struct HoverBody: View {
+        let configuration: Configuration
+        let kind: Kind
+        let compact: Bool
+        @State private var hovering = false
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            let active = hovering && isEnabled
+            configuration.label
+                .padding(.horizontal, kind == .plain ? 4 : (compact ? 8 : 12))
+                .padding(.vertical, kind == .plain ? 3 : (compact ? 4 : 6))
+                .foregroundStyle(kind == .prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                .background {
+                    let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    switch kind {
+                    case .prominent:
+                        shape.fill(Theme.gradient)
+                            .overlay(shape.fill(Color.white.opacity(active ? 0.18 : 0)))
+                            .overlay(shape.fill(Color.black.opacity(configuration.isPressed ? 0.15 : 0)))
+                    case .bordered:
+                        shape.fill(Color.primary.opacity(configuration.isPressed ? 0.22 : active ? 0.15 : 0.07))
+                    case .plain:
+                        shape.fill(Color.primary.opacity(configuration.isPressed ? 0.16 : active ? 0.09 : 0))
+                    }
+                }
+                .opacity(isEnabled ? 1 : 0.45)
+                .contentShape(Rectangle())
+                .onHover { hovering = $0 }
+                .animation(.easeOut(duration: 0.12), value: active)
+        }
+    }
+}
+
 extension View {
     func hoverHint(_ text: String, after delay: Duration = .seconds(1)) -> some View {
         modifier(HoverHint(text: text, delay: delay))

@@ -34,7 +34,11 @@ struct SettingsForm<Extra: View>: View {
                 } label: {
                     Label("Add Device", systemImage: "plus.circle.fill")
                 }
+                #if os(macOS)
+                .buttonStyle(HoverButtonStyle(.plain))
+                #else
                 .buttonStyle(.borderless)
+                #endif
             } header: {
                 Text("Devices")
             } footer: {
@@ -59,7 +63,11 @@ struct SettingsForm<Extra: View>: View {
                     } label: {
                         Image(systemName: showToken ? "eye.slash" : "eye")
                     }
-                    .buttonStyle(.borderless)
+                    #if os(macOS)
+                .buttonStyle(HoverButtonStyle(.plain))
+                #else
+                .buttonStyle(.borderless)
+                #endif
                     #if os(macOS)
                     .hoverHint(showToken ? "Hide the token" : "Show the token")
                     #endif
@@ -70,7 +78,11 @@ struct SettingsForm<Extra: View>: View {
                     Button("Copy") { Clipboard.copy(text: settings.token) }
                         .disabled(settings.token.isEmpty)
                 }
+                #if os(macOS)
+                .buttonStyle(HoverButtonStyle(.bordered, compact: true))
+                #else
                 .buttonStyle(.borderless)
+                #endif
             } header: {
                 Text("Pairing token")
             } footer: {
@@ -140,10 +152,19 @@ private struct PeerRow: View {
             }
             Spacer()
             if !peer.isPhone {
-                Button("Test", action: onTest).buttonStyle(.bordered).controlSize(.small)
+                Button("Test", action: onTest)
+                    #if os(macOS)
+                    .buttonStyle(HoverButtonStyle(.bordered, compact: true))
+                    #else
+                    .buttonStyle(.bordered).controlSize(.small)
+                    #endif
             }
             Button(action: onEdit) { Image(systemName: "pencil") }
+                #if os(macOS)
+                .buttonStyle(HoverButtonStyle(.plain))
+                #else
                 .buttonStyle(.borderless)
+                #endif
                 #if os(macOS)
                 .hoverHint("Edit or rename this device")
                 #endif
