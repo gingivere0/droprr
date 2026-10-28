@@ -10,15 +10,15 @@ struct GradientTile: View {
     var glowing = false
 
     var body: some View {
-        RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-            .fill(Theme.gradient)
+        // Bento: flat accent tile when active, soft tinted well otherwise.
+        RoundedRectangle(cornerRadius: size * 0.3, style: .continuous)
+            .fill(glowing ? Theme.start : Theme.accentTint)
             .frame(width: size, height: size)
             .overlay {
                 Image(systemName: symbol)
                     .font(.system(size: size * 0.46, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(glowing ? Theme.onAccent : Theme.accentText)
             }
-            .shadow(color: Theme.start.opacity(glowing ? 0.45 : 0.2), radius: glowing ? size * 0.3 : size * 0.12, y: size * 0.08)
             .accessibilityHidden(true)
     }
 }
@@ -28,15 +28,16 @@ struct ColorTile: View {
     var symbol: String
     var color: Color
     var size: CGFloat = 24
+    var glyph: Color = .white
 
     var body: some View {
         RoundedRectangle(cornerRadius: Radius.smallControl, style: .continuous)
-            .fill(color.gradient)
+            .fill(color)
             .frame(width: size, height: size)
             .overlay {
                 Image(systemName: symbol)
                     .font(.system(size: size * 0.52, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(glyph)
             }
             .accessibilityHidden(true)
     }
@@ -50,12 +51,10 @@ struct CardBackground: ViewModifier {
         content
             .padding(Space.lg)
             .background {
-                RoundedRectangle(cornerRadius: Radius.feature, style: .continuous)
-                    .fill(.background.secondary)
-                    .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
-                    .overlay(RoundedRectangle(cornerRadius: Radius.feature, style: .continuous)
-                        .strokeBorder(highlighted ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.stroke),
-                                      lineWidth: highlighted ? 2 : 1))
+                RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+                    .fill(Theme.tile)
+                    .overlay(RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+                        .strokeBorder(highlighted ? Theme.start : Theme.stroke, lineWidth: highlighted ? 2 : 1))
             }
     }
 }
@@ -68,14 +67,16 @@ extension View {
 struct CardHeader<Accessory: View>: View {
     var symbol: String
     var color: Color
+    var glyph: Color = .white
     var title: String
     var subtitle: String?
     @ViewBuilder var accessory: () -> Accessory
 
-    init(symbol: String, color: Color, title: String, subtitle: String? = nil,
+    init(symbol: String, color: Color, glyph: Color = .white, title: String, subtitle: String? = nil,
          @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() }) {
         self.symbol = symbol
         self.color = color
+        self.glyph = glyph
         self.title = title
         self.subtitle = subtitle
         self.accessory = accessory
@@ -83,7 +84,7 @@ struct CardHeader<Accessory: View>: View {
 
     var body: some View {
         HStack(spacing: Space.md) {
-            ColorTile(symbol: symbol, color: color, size: 28)
+            ColorTile(symbol: symbol, color: color, size: 28, glyph: glyph)
             VStack(alignment: .leading, spacing: 0) {
                 Text(title).font(.headline)
                 if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary) }

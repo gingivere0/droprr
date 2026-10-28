@@ -26,15 +26,18 @@ struct SendView: View {
                 emptyState
             } else {
                 devices
-                dropArea
-                composer
+                // Bento: the drop tile and the message tile side by side.
+                HStack(alignment: .top, spacing: Space.md) {
+                    dropArea
+                    composer.frame(width: 200)
+                }
                 SendStatusView(message: model.lastSendResult, progress: model.progress)
                 bottomBar
             }
         }
         .padding(Space.xl)
-        .frame(width: 560)
-        .background { WindowGlow().ignoresSafeArea() }
+        .frame(width: 600)
+        .background { Theme.surface.ignoresSafeArea() }
         .seamlessWindow()
         .motion(Motion.standard, value: model.lastSendResult)
         .motion(Motion.fast, value: files)
@@ -75,7 +78,7 @@ struct SendView: View {
     private var devices: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             SectionTitle("Send to")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 128, maximum: 160), spacing: Space.md)],
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: Space.md)],
                       alignment: .leading, spacing: Space.md) {
                 ForEach(Array(model.settings.peers.enumerated()), id: \.element.id) { index, peer in
                     DeviceCard(peer: peer, selected: peer.id == selected?.id,
@@ -129,9 +132,9 @@ struct SendView: View {
         .frame(maxWidth: .infinity, minHeight: 190)
         .padding(Space.lg)
         .background {
-            RoundedRectangle(cornerRadius: Radius.feature, style: .continuous)
-                .fill(dropTargeted ? AnyShapeStyle(Theme.accentTint) : AnyShapeStyle(.background.secondary))
-                .overlay(RoundedRectangle(cornerRadius: Radius.feature, style: .continuous)
+            RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+                .fill(dropTargeted ? Theme.accentTint : Theme.tile)
+                .overlay(RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
                     .strokeBorder(dropTargeted ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.accentText.opacity(0.35)),
                                   style: StrokeStyle(lineWidth: 2, dash: dropTargeted ? [] : [8, 6])))
         }
@@ -144,17 +147,25 @@ struct SendView: View {
         .accessibilityLabel(files.isEmpty ? "Drop area. Drop files here or choose files." : "\(files.count) files ready")
     }
 
+    /// The theme's secondary-colored tile: a message or link to send along.
     private var composer: some View {
-        HStack(alignment: .top, spacing: Space.md) {
-            ColorTile(symbol: "text.bubble.fill", color: Theme.start, size: 28)
+        VStack(alignment: .leading, spacing: Space.md) {
+            ColorTile(symbol: "text.bubble.fill", color: Theme.secondaryText, size: 28, glyph: Theme.tile)
             TextField("Add a message or paste a link", text: $text, axis: .vertical)
-                .lineLimit(1...6)
+                .lineLimit(3...8)
                 .textFieldStyle(.plain)
                 .font(.body)
                 .focused($typing)
-                .padding(.top, Space.xs)
+            Spacer(minLength: 0)
         }
-        .card(highlighted: typing)
+        .padding(Space.lg)
+        .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
+        .background {
+            RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+                .fill(Theme.secondaryTint)
+                .overlay(RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+                    .strokeBorder(typing ? Theme.secondaryText : .clear, lineWidth: 2))
+        }
         .motion(Motion.fast, value: typing)
     }
 
@@ -256,35 +267,33 @@ private struct DeviceCard: View {
 
     var body: some View {
         Button(action: onSelect) {
-            VStack(spacing: Space.sm) {
-                ZStack(alignment: .bottomTrailing) {
-                    GradientTile(symbol: Theme.symbol(for: peer), size: 52, glowing: selected || targeted)
-                    if selected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.title3)
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(.white, .green)
-                            .offset(x: Space.sm, y: Space.sm)
+            // Bento: the selected device is a tile filled with the theme's accent.
+            let active = selected || targeted
+            VStack(alignment: .leading, spacing: Space.sm) {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(active ? Theme.onAccent.opacity(0.18) : Theme.accentTint)
+                    .frame(width: 44, height: 44)
+                    .overlay {
+                        Image(systemName: active && selected ? "checkmark" : Theme.symbol(for: peer))
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(active ? Theme.onAccent : Theme.accentText)
                     }
-                }
-                VStack(spacing: 0) {
-                    Text(peer.name).font(.headline).lineLimit(1)
-                    Text(targeted ? "Release to send now" : Theme.platformName(peer.platform))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                Spacer(minLength: 0)
+                Text(peer.name).font(.headline).lineLimit(1)
+                Text(targeted ? "Release to send now" : Theme.platformName(peer.platform))
+                    .font(.caption)
+                    .foregroundStyle(active ? Theme.onAccent.opacity(0.75) : .secondary)
             }
-            .frame(width: 128)
-            .padding(.vertical, Space.lg)
+            .foregroundStyle(active ? Theme.onAccent : .primary)
+            .padding(Space.md)
+            .frame(maxWidth: .infinity, minHeight: 124, alignment: .leading)
             .background {
-                RoundedRectangle(cornerRadius: Radius.feature, style: .continuous)
-                    .fill(selected || targeted ? AnyShapeStyle(Theme.accentTint)
-                          : hovering ? AnyShapeStyle(Color.primary.opacity(0.06)) : AnyShapeStyle(.background.secondary))
-                    .overlay(RoundedRectangle(cornerRadius: Radius.feature, style: .continuous)
-                        .strokeBorder(selected || targeted ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.stroke),
-                                      lineWidth: selected || targeted ? 2 : 1))
-                    .shadow(color: selected ? Theme.start.opacity(0.2) : .clear, radius: 10, y: 4)
+                RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+                    .fill(active ? Theme.start : hovering ? Theme.accentTint : Theme.tile)
+                    .overlay(RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+                        .strokeBorder(active ? .clear : Theme.stroke, lineWidth: 1))
             }
-            .contentShape(RoundedRectangle(cornerRadius: Radius.feature, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
         }
         .buttonStyle(.plain)
         .overlay(alignment: .topTrailing) {
@@ -317,7 +326,7 @@ private struct FileChip: View {
 
     var body: some View {
         HStack(spacing: Space.sm) {
-            ColorTile(symbol: Theme.symbol(for: ReceivedItem(kind: .file(file))), color: Theme.start, size: 24)
+            ColorTile(symbol: Theme.symbol(for: ReceivedItem(kind: .file(file))), color: Theme.start, size: 24, glyph: Theme.onAccent)
             Text(file.lastPathComponent).font(.callout).lineLimit(1).truncationMode(.middle)
             Spacer(minLength: 0)
             Button(action: onRemove) { Image(systemName: "xmark.circle.fill") }

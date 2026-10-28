@@ -97,7 +97,7 @@ struct ShareView: View {
                     }
                     .padding(Space.lg)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                    .background(Theme.tile, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
 
                     Text("SEND TO").font(.caption.weight(.semibold)).tracking(0.8).foregroundStyle(.secondary)
 
@@ -111,16 +111,18 @@ struct ShareView: View {
                             Button { selectedID = peer.id } label: {
                                 VStack(spacing: Space.sm) {
                                     GlyphCircle(symbol: model.sentTo == peer.id ? "checkmark" : Theme.symbol(for: peer),
-                                                size: 48, filled: isSelected)
+                                                size: 48)
                                     Text(peer.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                                    Text(Theme.platformName(peer.platform)).font(.caption).foregroundStyle(.secondary)
+                                    Text(Theme.platformName(peer.platform)).font(.caption)
+                                        .foregroundStyle(isSelected ? Theme.onAccent.opacity(0.75) : Color.secondary)
                                 }
+                                .foregroundStyle(isSelected ? Theme.onAccent : Color.primary)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, Space.lg)
-                                .background(isSelected ? AnyShapeStyle(Theme.accentTint) : AnyShapeStyle(.regularMaterial),
+                                .background(isSelected ? AnyShapeStyle(Theme.start) : AnyShapeStyle(Theme.tile),
                                             in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
                                 .overlay(RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                                    .strokeBorder(isSelected ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.clear), lineWidth: 2))
+                                    .strokeBorder(isSelected ? AnyShapeStyle(.clear) : AnyShapeStyle(Theme.stroke), lineWidth: 1))
                             }
                             .buttonStyle(.plain)
                             .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
@@ -131,20 +133,20 @@ struct ShareView: View {
                 }
                 .padding(Space.lg)
             }
-            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .background(Theme.surface.ignoresSafeArea())
             .safeAreaInset(edge: .bottom) {
                 Button {
                     guard let peer = selected else { return }
                     Task { await model.send(to: peer) }
                 } label: {
                     HStack(spacing: Space.sm) {
-                        if model.sending { ProgressView().tint(.white) } else { Image(systemName: "paperplane.fill") }
+                        if model.sending { ProgressView().tint(Theme.onPrimaryButton) } else { Image(systemName: "paperplane.fill") }
                         Text(selected.map { "Send to \($0.name)" } ?? "Send")
                     }
                     .font(.headline)
                     .frame(maxWidth: .infinity, minHeight: 50)
-                    .foregroundStyle(.white)
-                    .background(Theme.gradient, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                    .foregroundStyle(Theme.onPrimaryButton)
+                    .background(Theme.primaryButton, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .disabled(selected == nil || model.loading || model.sending || model.payloads.isEmpty)

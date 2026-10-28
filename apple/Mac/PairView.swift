@@ -24,7 +24,7 @@ struct PairView: View {
         }
         .padding(Space.xl)
         .frame(width: 340)
-        .background { WindowGlow().ignoresSafeArea() }
+        .background { Theme.surface.ignoresSafeArea() }
         .seamlessWindow()
         .onAppear { model.lastPaired = nil }
         .onChange(of: model.lastPaired) { _, name in

@@ -24,6 +24,16 @@ struct SettingsForm<Extra: View>: View {
 
     var body: some View {
         Form {
+            #if os(iOS)
+            Section {
+                ThemePicker(settings: settings)
+                    .listRowInsets(EdgeInsets(top: Space.md, leading: Space.md, bottom: Space.md, trailing: Space.md))
+            } header: {
+                Text("Appearance")
+            } footer: {
+                Text("Light and dark follow your iPhone.")
+            }
+            #endif
             Section {
                 ForEach(settings.peers) { peer in
                     PeerRow(peer: peer, result: pingResults[peer.id],
@@ -125,6 +135,10 @@ struct SettingsForm<Extra: View>: View {
             }
         }
         .formStyle(.grouped)
+        #if os(iOS)
+        .scrollContentBackground(.hidden)
+        .background(Theme.surface)
+        #endif
         .confirmationDialog("Remove \(removing?.name ?? "device")?", isPresented: Binding(
             get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Remove", role: .destructive) {

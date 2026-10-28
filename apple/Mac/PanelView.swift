@@ -42,6 +42,7 @@ struct PanelView: View {
         }
         .padding(Space.lg)
         .frame(width: 340)
+        .background(Theme.surface)
         .motion(Motion.standard, value: model.lastSendResult)
     }
 
@@ -158,7 +159,7 @@ private struct DeviceTile: View {
         .padding(Space.md)
         .background {
             RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                .fill(hovering ? AnyShapeStyle(Theme.accentTint) : AnyShapeStyle(.background.secondary))
+                .fill(hovering ? Theme.accentTint : Theme.tile)
                 .overlay(RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                     .strokeBorder(hovering ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.stroke), lineWidth: 1))
         }

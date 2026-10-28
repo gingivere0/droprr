@@ -5,20 +5,52 @@ import AppKit
 import UIKit
 #endif
 
-/// Droprr's look. Values come from design-system/droprr (MASTER.md and tokens.json), shared with Windows.
+/// One Bento color theme (see design-system/droprr, "Bento themes"). Values live in ThemePalettes.swift.
+struct ThemePalette: Identifiable, Equatable {
+    struct Roles: Equatable {
+        var surface, tile, border, textPrimary, textSecondary, primaryButton, onPrimaryButton: UInt32
+        var accent, onAccent, accentText, accentTint, secondary, secondaryTint, secondaryText: UInt32
+    }
+
+    let id: String
+    let name: String
+    let light: Roles
+    let dark: Roles
+
+    static func named(_ id: String) -> ThemePalette {
+        all.first { $0.id == id } ?? all.first { $0.id == defaultID }!
+    }
+}
+
+/// Droprr's look: the Bento Grid in the theme chosen in Settings (Graphite & Lime by default).
+/// Every color follows light and dark mode. Reading these inside a view's body re-renders it when the
+/// theme changes, because the selection lives in the observable settings.
 enum Theme {
-    /// brand.violet #5C21F7: accent fills, selection, the gradient's first stop.
-    static let start = Color(red: 0x5C / 255, green: 0x21 / 255, blue: 0xF7 / 255)
-    /// brand.coral #FF5E5C: second gradient stop and progress only. Never text on light backgrounds.
-    static let end = Color(red: 0xFF / 255, green: 0x5E / 255, blue: 0x5C / 255)
-    /// brand.gradient, 135°: logo, primary buttons, filled glyphs. Small surfaces only.
-    static let gradient = LinearGradient(colors: [start, end], startPoint: .topLeading, endPoint: .bottomTrailing)
-    /// accent.text: violet in light mode, #A98BFF in dark so it stays readable.
-    static let accentText = Color.adaptive(light: (0x5C, 0x21, 0xF7), dark: (0xA9, 0x8B, 0xFF))
-    /// accent.tint: violet at 12% (light) or 20% (dark) for unfilled glyph circles and soft chips.
-    static let accentTint = Color.adaptive(light: (0x5C, 0x21, 0xF7), dark: (0x5C, 0x21, 0xF7), lightAlpha: 0.12, darkAlpha: 0.20)
-    /// Card and divider stroke.
-    static let stroke = Color.primary.opacity(0.08)
+    static var palette: ThemePalette { ThemePalette.named(DroprrSettings.shared.theme) }
+
+    private static func color(_ role: KeyPath<ThemePalette.Roles, UInt32>) -> Color {
+        let p = palette
+        return Color.adaptive(hex: p.light[keyPath: role], dark: p.dark[keyPath: role])
+    }
+
+    /// The accent fill: selected tiles, toggles, the app glyph tile.
+    static var start: Color { color(\.accent) }
+    static var onAccent: Color { color(\.onAccent) }
+    /// The theme's secondary color: the message tile and "waiting" badges.
+    static var end: Color { color(\.secondary) }
+    static var secondaryTint: Color { color(\.secondaryTint) }
+    static var secondaryText: Color { color(\.secondaryText) }
+    /// Bento uses flat fills; kept as a gradient type so existing call sites keep working.
+    static var gradient: LinearGradient { LinearGradient(colors: [start, start], startPoint: .top, endPoint: .bottom) }
+    static var accentText: Color { color(\.accentText) }
+    static var accentTint: Color { color(\.accentTint) }
+    static var surface: Color { color(\.surface) }
+    static var tile: Color { color(\.tile) }
+    static var stroke: Color { color(\.border) }
+    static var primaryButton: Color { color(\.primaryButton) }
+    static var onPrimaryButton: Color { color(\.onPrimaryButton) }
+    static var successFill: Color { Color.adaptive(hex: ThemePalette.successFill.light, dark: ThemePalette.successFill.dark) }
+    static var successText: Color { Color.adaptive(hex: ThemePalette.successText.light, dark: ThemePalette.successText.dark) }
 
     static func symbol(for peer: Peer) -> String {
         switch peer.platform {
@@ -72,6 +104,12 @@ enum Radius {
     static let row: CGFloat = 8
     static let card: CGFloat = 12
     static let feature: CGFloat = 14
+    /// Bento tiles (tokens.json "bento.radius.tile").
+    #if os(macOS)
+    static let tile: CGFloat = 16
+    #else
+    static let tile: CGFloat = 20
+    #endif
 }
 
 /// motion.*: short ease-out transitions that respect Reduce Motion.
@@ -112,6 +150,11 @@ extension View {
 }
 
 extension Color {
+    static func adaptive(hex light: UInt32, dark: UInt32) -> Color {
+        func rgb(_ v: UInt32) -> (Int, Int, Int) { (Int(v >> 16 & 0xFF), Int(v >> 8 & 0xFF), Int(v & 0xFF)) }
+        return adaptive(light: rgb(light), dark: rgb(dark))
+    }
+
     static func adaptive(light: (Int, Int, Int), dark: (Int, Int, Int), lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> Color {
         func rgb(_ c: (Int, Int, Int)) -> (CGFloat, CGFloat, CGFloat) { (CGFloat(c.0) / 255, CGFloat(c.1) / 255, CGFloat(c.2) / 255) }
         let (l, d) = (rgb(light), rgb(dark))
@@ -152,13 +195,14 @@ struct GlyphCircle: View {
     var filled = false
 
     var body: some View {
-        Circle()
-            .fill(filled ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.accentTint))
+        // Bento icon well: a rounded square, accent-filled when selected.
+        RoundedRectangle(cornerRadius: size * 0.3, style: .continuous)
+            .fill(filled ? Theme.start : Theme.accentTint)
             .frame(width: size, height: size)
             .overlay {
                 Image(systemName: symbol)
                     .font(.system(size: size * 0.45, weight: .medium))
-                    .foregroundStyle(filled ? AnyShapeStyle(.white) : AnyShapeStyle(Theme.accentText))
+                    .foregroundStyle(filled ? Theme.onAccent : Theme.accentText)
             }
     }
 }
@@ -215,7 +259,7 @@ struct SendStatusView: View {
 
     private func tint(_ kind: Kind) -> Color {
         switch kind {
-        case .success: return Color.green.opacity(0.12)
+        case .success: return Theme.successFill
         case .failure: return Color.orange.opacity(0.14)
         case .working, .info: return Theme.accentTint
         }
@@ -297,12 +341,12 @@ struct HoverButtonStyle: ButtonStyle {
             configuration.label
                 .padding(.horizontal, kind == .plain ? 4 : (compact ? 8 : 12))
                 .padding(.vertical, kind == .plain ? 3 : (compact ? 4 : 6))
-                .foregroundStyle(kind == .prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                .foregroundStyle(kind == .prominent ? AnyShapeStyle(Theme.onPrimaryButton) : AnyShapeStyle(.primary))
                 .background {
                     let shape = RoundedRectangle(cornerRadius: Radius.button, style: .continuous)
                     switch kind {
                     case .prominent:
-                        shape.fill(Theme.gradient)
+                        shape.fill(Theme.primaryButton)
                             .overlay(shape.fill(Color.white.opacity(active ? 0.18 : 0)))
                             .overlay(shape.fill(Color.black.opacity(configuration.isPressed ? 0.15 : 0)))
                     case .bordered:

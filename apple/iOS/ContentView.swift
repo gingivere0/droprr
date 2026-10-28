@@ -25,6 +25,7 @@ struct ContentView: View {
             }
             .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
+        .tint(Theme.accentText)
         .environment(\.startPairing, { scanning = true })
         .environment(\.pairWithCode, { model.pair(with: $0) })
         .sheet(isPresented: $scanning) {
@@ -101,7 +102,7 @@ private struct PairingStatusCard: View {
                 case .success(let text):
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 56))
-                        .foregroundStyle(Theme.gradient)
+                        .foregroundStyle(Theme.start)
                     Text(text).font(.headline).multilineTextAlignment(.center)
                     Text("You can send to it now.").font(.subheadline).foregroundStyle(.secondary)
                 case .failure(let text):
@@ -113,13 +114,13 @@ private struct PairingStatusCard: View {
                         .font(.headline)
                         .padding(.horizontal, Space.xxl)
                         .padding(.vertical, Space.md)
-                        .foregroundStyle(.white)
-                        .background(Theme.gradient, in: Capsule())
+                        .foregroundStyle(Theme.onPrimaryButton)
+                        .background(Theme.primaryButton, in: Capsule())
                 }
             }
             .padding(Space.xl)
             .frame(maxWidth: 300)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.feature, style: .continuous))
+            .background(Theme.tile, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
             .shadow(radius: 20)
         }
         .transition(.opacity)
@@ -191,7 +192,7 @@ private struct SendTab: View {
 
     private var backdrop: some View {
         // The gradient is for small surfaces only; screens use the system background.
-        Color(.systemGroupedBackground).ignoresSafeArea()
+        Theme.surface.ignoresSafeArea()
     }
 
     private var devicePicker: some View {
@@ -210,11 +211,13 @@ private struct SendTab: View {
                             }
                             .padding(.horizontal, Space.lg)
                             .padding(.vertical, Space.md)
-                            .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                            .foregroundStyle(selected ? Theme.onAccent : .primary)
                             .background {
-                                Capsule().fill(selected ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.regularMaterial))
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(selected ? Theme.start : Theme.tile)
+                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .strokeBorder(selected ? .clear : Theme.stroke, lineWidth: 1))
                             }
-                            .shadow(color: selected ? Theme.start.opacity(0.3) : .clear, radius: 8, y: 4)
                         }
                         .buttonStyle(.plain)
                     }
@@ -225,33 +228,37 @@ private struct SendTab: View {
     }
 
     /// Tapping a card selects it; nothing goes out until Send. Tap a selected card's × to clear it.
+    /// Bento: Photos is the tall tile; Clipboard and Files stack beside it.
     private var actionGrid: some View {
         HStack(spacing: Space.md) {
-            ActionCard(title: "Clipboard", symbol: "doc.on.clipboard.fill",
-                       detail: clipboard.map(\.label), selected: clipboard != nil,
-                       onClear: { clipboard = nil }) {
-                if clipboard != nil {
-                    clipboard = nil
-                } else if let payload = model.clipboardPayload() {
-                    clipboard = payload
-                } else {
-                    model.lastSendResult = "The clipboard is empty."
-                }
-            }
             PhotosPicker(selection: $photos, matching: .any(of: [.images, .videos])) {
                 ActionCardLabel(title: "Photos", symbol: "photo.fill.on.rectangle.fill",
-                                detail: photos.isEmpty ? nil : "\(photos.count) selected", selected: !photos.isEmpty)
+                                detail: photos.isEmpty ? "Pick photos or videos" : "\(photos.count) selected", selected: !photos.isEmpty)
             }
             .buttonStyle(PressableStyle())
             .overlay(alignment: .topTrailing) {
                 if !photos.isEmpty { ClearBadge { photos = [] } }
             }
-            ActionCard(title: "Files", symbol: "folder.fill",
-                       detail: files.isEmpty ? nil : "\(files.count) selected", selected: !files.isEmpty,
-                       onClear: { files = [] }) {
-                importing = true
+            VStack(spacing: Space.md) {
+                ActionCard(title: "Clipboard", symbol: "doc.on.clipboard.fill",
+                           detail: clipboard.map(\.label), selected: clipboard != nil,
+                           onClear: { clipboard = nil }) {
+                    if clipboard != nil {
+                        clipboard = nil
+                    } else if let payload = model.clipboardPayload() {
+                        clipboard = payload
+                    } else {
+                        model.lastSendResult = "The clipboard is empty."
+                    }
+                }
+                ActionCard(title: "Files", symbol: "folder.fill",
+                           detail: files.isEmpty ? nil : "\(files.count) selected", selected: !files.isEmpty,
+                           onClear: { files = [] }) {
+                    importing = true
+                }
             }
         }
+        .frame(height: 240)
         .disabled(model.sending)
         .motion(Motion.standard, value: hasStaged)
     }
@@ -263,7 +270,7 @@ private struct SendTab: View {
                 .lineLimit(3...8)
                 .focused($typing)
                 .padding(Space.lg)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                .background(Theme.tile, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
         }
     }
 
@@ -274,15 +281,14 @@ private struct SendTab: View {
             Task { await sendStaged(to: peer) }
         } label: {
             HStack(spacing: Space.sm) {
-                if model.sending { ProgressView().tint(.white) } else { Image(systemName: "paperplane.fill") }
+                if model.sending { ProgressView().tint(Theme.onPrimaryButton) } else { Image(systemName: "paperplane.fill") }
                 Text(peer.map { "Send to \($0.name)" } ?? "Send")
             }
             .font(.headline)
             .frame(maxWidth: .infinity)
             .padding(.vertical, Space.lg)
-            .foregroundStyle(.white)
-            .background(Theme.gradient, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
-            .shadow(color: Theme.start.opacity(hasStaged ? 0.3 : 0), radius: 10, y: 5)
+            .foregroundStyle(Theme.onPrimaryButton)
+            .background(Theme.primaryButton, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
         }
         .buttonStyle(PressableStyle())
         .disabled(peer == nil || !hasStaged || model.sending)
@@ -375,12 +381,12 @@ private struct ActionCardLabel: View {
     var body: some View {
         VStack(spacing: Space.sm) {
             ZStack {
-                Circle()
-                    .fill(selected ? AnyShapeStyle(.white) : AnyShapeStyle(Theme.gradient))
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(selected ? Theme.onAccent.opacity(0.18) : Theme.accentTint)
                     .frame(width: 46, height: 46)
                 Image(systemName: selected ? "checkmark" : symbol)
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(selected ? AnyShapeStyle(Theme.start) : AnyShapeStyle(.white))
+                    .foregroundStyle(selected ? Theme.onAccent : Theme.accentText)
             }
             Text(title).font(.subheadline.weight(.semibold))
             Text(detail ?? " ")
@@ -388,14 +394,15 @@ private struct ActionCardLabel: View {
                 .lineLimit(1)
                 .opacity(detail == nil ? 0 : 0.9)
         }
-        .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
-        .frame(maxWidth: .infinity)
+        .foregroundStyle(selected ? Theme.onAccent : .primary)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.vertical, Space.lg)
         .background {
-            RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                .fill(selected ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.regularMaterial))
+            RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+                .fill(selected ? Theme.start : Theme.tile)
+                .overlay(RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+                    .strokeBorder(selected ? .clear : Theme.stroke, lineWidth: 1))
         }
-        .shadow(color: selected ? Theme.start.opacity(0.3) : .clear, radius: 8, y: 4)
     }
 }
 
@@ -408,7 +415,7 @@ private struct ClearBadge: View {
             Image(systemName: "xmark.circle.fill")
                 .font(.title3)
                 .symbolRenderingMode(.palette)
-                .foregroundStyle(Theme.start, .white)
+                .foregroundStyle(Theme.primaryButton, Theme.onPrimaryButton)
                 .frame(width: 44, height: 44)   // 44 pt tap target
                 .contentShape(Rectangle())
         }
@@ -441,14 +448,14 @@ private struct EmptyDevicesCard: View {
                     .font(.headline)
                     .padding(.horizontal, Space.xl)
                     .padding(.vertical, Space.md)
-                    .foregroundStyle(.white)
-                    .background(Theme.gradient, in: Capsule())
+                    .foregroundStyle(Theme.onPrimaryButton)
+                    .background(Theme.primaryButton, in: Capsule())
             }
             .buttonStyle(PressableStyle())
         }
         .frame(maxWidth: .infinity)
         .padding(Space.xxl)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.feature, style: .continuous))
+        .background(Theme.tile, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
         .padding(.top, Space.xxl)
     }
 }
@@ -517,6 +524,8 @@ private struct ReceivedTab: View {
             }
         }
         .navigationTitle("Received")
+        .scrollContentBackground(.hidden)
+        .background(Theme.surface)
         .refreshable { await model.collectInbox() }
         .safeAreaInset(edge: .bottom) {
             Button(action: openReceivedFolder) {
@@ -524,7 +533,7 @@ private struct ReceivedTab: View {
                     .font(.subheadline.weight(.medium))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, Space.md)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.feature, style: .continuous))
+                    .background(Theme.tile, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
             }
             .buttonStyle(.plain)
             .foregroundStyle(Theme.accentText)

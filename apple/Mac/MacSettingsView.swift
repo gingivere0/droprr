@@ -13,8 +13,9 @@ struct MacSettingsView: View {
 
     /// The cards without the scroll view (also used for debug snapshots).
     var content: some View {
-        VStack(alignment: .leading, spacing: Space.xl) {
+        VStack(alignment: .leading, spacing: Space.md) {
             thisMac
+            appearance
             devices
             receiving
             security
@@ -25,7 +26,7 @@ struct MacSettingsView: View {
     var body: some View {
         ScrollView { content }
         .frame(width: 580, height: 680)
-        .background { WindowGlow().ignoresSafeArea() }
+        .background { Theme.surface.ignoresSafeArea() }
         .seamlessWindow()
         .sheet(item: $editing) { peer in
             PeerEditor(peer: peer, isNew: !settings.peers.contains { $0.id == peer.id },
@@ -92,9 +93,18 @@ struct MacSettingsView: View {
         .card()
     }
 
+    private var appearance: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            CardHeader(symbol: "paintpalette.fill", color: Theme.start, glyph: Theme.onAccent, title: "Appearance",
+                       subtitle: "Color theme. Light and dark follow your Mac.")
+            ThemePicker(settings: settings)
+        }
+        .card()
+    }
+
     private var devices: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            CardHeader(symbol: "point.3.connected.trianglepath.dotted", color: Theme.start, title: "Devices",
+            CardHeader(symbol: "point.3.connected.trianglepath.dotted", color: Theme.start, glyph: Theme.onAccent, title: "Devices",
                        subtitle: settings.peers.isEmpty ? "None yet" : "\(settings.peers.count) paired") {
                 Button { editing = Peer(name: "", host: "") } label: {
                     Label("Add Device", systemImage: "plus")
@@ -118,7 +128,7 @@ struct MacSettingsView: View {
 
     private var receiving: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            CardHeader(symbol: "tray.and.arrow.down.fill", color: Theme.end, title: "Receiving",
+            CardHeader(symbol: "tray.and.arrow.down.fill", color: Theme.secondaryText, glyph: Theme.tile, title: "Receiving",
                        subtitle: "Files go to Downloads › Droprr") {
                 Button("Open Folder") {
                     try? FileManager.default.createDirectory(at: MacModel.inbox, withIntermediateDirectories: true)
