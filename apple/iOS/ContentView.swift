@@ -30,13 +30,54 @@ struct ContentView: View {
         .sheet(isPresented: $scanning) {
             PairingScannerSheet { model.pair(with: $0) }
         }
-        .alert("Pairing", isPresented: Binding(
-            get: { model.pairingMessage != nil && !scanning },
-            set: { if !$0 { model.pairingMessage = nil } })) {
-            Button("OK") { model.pairingMessage = nil }
-        } message: {
-            Text(model.pairingMessage ?? "")
+        .overlay {
+            if let status = model.pairingStatus, !scanning {
+                PairingStatusCard(status: status) { model.pairingStatus = nil }
+            }
         }
+        .animation(.spring(duration: 0.3), value: model.pairingStatus)
+    }
+}
+
+/// Pairing progress, then a clear result: success fades away on its own, failure waits for OK.
+private struct PairingStatusCard: View {
+    var status: PhoneModel.PairingStatus
+    var dismiss: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.25).ignoresSafeArea()
+            VStack(spacing: 14) {
+                switch status {
+                case .working(let text):
+                    ProgressView().controlSize(.large)
+                    Text(text).font(.headline).multilineTextAlignment(.center)
+                case .success(let text):
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 56))
+                        .foregroundStyle(Theme.gradient)
+                    Text(text).font(.headline).multilineTextAlignment(.center)
+                    Text("You can send to it now.").font(.subheadline).foregroundStyle(.secondary)
+                case .failure(let text):
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 44))
+                        .foregroundStyle(.orange)
+                    Text(text).font(.subheadline).multilineTextAlignment(.center)
+                    Button("OK", action: dismiss)
+                        .font(.headline)
+                        .padding(.horizontal, 28)
+                        .padding(.vertical, 10)
+                        .foregroundStyle(.white)
+                        .background(Theme.gradient, in: Capsule())
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: 300)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .shadow(radius: 20)
+        }
+        .transition(.opacity)
+        .onTapGesture { if case .success = status { dismiss() } }
     }
 }
 

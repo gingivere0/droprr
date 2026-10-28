@@ -90,9 +90,17 @@ struct SettingsForm<Extra: View>: View {
                 .buttonStyle(.borderless)
                 #endif
             } header: {
-                Text("Pairing token")
+                #if os(macOS)
+                Text("This Mac's token")
+                #else
+                Text("Default token")
+                #endif
             } footer: {
-                Text("Use the same token on every device. It stays on this device.")
+                #if os(macOS)
+                Text("Devices need this token to send to this Mac. A phone gets it by scanning the Pair a Phone code.")
+                #else
+                Text("Used only for devices you add by hand. Devices paired with a QR code keep their own token.")
+                #endif
             }
 
             Section {
@@ -250,7 +258,7 @@ private struct PeerEditor: View {
                             .keyboardType(.URL)
                             #endif
                         TextField("Port", value: $peer.port, format: .number.grouping(.never))
-                        SecureField("Its token (if different from yours)", text: Binding(
+                        SecureField("Its token", text: Binding(
                             get: { peer.token ?? "" }, set: { peer.token = $0.isEmpty ? nil : $0 }))
                     } footer: {
                         Text("Find the name in the Tailscale app, for example my-pc. Scanning a device's pairing QR code fills all of this in.")

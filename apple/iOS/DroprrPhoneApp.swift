@@ -111,23 +111,28 @@ final class PhoneModel {
 
     // MARK: Pairing
 
-    /// Shown as an alert after a QR code is scanned.
-    var pairingMessage: String?
+    enum PairingStatus: Equatable {
+        case working(String)
+        case success(String)
+        case failure(String)
+    }
+
+    /// Shown as a card over the app while and after a QR code is scanned.
+    var pairingStatus: PairingStatus?
 
     func pair(with code: String) {
         let info: PairingInfo
         switch PairingInfo.parse(code) {
         case .success(let parsed): info = parsed
         case .failure(.newerVersion):
-            pairingMessage = "This pairing code is from a newer version of Droprr. Update the app on this iPhone and try again."
+            pairingStatus = .failure("This pairing code is from a newer version of Droprr. Update the app on this iPhone and try again.")
             return
         case .failure:
-            pairingMessage = "That isn't a Droprr pairing code."
+            pairingStatus = .failure("That isn't a Droprr pairing code.")
             return
         }
         let peer = settings.apply(info)
-        pairingMessage = "Checking \(peer.name)…"
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        pairingStatus = .working("Pairing with \(peer.name)")
         Task {
             do {
                 let client = DroprrClient(peer: peer, token: settings.token)
@@ -138,10 +143,16 @@ final class PhoneModel {
                     settings.peers[i].platform = ping.platform
                     settings.peers[i].remoteName = ping.name
                 }
-                pairingMessage = "Paired with \(ping.name). You can send to it now."
+                pairingStatus = .success("Paired with \(ping.name)")
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                Task {
+                    try? await Task.sleep(for: .seconds(2.5))
+                    if case .success = pairingStatus { pairingStatus = nil }
+                }
                 await collectInbox()
             } catch {
-                pairingMessage = "Added \(peer.name), but it didn't answer: \(error.localizedDescription). Check that Tailscale is on for both devices."
+                pairingStatus = .failure("Added \(peer.name), but it didn't answer: \(error.localizedDescription) Check that Tailscale is on for both devices.")
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
         }
     }
