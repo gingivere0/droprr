@@ -22,10 +22,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         case .file(let url):
             content.title = "File received\(suffix)"
             content.userInfo = ["open": url.absoluteString]
-        case .text:
-            content.title = "Text copied\(suffix)"
+        case .text(let text):
+            content.title = "Text received\(suffix)"
+            content.userInfo = ["copy": text]
         case .url(let url):
-            content.title = "Link copied\(suffix)"
+            content.title = "Link received\(suffix)"
             content.userInfo = ["open": url.absoluteString]
         }
         content.body = item.title
@@ -41,7 +42,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        if let string = response.notification.request.content.userInfo["open"] as? String, let url = URL(string: string) {
+        let info = response.notification.request.content.userInfo
+        if let text = info["copy"] as? String {
+            DispatchQueue.main.async { Clipboard.copy(text: text) }   // clicking a text notification copies it
+        }
+        if let string = info["open"] as? String, let url = URL(string: string) {
             DispatchQueue.main.async { self.onOpen(url) }
         }
         completionHandler()

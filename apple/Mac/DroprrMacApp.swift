@@ -118,11 +118,7 @@ final class MacModel {
     }
 
     private func received(_ item: ReceivedItem) {
-        switch item.kind {
-        case .text(let text): Clipboard.copy(text: text)
-        case .url(let url): Clipboard.copy(url: url)
-        case .file: break
-        }
+        if settings.autoCopy { Clipboard.copy(item) }
         withAnimation { recent.insert(item, at: 0) }
         recent = Array(recent.prefix(8))
         Notifier.shared.notify(item)
@@ -157,7 +153,7 @@ final class MacModel {
         switch item.kind {
         case .file(let url): NSWorkspace.shared.activateFileViewerSelecting([url])
         case .url(let url): NSWorkspace.shared.open(url)
-        case .text(let text): Clipboard.copy(text: text)
+        case .text: Clipboard.copy(item)
         }
     }
 

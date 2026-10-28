@@ -101,8 +101,8 @@ extension ReceivedItem {
         let time = date.formatted(.relative(presentation: .named))
         switch kind {
         case .file: return "File · \(time)"
-        case .text: return "Text · copied · \(time)"
-        case .url: return "Link · copied · \(time)"
+        case .text: return "Text · \(time)"
+        case .url: return "Link · \(time)"
         }
     }
 }

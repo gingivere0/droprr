@@ -54,6 +54,7 @@ final class PhoneModel {
     var seenItems: [HistoryEntry] { history.filter { !$0.isNew } }
 
     private func record(_ item: ReceivedItem, from source: String?) {
+        if settings.autoCopy { Clipboard.copy(item) }
         withAnimation {
             history.insert(HistoryEntry(item, source: source), at: 0)
             trimAndSave()

@@ -49,6 +49,8 @@ final class DroprrSettings {
     var port: Int { didSet { defaults.set(port, forKey: "port") } }
     var peers: [Peer] { didSet { savePeers() } }
     var lastPeerID: UUID? { didSet { defaults.set(lastPeerID?.uuidString, forKey: "lastPeerID") } }
+    /// Copy every received item (text, links, images and files) to the clipboard. Off by default.
+    var autoCopy: Bool { didSet { defaults.set(autoCopy, forKey: "autoCopy") } }
 
     init() {
         let group = Bundle.main.object(forInfoDictionaryKey: "DroprrAppGroup") as? String
@@ -72,6 +74,7 @@ final class DroprrSettings {
             peers = []
         }
         lastPeerID = defaults.string(forKey: "lastPeerID").flatMap(UUID.init(uuidString:))
+        autoCopy = defaults.bool(forKey: "autoCopy")
     }
 
     var lastPeer: Peer? {

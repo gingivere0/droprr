@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
 #else
@@ -105,6 +106,7 @@ struct SettingsForm<Extra: View>: View {
 
             Section {
                 TextField("Device name", text: $settings.deviceName)
+                Toggle("Auto-copy received items to clipboard", isOn: $settings.autoCopy)
                 TextField("Port", value: $settings.port, format: .number.grouping(.never))
                 #if os(iOS)
                     .keyboardType(.numberPad)
@@ -306,6 +308,32 @@ private struct PeerEditor: View {
 }
 
 enum Clipboard {
+    /// Copies any received item: text, a link, an image as image data, or another file as a file.
+    static func copy(_ item: ReceivedItem) {
+        switch item.kind {
+        case .text(let text): copy(text: text)
+        case .url(let url): copy(url: url)
+        case .file(let file): copy(file: file)
+        }
+    }
+
+    static func copy(file: URL) {
+        let isImage = UTType(filenameExtension: file.pathExtension)?.conforms(to: .image) == true
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        var objects: [NSPasteboardWriting] = []
+        if isImage, let image = NSImage(contentsOf: file) { objects.append(image) }
+        objects.append(file as NSURL)
+        NSPasteboard.general.writeObjects(objects)
+        #else
+        if isImage, let image = UIImage(contentsOfFile: file.path) {
+            UIPasteboard.general.image = image
+        } else if let type = UTType(filenameExtension: file.pathExtension), let data = try? Data(contentsOf: file) {
+            UIPasteboard.general.setData(data, forPasteboardType: type.identifier)
+        }
+        #endif
+    }
+
     static func copy(text: String) {
         #if os(macOS)
         NSPasteboard.general.clearContents()
