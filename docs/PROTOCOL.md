@@ -219,6 +219,38 @@ Response `200`:
 
 An unknown or expired `id` returns `404`.
 
+## Pairing QR
+
+A desktop can show a QR code that a phone scans to add it as a peer in one step. The code is a URI:
+
+```text
+droprr://pair?v=1&name=<name>&host=<host>&port=<port>&token=<token>&platform=<platform>&dns=<dns>
+```
+
+| Field | Meaning |
+| --- | --- |
+| `v` | Payload version. This document describes `1`. A phone that sees a higher version it doesn't understand should say so rather than guess. |
+| `name` | The desktop's device name, as returned by its `/ping`. |
+| `host` | The desktop's Tailscale IPv4 address. |
+| `port` | The desktop's listening port. |
+| `token` | The desktop's own token. |
+| `platform` | `windows` or `macos`. |
+| `dns` | Optional. The desktop's MagicDNS name, without a trailing dot, when it's available. |
+
+**Encoding:** every value is percent-encoded per RFC 3986: anything outside the unreserved characters (`A`–`Z`, `a`–`z`, `0`–`9`, `-`, `.`, `_`, `~`) becomes `%XX` of its UTF-8 bytes. A space is `%20`, never `+`. For example:
+
+```text
+droprr://pair?v=1&name=My%20PC&host=100.64.0.1&port=53318&token=EXAMPLE-TOKEN&platform=windows&dns=my-pc.example.ts.net
+```
+
+**When a phone scans it:**
+
+1. It stores the token **per peer**. Each desktop has its own token, so the phone sends each desktop the token from that desktop's QR code, never one shared token.
+2. It adds the peer, or updates an existing one matched by `host` or `name`, with the new name, host, `dns`, port, token, and platform. It should prefer `dns` for connecting when present, since the IP can change, and fall back to `host`.
+3. It calls `GET /ping` with the new token to confirm the pairing, and tells the user whether it worked.
+
+**Handling:** the code contains a secret. A desktop builds it only while the pairing window is open and never saves it to disk or writes it to a log. It warns the user that the code contains the token.
+
 ## Implementation notes
 
 - **Binding:** a listener may bind to all interfaces (`0.0.0.0` or `::`) instead of specific addresses, as long as it immediately drops any connection whose source address isn't loopback, in `100.64.0.0/10` (Tailscale IPv4), or in `fd7a:115c:a1e0::/48` (Tailscale IPv6). This helps on platforms where the Tailscale address is hard to find or changes often.

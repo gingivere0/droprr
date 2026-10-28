@@ -1,0 +1,26 @@
+<Window x:Class="Droprr.PairWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pair a phone" Width="420" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" FontFamily="{StaticResource AppFont}">
+    <StackPanel Margin="24">
+        <TextBlock Text="Pair a phone" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,16" />
+        <Border CornerRadius="12" Background="White" Padding="16" HorizontalAlignment="Center">
+            <Image x:Name="Code" Width="280" Height="280" RenderOptions.BitmapScalingMode="NearestNeighbor" />
+        </Border>
+        <TextBlock Text="Scan with your iPhone camera" FontSize="16" FontWeight="SemiBold"
+                   HorizontalAlignment="Center" Margin="0,16,0,4" />
+        <TextBlock x:Name="Details" Opacity="0.75" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+        <Border Style="{StaticResource Card}" Margin="0,16,0,0" Padding="12">
+            <DockPanel>
+                <TextBlock Text="&#xE7BA;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
+                           Foreground="DarkOrange" Margin="0,1,10,0" VerticalAlignment="Top" />
+                <TextBlock TextWrapping="Wrap"
+                           Text="This code contains your Droprr token. Anyone who scans it can send files to this PC, so only show it to your own phone." />
+            </DockPanel>
+        </Border>
+        <TextBlock x:Name="Error" Foreground="IndianRed" TextWrapping="Wrap" Margin="0,12,0,0" Visibility="Collapsed" />
+        <Button Content="Done" HorizontalAlignment="Right" Padding="24,5" Margin="0,16,0,0" IsCancel="True" IsDefault="True"
+                Style="{DynamicResource AccentButtonStyle}" />
+    </StackPanel>
+</Window>

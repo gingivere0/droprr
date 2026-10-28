@@ -75,6 +75,10 @@ public partial class SettingsWindow : Window
         PeerGrid.ScrollIntoView(peer);
     }
 
+    // Uses the saved settings, so the code carries the token and port this PC is actually using.
+    void OnPair(object sender, RoutedEventArgs e) =>
+        new PairWindow(SettingsStore.Load()) { Owner = this }.ShowDialog();
+
     void OnRemovePeer(object sender, RoutedEventArgs e)
     {
         if (PeerGrid.SelectedItem is Peer peer)
