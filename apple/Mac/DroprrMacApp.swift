@@ -10,7 +10,13 @@ struct DroprrMacApp: App {
         MenuBarExtra {
             PanelView(model: model)
         } label: {
-            Image("MenuBarIcon")
+            // Seth prefers the colored logo over a monochrome template icon.
+            Image(nsImage: {
+                let image = NSImage(named: "MenuBarIcon") ?? NSImage()
+                image.isTemplate = false
+                image.size = NSSize(width: 18, height: 18)
+                return image
+            }())
         }
         .menuBarExtraStyle(.window)
 
