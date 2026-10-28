@@ -19,7 +19,8 @@ struct PanelView: View {
                     ForEach(model.settings.peers) { peer in
                         DeviceTile(peer: peer, waiting: model.waiting(for: peer),
                                    onClipboard: { Task { await model.sendClipboard(to: peer) } },
-                                   onFiles: { model.chooseFiles(for: peer) })
+                                   onFiles: { model.chooseFiles(for: peer) },
+                                   onClearWaiting: { model.clearWaiting(for: peer) })
                     }
                 }
             }
@@ -116,6 +117,7 @@ private struct DeviceTile: View {
     var waiting: Int
     var onClipboard: () -> Void
     var onFiles: () -> Void
+    var onClearWaiting: () -> Void
     @State private var hovering = false
 
     var body: some View {
@@ -124,11 +126,7 @@ private struct DeviceTile: View {
                 GlyphCircle(symbol: Theme.symbol(for: peer), size: 30, filled: hovering)
                 Spacer()
                 if waiting > 0 {
-                    Text("\(waiting) waiting")
-                        .font(.caption2.weight(.medium))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Theme.end.opacity(0.18), in: Capsule())
+                    WaitingBadge(count: waiting, peerName: peer.name, onClear: onClearWaiting)
                 }
             }
             Text(peer.name)
@@ -151,6 +149,32 @@ private struct DeviceTile: View {
         .onTapGesture(perform: onFiles)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.15), value: hovering)
+    }
+}
+
+/// "3 waiting ×": clicking clears the items queued for a phone, after a confirmation.
+struct WaitingBadge: View {
+    var count: Int
+    var peerName: String
+    var onClear: () -> Void
+    @State private var confirming = false
+
+    var body: some View {
+        Button { confirming = true } label: {
+            HStack(spacing: 3) {
+                Text("\(count) waiting")
+                Image(systemName: "xmark.circle.fill").opacity(0.7)
+            }
+            .font(.caption2.weight(.medium))
+        }
+        .buttonStyle(HoverButtonStyle(.bordered, compact: true))
+        .hoverHint("Clear the \(count) item\(count == 1 ? "" : "s") waiting for \(peerName)")
+        .confirmationDialog("Clear \(count) waiting item\(count == 1 ? "" : "s") for \(peerName)?",
+                            isPresented: $confirming) {
+            Button("Clear", role: .destructive, action: onClear)
+        } message: {
+            Text("They won't be delivered when Droprr next opens on \(peerName).")
+        }
     }
 }
 

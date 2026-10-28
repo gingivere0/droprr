@@ -38,6 +38,14 @@ struct SendView: View {
                         } onClick: {
                             model.chooseFiles(for: peer)
                         }
+                        .overlay(alignment: .topTrailing) {
+                            if model.waiting(for: peer) > 0 {
+                                WaitingBadge(count: model.waiting(for: peer), peerName: peer.name) {
+                                    model.clearWaiting(for: peer)
+                                }
+                                .padding(6)
+                            }
+                        }
                     }
                 }
 
@@ -100,7 +108,7 @@ private struct DropTile: View {
             VStack(spacing: 8) {
                 GlyphCircle(symbol: Theme.symbol(for: peer), size: 44, filled: targeted)
                 Text(peer.name).font(.headline).lineLimit(1)
-                Text(waiting > 0 ? "\(waiting) waiting" : (targeted ? "Release to send" : Theme.platformName(peer.platform)))
+                Text(targeted ? "Release to send" : Theme.platformName(peer.platform))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -166,6 +166,11 @@ final class MacModel {
         return peer.isPhone ? outbox.count(for: peer) : 0
     }
 
+    func clearWaiting(for peer: Peer) {
+        outbox.clear(for: peer)
+        lastSendResult = "Cleared the items waiting for \(peer.name)."
+    }
+
     // MARK: Launch at login
 
     var launchAtLogin: Bool {
