@@ -106,3 +106,42 @@ extension ReceivedItem {
         }
     }
 }
+
+#if os(macOS)
+/// Shows a small hint after the pointer rests on a view for a few seconds. Used instead of `.help`,
+/// whose tooltips don't appear reliably in a menu bar panel.
+private struct HoverHint: ViewModifier {
+    var text: String
+    var delay: Duration
+    @State private var showing = false
+    @State private var timer: Task<Void, Never>?
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { inside in
+                timer?.cancel()
+                if inside {
+                    timer = Task {
+                        try? await Task.sleep(for: delay)
+                        if !Task.isCancelled { showing = true }
+                    }
+                } else {
+                    showing = false
+                }
+            }
+            .popover(isPresented: $showing, arrowEdge: .bottom) {
+                Text(text)
+                    .font(.callout)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+            }
+            .accessibilityHint(text)
+    }
+}
+
+extension View {
+    func hoverHint(_ text: String, after delay: Duration = .seconds(3)) -> some View {
+        modifier(HoverHint(text: text, delay: delay))
+    }
+}
+#endif

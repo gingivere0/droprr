@@ -81,15 +81,15 @@ struct PanelView: View {
 
     private var footer: some View {
         HStack(spacing: 4) {
-            FooterButton(symbol: "square.and.arrow.up", help: "Send window") {
+            FooterButton(symbol: "square.and.arrow.up", help: "Open the Send window to drop files or type text") {
                 openWindow(id: "send")
                 bringToFront()
             }
-            FooterButton(symbol: "folder", help: "Open the Droprr folder") {
+            FooterButton(symbol: "folder", help: "Open the Droprr folder in Downloads") {
                 try? FileManager.default.createDirectory(at: MacModel.inbox, withIntermediateDirectories: true)
                 NSWorkspace.shared.open(MacModel.inbox)
             }
-            FooterButton(symbol: "gearshape", help: "Settings", action: showSettings)
+            FooterButton(symbol: "gearshape", help: "Settings: devices, pairing token, launch at login", action: showSettings)
             Spacer()
             FooterButton(symbol: "power", help: "Quit Droprr") { NSApp.terminate(nil) }
         }
@@ -161,7 +161,7 @@ private struct TileAction: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
-        .help("Send \(label.lowercased())")
+        .hoverHint(label == "Clipboard" ? "Send what's on the clipboard" : "Choose files to send")
     }
 }
 
@@ -187,6 +187,15 @@ private struct RecentRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+        .hoverHint(hintText)
+    }
+
+    private var hintText: String {
+        switch item.kind {
+        case .file: return "Show in Finder"
+        case .url: return "Open the link"
+        case .text: return "Copy the text again"
+        }
     }
 }
 
@@ -203,7 +212,7 @@ private struct FooterButton: View {
                 .background(hovering ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
-        .help(help)
+        .hoverHint(help)
         .onHover { hovering = $0 }
     }
 }

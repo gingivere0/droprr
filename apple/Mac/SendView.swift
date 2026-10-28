@@ -116,7 +116,7 @@ private struct DropTile: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Drop files here, or click to choose")
+        .hoverHint("Drop files here, or click to choose")
         .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
             Task {
                 var urls: [URL] = []

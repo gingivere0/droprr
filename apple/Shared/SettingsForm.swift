@@ -60,6 +60,9 @@ struct SettingsForm<Extra: View>: View {
                         Image(systemName: showToken ? "eye.slash" : "eye")
                     }
                     .buttonStyle(.borderless)
+                    #if os(macOS)
+                    .hoverHint(showToken ? "Hide the token" : "Show the token")
+                    #endif
                 }
                 HStack {
                     Button("Generate New") { settings.token = DroprrSettings.generateToken() }
@@ -141,6 +144,9 @@ private struct PeerRow: View {
             }
             Button(action: onEdit) { Image(systemName: "pencil") }
                 .buttonStyle(.borderless)
+                #if os(macOS)
+                .hoverHint("Edit or rename this device")
+                #endif
         }
         .padding(.vertical, 2)
     }
