@@ -4,6 +4,7 @@ import SwiftUI
 struct MenuContent: View {
     @Bindable var model: MacModel
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         Text(model.status)
@@ -14,7 +15,7 @@ struct MenuContent: View {
 
         Button("Send…") {
             openWindow(id: "send")
-            NSApp.activate(ignoringOtherApps: true)
+            bringToFront()
         }
         .keyboardShortcut("n")
 
@@ -42,11 +43,26 @@ struct MenuContent: View {
         }
 
         Divider()
-        SettingsLink {
-            Text("Settings…")
+        Button("Settings…") {
+            openSettings()
+            bringToFront()
         }
         .keyboardShortcut(",")
         Button("Quit Droprr") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
+    }
+}
+
+/// Menu bar apps aren't active when their menu is used, so new windows open behind the
+/// frontmost app. Activate, then raise our windows once SwiftUI has created them.
+@MainActor
+func bringToFront() {
+    NSApp.activate(ignoringOtherApps: true)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        NSApp.activate(ignoringOtherApps: true)
+        for window in NSApp.windows where window.isVisible && window.canBecomeKey {
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
     }
 }

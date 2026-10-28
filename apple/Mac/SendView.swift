@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct SendView: View {
     @Bindable var model: MacModel
+    @Environment(\.openSettings) private var openSettings
     @State private var peerID: UUID?
     @State private var text = ""
     @State private var importing = false
@@ -17,7 +18,10 @@ struct SendView: View {
             if model.settings.peers.isEmpty {
                 Text("Add a device in Droprr Settings first.")
                     .foregroundStyle(.secondary)
-                SettingsLink { Text("Open Settings…") }
+                Button("Open Settings…") {
+                    openSettings()
+                    bringToFront()
+                }
             } else {
                 Picker("Send to", selection: Binding(get: { peer?.id }, set: { peerID = $0 })) {
                     ForEach(model.settings.peers) { Text($0.name).tag(Optional($0.id)) }
