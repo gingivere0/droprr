@@ -26,6 +26,7 @@ public partial class App : Application
     DispatcherTimer? _networkDebounce;
     DispatcherTimer? _outboxRefresh;
     DispatcherTimer? _outboxPurge;
+    DispatcherTimer? _updateCheck;
     FileSystemWatcher? _outboxWatcher;
 
     internal AppSettings Settings { get; private set; } = null!;
@@ -60,6 +61,9 @@ public partial class App : Application
             return;
         }
 
+        // When taking over from an older build, let it finish exiting and release the lock and port first.
+        await Task.Run(() => LiveUpdate.WaitForReplaced(e.Args));
+
         _instanceMutex = new Mutex(true, @"Local\Droprr.Tray", out var isFirstInstance);
         if (!isFirstInstance)
         {
@@ -76,8 +80,18 @@ public partial class App : Application
 
         _tray = new TrayIcon(this);
         WatchOutbox();
+        _updateCheck = new DispatcherTimer(TimeSpan.FromSeconds(5), DispatcherPriority.Background, (_, _) => CheckForUpdate(), Dispatcher);
         await StartReceiverAsync();
         NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
+
+        foreach (var window in LiveUpdate.WindowsToReopen(e.Args))
+        {
+            if (window == "send")
+                ShowSendWindow([]);
+            else if (window == "settings")
+                ShowSettings();
+        }
+        try { LiveUpdate.RemoveOldVersions(); } catch { /* old folders are only clutter */ }
     }
 
     // Keeps the tray's pending count current, whichever Droprr process queued or a phone fetched an item.
@@ -107,6 +121,29 @@ public partial class App : Application
         }, Dispatcher);
         Outbox.PurgeExpired();
         _tray?.SetPending(Outbox.PendingByPeer());
+    }
+
+    // Hands over to a newer deployed build (see LiveUpdate), waiting until nothing is being received.
+    void CheckForUpdate()
+    {
+        if (_receiving.Count > 0 || LiveUpdate.NewerVersion() is not { } exe)
+            return;
+        _updateCheck?.Stop();
+        var reopen = new List<string>();
+        if (_sendWindow is { IsLoaded: true })
+            reopen.Add("send");
+        if (_settingsWindow is { IsLoaded: true })
+            reopen.Add("settings");
+        try
+        {
+            LiveUpdate.StartReplacement(exe, reopen);
+        }
+        catch (Exception ex)
+        {
+            _tray?.Notify("Couldn't update Droprr", ex.Message);
+            return;
+        }
+        ExitApp();
     }
 
     // Large or unknown-size transfers get a progress window; small ones finish before it would be useful.

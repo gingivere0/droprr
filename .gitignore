@@ -1,6 +1,8 @@
 # Build output
 bin/
 obj/
+# Windows builds published by scripts/deploy.ps1, which the running app updates itself from
+deploy/
 out/
 publish/
 *.binlog

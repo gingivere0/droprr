@@ -21,6 +21,16 @@ Run `src/Droprr.Windows/bin/Debug/net10.0-windows/Droprr.exe`. On first run, Dro
 - adds **Droprr** to Explorer's **Send to** menu, and
 - starts listening on port `53318` on its Tailscale address and localhost.
 
+### Deploying new builds
+
+Run Droprr from a `deploy` folder, and new builds go live on their own:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1
+```
+
+This publishes into `deploy\<yyyyMMdd-HHmmss>\` and marks it ready. Within a few seconds, a Droprr running from an earlier `deploy` folder starts the new build and exits (it waits if something is being received), reopening the Send or Settings window if one was open. The newest two builds are kept. Start with Windows, the Start menu shortcut, and **Send to** follow the new exe.
+
 ### Firewall
 
 Windows Firewall blocks incoming connections by default. Allow Droprr's port from Tailscale addresses only, in an elevated PowerShell:
