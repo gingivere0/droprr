@@ -62,6 +62,8 @@ final class DroprrSettings {
     var autoCopy: Bool { didSet { defaults.set(autoCopy, forKey: "autoCopy") } }
     /// The Bento color theme's ID (see ThemePalette). Graphite & Lime by default.
     var theme: String { didSet { defaults.set(theme, forKey: "theme") } }
+    /// Mac: the window style (see LookStyle). Material You by default.
+    var style: String { didSet { defaults.set(style, forKey: "style") } }
     /// Mac: copy received text and links to the clipboard. On by default.
     var copyTextAndLinks: Bool { didSet { defaults.set(copyTextAndLinks, forKey: "copyTextAndLinks") } }
 
@@ -119,6 +121,7 @@ final class DroprrSettings {
         autoCopy = defaults.bool(forKey: "autoCopy")
         copyTextAndLinks = defaults.object(forKey: "copyTextAndLinks") as? Bool ?? true
         theme = defaults.string(forKey: "theme") ?? ThemePalette.defaultID
+        style = defaults.string(forKey: "style") ?? "material"
 
         if legacyMain != nil { defaults.removeObject(forKey: "token") }
         savePeers(old: [])   // rewrites the peer list without tokens

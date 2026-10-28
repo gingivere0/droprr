@@ -11,7 +11,7 @@ enum SnapshotSupport {
             for scheme in [ColorScheme.light, .dark] {
                 let suffix = scheme == .light ? "light" : "dark"
                 render(SendView(model: model), to: "\(dir)/send-\(suffix).png", scheme: scheme)
-                render(MacSettingsView(model: model).content.frame(width: 580), to: "\(dir)/settings-\(suffix).png", scheme: scheme)
+                render(MacSettingsView(model: model).content.frame(width: 580).lookRoot(), to: "\(dir)/settings-\(suffix).png", scheme: scheme)
                 render(PanelView(model: model), to: "\(dir)/panel-\(suffix).png", scheme: scheme)
             }
             NSApp.terminate(nil)

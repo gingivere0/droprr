@@ -88,19 +88,19 @@ struct MacShareView: View {
             VStack(alignment: .leading, spacing: Space.md) {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Kicker("Droprr")
-                        Text("Send").font(Atelier.serif(28))
+                        if Look.isAtelier { Kicker("Droprr") }
+                        Text("Send").font(Look.display(28))
                     }
                     Spacer()
                     LogoBadge(size: 28).padding(.bottom, 4)
                 }
-                Text(model.summary).font(.system(size: 12)).foregroundStyle(Atelier.muted).lineLimit(2)
+                Text(model.summary).font(.system(size: 12)).foregroundStyle(Look.muted).lineLimit(2)
                 Hairline()
             }
 
             if model.settings.peers.isEmpty {
                 Text("Open Droprr from the menu bar and add a device first.")
-                    .foregroundStyle(Atelier.muted)
+                    .foregroundStyle(Look.muted)
             } else {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     Kicker("Send to")
@@ -111,23 +111,24 @@ struct MacShareView: View {
                                 HStack(spacing: Space.md) {
                                     Image(systemName: model.sentTo == peer.id ? "checkmark" : Theme.symbol(for: peer))
                                         .font(.system(size: 13))
-                                        .foregroundStyle(isSelected ? Atelier.ink : Atelier.muted)
+                                        .foregroundStyle(isSelected ? Look.ink : Look.muted)
                                         .frame(width: 18)
-                                    Text(peer.name).font(Atelier.serif(16)).lineLimit(1)
-                                    Text(Theme.platformName(peer.platform)).font(.system(size: 11)).foregroundStyle(Atelier.muted)
+                                    Text(peer.name).font(Look.name(16)).lineLimit(1)
+                                    Text(Theme.platformName(peer.platform)).font(.system(size: 11)).foregroundStyle(Look.muted)
                                     Spacer()
                                     if isSelected { Circle().fill(Theme.end).frame(width: 6, height: 6) }
                                 }
                                 .padding(.vertical, 10)
                                 .padding(.horizontal, Space.xs)
                                 .background(isSelected ? Theme.secondaryTint.opacity(0.6) : .clear)
-                                .overlay(alignment: .bottom) { Hairline() }
+                                .overlay(alignment: .top) { RowSeparator() }
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
                         }
                     }
+                    .lookCard(list: true, padding: 8)
                 }
             }
 
@@ -136,7 +137,7 @@ struct MacShareView: View {
             HStack(spacing: Space.lg) {
                 Spacer()
                 Button("Cancel") { model.cancel() }
-                    .buttonStyle(AtelierLinkStyle())
+                    .buttonStyle(SecondaryStyle())
                     .keyboardShortcut(.cancelAction)
                 Button {
                     guard let peer = selected else { return }
@@ -147,15 +148,15 @@ struct MacShareView: View {
                         Image(systemName: "arrow.right").foregroundStyle(Theme.end)
                     }
                 }
-                .buttonStyle(AtelierPrimaryStyle())
+                .buttonStyle(PrimaryStyle())
                 .keyboardShortcut(.defaultAction)
                 .disabled(selected == nil || model.loading || model.sending || model.payloads.isEmpty)
             }
         }
-        .foregroundStyle(Atelier.ink)
+        .foregroundStyle(Look.ink)
         .padding(22)
         .frame(width: 380)
-        .background(Atelier.paper)
+        .lookRoot()
         .motion(Motion.standard, value: model.status)
     }
 }

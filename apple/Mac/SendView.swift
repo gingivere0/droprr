@@ -19,7 +19,7 @@ struct SendView: View {
     private var hasContent: Bool { !files.isEmpty || !trimmed.isEmpty }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.xl) {
+        VStack(alignment: .leading, spacing: Look.isAtelier ? Space.xl : Space.lg) {
             header
 
             if model.settings.peers.isEmpty {
@@ -32,13 +32,12 @@ struct SendView: View {
                 bottomBar
             }
         }
-        .padding(.horizontal, 36)
+        .padding(.horizontal, Look.isAtelier ? 36 : 28)
         .padding(.top, Space.lg)
         .padding(.bottom, 28)
         .frame(width: 600)
-        .foregroundStyle(Atelier.ink)
-        .background { Atelier.paper.ignoresSafeArea() }
         .seamlessWindow()
+        .lookRoot()
         .motion(Motion.standard, value: model.lastSendResult)
         .motion(Motion.fast, value: files)
     }
@@ -47,13 +46,25 @@ struct SendView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
-            HStack(alignment: .bottom, spacing: Space.lg) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Kicker("Droprr")
-                    Text("Send").font(Atelier.serif(40))
+            if Look.isAtelier {
+                HStack(alignment: .bottom, spacing: Space.lg) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Kicker("Droprr")
+                        Text("Send").font(Look.display(40))
+                    }
+                    Spacer()
+                    LogoBadge(size: 40).padding(.bottom, 6)
                 }
-                Spacer()
-                LogoBadge(size: 40).padding(.bottom, 6)
+            } else {
+                HStack(spacing: Space.md) {
+                    LogoBadge(size: 42)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Send").font(Look.display(32))
+                        Text(selected.map { "To \($0.name)" } ?? "Choose a device")
+                            .font(.system(size: 13)).foregroundStyle(Look.muted)
+                    }
+                    Spacer()
+                }
             }
             Hairline()
         }
@@ -68,7 +79,7 @@ struct SendView: View {
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(HoverButtonStyle(.plain))
-            .foregroundStyle(Atelier.muted)
+            .foregroundStyle(Look.muted)
             .accessibilityLabel("Settings")
             .hoverHint("Settings (⌘,)")
             .keyboardShortcut(",")
@@ -78,14 +89,14 @@ struct SendView: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            Text("No devices yet").font(Atelier.serif(24))
+            Text("No devices yet").font(Look.display(24))
             Text("Pair your iPhone or add your PC in Settings to start sending.")
-                .foregroundStyle(Atelier.muted)
+                .foregroundStyle(Look.muted)
             Button("Open Settings") {
                 openSettings()
                 bringToFront()
             }
-            .buttonStyle(AtelierPrimaryStyle())
+            .buttonStyle(PrimaryStyle())
             .keyboardShortcut(",")
             .padding(.top, Space.sm)
         }
@@ -96,7 +107,7 @@ struct SendView: View {
     private var devices: some View {
         VStack(alignment: .leading, spacing: Space.md) {
             Kicker("Send to")
-            HStack(alignment: .top, spacing: 28) {
+            HStack(alignment: .top, spacing: Look.isAtelier ? 28 : Space.md) {
                 ForEach(Array(model.settings.peers.enumerated()), id: \.element.id) { index, peer in
                     DeviceTab(peer: peer, selected: peer.id == selected?.id,
                               waiting: model.waiting(for: peer),
@@ -112,7 +123,7 @@ struct SendView: View {
                             }
                         }
                 }
-                Spacer(minLength: 0)
+                if Look.isAtelier { Spacer(minLength: 0) }
             }
         }
     }
@@ -120,19 +131,24 @@ struct SendView: View {
     private var dropArea: some View {
         VStack(spacing: Space.md) {
             if files.isEmpty {
-                Image(systemName: dropTargeted ? "arrow.down" : "arrow.down.to.line")
-                    .font(.system(size: 20, weight: .light))
-                    .foregroundStyle(dropTargeted ? Theme.end : Atelier.muted)
-                Text(dropTargeted ? "Release to add" : "Drop files here").font(Atelier.serif(24))
-                Button("or choose from Finder") { addFiles() }
-                    .buttonStyle(AtelierLinkStyle())
+                if Look.isAtelier {
+                    Image(systemName: dropTargeted ? "arrow.down" : "arrow.down.to.line")
+                        .font(.system(size: 20, weight: .light))
+                        .foregroundStyle(dropTargeted ? Theme.end : Look.muted)
+                    Text(dropTargeted ? "Release to add" : "Drop files here").font(Look.display(24))
+                } else {
+                    DropWell(targeted: dropTargeted)
+                    Text(dropTargeted ? "Release to add" : "Drop files here").font(Look.display(17, weight: Look.style == .clay ? .heavy : .semibold))
+                }
+                Button(Look.isAtelier ? "or choose from Finder" : "Choose from Finder") { addFiles() }
+                    .buttonStyle(SecondaryStyle())
                     .keyboardShortcut("o")
             } else {
                 HStack(alignment: .firstTextBaseline) {
                     Kicker("\(files.count) file\(files.count == 1 ? "" : "s")")
                     Spacer()
                     Button("Add more") { addFiles() }
-                        .buttonStyle(AtelierLinkStyle())
+                        .buttonStyle(SecondaryStyle())
                         .keyboardShortcut("o")
                 }
                 VStack(spacing: 0) {
@@ -146,10 +162,16 @@ struct SendView: View {
         .frame(minHeight: 170)
         .padding(Space.xl)
         .background {
-            ZStack {
-                Rectangle().fill(dropTargeted ? Theme.secondaryTint : Atelier.paper)
-                if files.isEmpty { Stripes().foregroundStyle(Atelier.stripe) }
-                Rectangle().strokeBorder(dropTargeted ? Atelier.ink : Atelier.hairline, lineWidth: 1)
+            if Look.isAtelier {
+                ZStack {
+                    Rectangle().fill(dropTargeted ? Theme.secondaryTint : Look.background)
+                    if files.isEmpty { Stripes().foregroundStyle(Look.stripe) }
+                    Rectangle().strokeBorder(dropTargeted ? Look.ink : Look.hairline, lineWidth: 1)
+                }
+            } else {
+                let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
+                LookSurface(shape: shape, inset: true)
+                    .overlay(shape.strokeBorder(Theme.secondaryText, lineWidth: dropTargeted ? 2 : 0))
             }
         }
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
@@ -162,11 +184,28 @@ struct SendView: View {
     }
 
     /// A message or link to send along, written on an underlined line.
-    private var composer: some View {
+    @ViewBuilder private var composer: some View {
+        if Look.isAtelier { underlinedComposer } else { fieldComposer }
+    }
+
+    /// The other styles: a rounded field in the style's container.
+    private var fieldComposer: some View {
+        TextField("", text: $text, prompt: Text("Add a message or paste a link").foregroundStyle(Look.muted), axis: .vertical)
+            .lineLimit(1...6)
+            .textFieldStyle(.plain)
+            .font(.system(size: 14))
+            .focused($typing)
+            .lookCard(padding: 16)
+            .overlay(RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous)
+                .strokeBorder(Theme.secondaryText, lineWidth: typing ? 2 : 0))
+            .motion(Motion.fast, value: typing)
+    }
+
+    private var underlinedComposer: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             Kicker("Message")
             TextField("", text: $text,
-                      prompt: Text("Add a message or paste a link").font(Atelier.serif(16)).italic(),
+                      prompt: Text("Add a message or paste a link").font(Look.display(16)).italic(),
                       axis: .vertical)
                 .lineLimit(1...6)
                 .textFieldStyle(.plain)
@@ -174,7 +213,7 @@ struct SendView: View {
                 .focused($typing)
                 .padding(.vertical, 6)
             Rectangle()
-                .fill(typing ? Atelier.ink : Atelier.hairline)
+                .fill(typing ? Look.ink : Look.hairline)
                 .frame(height: 1)
         }
         .motion(Motion.fast, value: typing)
@@ -186,9 +225,9 @@ struct SendView: View {
                 guard let peer = selected else { return }
                 Task { await model.sendClipboard(to: peer) }
             } label: {
-                Text("Send clipboard")
+                if Look.isAtelier { Text("Send clipboard") } else { Label("Send clipboard", systemImage: "doc.on.clipboard") }
             }
-            .buttonStyle(AtelierLinkStyle())
+            .buttonStyle(SecondaryStyle())
             .keyboardShortcut("v", modifiers: [.command, .shift])
             .hoverHint("Send what's on the clipboard (⇧⌘V)")
             .disabled(selected == nil || model.isSending)
@@ -201,11 +240,12 @@ struct SendView: View {
             } label: {
                 HStack(spacing: Space.sm) {
                     Text(selected.map { "Send to \($0.name)" } ?? "Send")
-                    if model.isSending { ProgressView().controlSize(.small).tint(Theme.onPrimaryButton) }
-                    else { Image(systemName: "arrow.right").foregroundStyle(Theme.end) }
+                    if model.isSending { ProgressView().controlSize(.small) }
+                    else if Look.isAtelier { Image(systemName: "arrow.right").foregroundStyle(Theme.end) }
+                    else { Image(systemName: "paperplane.fill") }
                 }
             }
-            .buttonStyle(AtelierPrimaryStyle())
+            .buttonStyle(PrimaryStyle())
             .keyboardShortcut(.return, modifiers: .command)
             .hoverHint("Send the files and message (⌘↩)")
             .disabled(selected == nil || !hasContent || model.isSending)
@@ -261,37 +301,8 @@ private struct DeviceTab: View {
     @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button(action: onSelect) {
-                VStack(alignment: .leading, spacing: Space.sm) {
-                    HStack(spacing: Space.sm) {
-                        Image(systemName: Theme.symbol(for: peer))
-                            .font(.system(size: 13))
-                            .foregroundStyle(selected || targeted ? Atelier.ink : Atelier.muted)
-                        Text(peer.name)
-                            .font(Atelier.serif(18))
-                            .foregroundStyle(selected || targeted || hovering ? Atelier.ink : Atelier.muted)
-                            .lineLimit(1)
-                        if selected {
-                            Circle().fill(Theme.end).frame(width: 6, height: 6)
-                        }
-                    }
-                    Rectangle()
-                        .fill(selected || targeted ? Theme.primaryButton : hovering ? Atelier.hairline : .clear)
-                        .frame(height: 2)
-                }
-                .fixedSize()
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            if targeted {
-                Text("Release to send now").font(.system(size: 11)).foregroundStyle(Atelier.muted)
-            } else if waiting > 0 {
-                WaitingBadge(count: waiting, peerName: peer.name, onClear: onClearWaiting)
-            } else {
-                Text(Theme.platformName(peer.platform)).font(.system(size: 11)).foregroundStyle(Atelier.muted)
-            }
+        Group {
+            if Look.isAtelier { tab } else { card }
         }
         .onHover { hovering = $0 }
         .hoverHint("Send to \(peer.name). Drop files here to send them right away.")
@@ -309,6 +320,81 @@ private struct DeviceTab: View {
         .motion(Motion.fast, value: targeted)
         .motion(Motion.fast, value: hovering)
     }
+
+    /// Material, Clay and Spatial: a card; the selected one takes the theme's second color.
+    private var card: some View {
+        let active = selected || targeted
+        let shape = RoundedRectangle(cornerRadius: Look.style == .material ? 16 : 20, style: .continuous)
+        return Button(action: onSelect) {
+            VStack(alignment: .leading, spacing: 6) {
+                Image(systemName: active && selected ? "checkmark" : Theme.symbol(for: peer))
+                    .font(.system(size: 18, weight: .medium))
+                Spacer(minLength: Space.xs)
+                Text(peer.name).font(.system(size: 14, weight: Look.style == .clay ? .bold : .semibold)).lineLimit(1)
+                Text(targeted ? "Release to send now" : Theme.platformName(peer.platform))
+                    .font(.system(size: 11))
+                    .foregroundStyle(active ? Look.selectedInk.opacity(0.75) : Look.muted)
+            }
+            .foregroundStyle(active ? Look.selectedInk : Look.ink)
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
+            .background {
+                if active {
+                    shape.fill(Look.selectedFill)
+                        .shadow(color: Look.style == .spatial ? Theme.end.opacity(0.35) : .clear, radius: 14)
+                } else if Look.style == .material {
+                    shape.fill(hovering ? Look.container : .clear)
+                        .overlay(shape.strokeBorder(Look.hairline, lineWidth: 1))
+                } else {
+                    LookSurface(shape: shape).opacity(hovering ? 0.8 : 1)
+                }
+            }
+            .modifier(ClayShadow())
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .topTrailing) {
+            if waiting > 0 {
+                WaitingBadge(count: waiting, peerName: peer.name, onClear: onClearWaiting).padding(10)
+            }
+        }
+    }
+
+    /// Atelier: an underlined text tab.
+    private var tab: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button(action: onSelect) {
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    HStack(spacing: Space.sm) {
+                        Image(systemName: Theme.symbol(for: peer))
+                            .font(.system(size: 13))
+                            .foregroundStyle(selected || targeted ? Look.ink : Look.muted)
+                        Text(peer.name)
+                            .font(Look.display(18))
+                            .foregroundStyle(selected || targeted || hovering ? Look.ink : Look.muted)
+                            .lineLimit(1)
+                        if selected {
+                            Circle().fill(Theme.end).frame(width: 6, height: 6)
+                        }
+                    }
+                    Rectangle()
+                        .fill(selected || targeted ? Theme.primaryButton : hovering ? Look.hairline : .clear)
+                        .frame(height: 2)
+                }
+                .fixedSize()
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if targeted {
+                Text("Release to send now").font(.system(size: 11)).foregroundStyle(Look.muted)
+            } else if waiting > 0 {
+                WaitingBadge(count: waiting, peerName: peer.name, onClear: onClearWaiting)
+            } else {
+                Text(Theme.platformName(peer.platform)).font(.system(size: 11)).foregroundStyle(Look.muted)
+            }
+        }
+    }
 }
 
 /// A staged file: its type icon, name, and a remove button, over a hairline.
@@ -318,19 +404,38 @@ private struct FileRow: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Hairline()
+            RowSeparator()
             HStack(spacing: Space.md) {
                 Image(systemName: Theme.symbol(for: ReceivedItem(kind: .file(file))))
-                    .foregroundStyle(Atelier.muted)
+                    .foregroundStyle(Look.muted)
                     .frame(width: 18)
                 Text(file.lastPathComponent).font(.system(size: 13)).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 0)
                 Button(action: onRemove) { Image(systemName: "xmark").font(.system(size: 11, weight: .medium)) }
                     .buttonStyle(HoverButtonStyle(.plain))
-                    .foregroundStyle(Atelier.muted)
+                    .foregroundStyle(Look.muted)
                     .accessibilityLabel("Remove \(file.lastPathComponent)")
             }
             .padding(.vertical, Space.sm)
         }
+    }
+}
+
+/// The icon in the drop zone for the card styles: a tinted well that lights up while dragging.
+private struct DropWell: View {
+    var targeted: Bool
+
+    var body: some View {
+        let spatial = Look.style == .spatial
+        let shape = RoundedRectangle(cornerRadius: Look.style == .material ? 16 : 28, style: .continuous)
+        Image(systemName: targeted ? "arrow.down" : "arrow.down.to.line")
+            .font(.system(size: 22, weight: .medium))
+            .foregroundStyle(spatial ? Color.white : Theme.secondaryText)
+            .frame(width: 56, height: 56)
+            .background(shape.fill(spatial ? Color.white.opacity(0.18) : Theme.secondaryTint))
+            .shadow(color: spatial ? Theme.end.opacity(0.45) : .clear, radius: 14)
+            .modifier(ClayShadow())
+            .scaleEffect(targeted ? 1.08 : 1)
+            .accessibilityHidden(true)
     }
 }

@@ -10,30 +10,30 @@ struct PairView: View {
             VStack(alignment: .leading, spacing: Space.md) {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Kicker("Droprr")
-                        Text("Pair a phone").font(Atelier.serif(30))
+                        if Look.isAtelier { Kicker("Droprr") }
+                        Text("Pair a phone").font(Look.display(30))
                     }
                     Spacer()
                     LogoBadge(size: 30).padding(.bottom, 4)
                 }
                 Hairline()
                 Text("Scan with the Camera app or Droprr on your iPhone.")
-                    .font(.system(size: 12)).foregroundStyle(Atelier.muted)
+                    .font(.system(size: 12)).foregroundStyle(Look.muted)
             }
 
             PairingQRCode(settings: model.settings)
             Label("This code contains this Mac's pairing token. Only show it to your own phone.", systemImage: "lock")
                 .font(.system(size: 11))
-                .foregroundStyle(Atelier.muted)
+                .foregroundStyle(Look.muted)
                 .multilineTextAlignment(.center)
         }
         .padding(.horizontal, 30)
         .padding(.top, Space.lg)
         .padding(.bottom, 30)
-        .foregroundStyle(Atelier.ink)
+        .foregroundStyle(Look.ink)
         .frame(width: 340)
-        .background { Atelier.paper.ignoresSafeArea() }
         .seamlessWindow()
+        .lookRoot()
         .onAppear { model.lastPaired = nil }
         .onChange(of: model.lastPaired) { _, name in
             // A phone scanned the code and introduced itself: confirm, then close.
@@ -47,11 +47,11 @@ struct PairView: View {
             if let name = model.lastPaired {
                 VStack(spacing: Space.md) {
                     Image(systemName: "checkmark").font(.system(size: 32, weight: .light)).foregroundStyle(Theme.end)
-                    Text("Paired with \(name)").font(Atelier.serif(24))
+                    Text("Paired with \(name)").font(Look.display(24))
                 }
-                .foregroundStyle(Atelier.ink)
+                .foregroundStyle(Look.ink)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Atelier.paper)
+                .background { LookBackground() }
                 .transition(.opacity)
             }
         }

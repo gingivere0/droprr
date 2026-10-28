@@ -26,6 +26,7 @@ struct PanelView: View {
                                        onClearWaiting: { model.clearWaiting(for: peer) })
                         }
                     }
+                    .lookCard(list: true, padding: 8)
                 }
             }
 
@@ -39,6 +40,7 @@ struct PanelView: View {
                             RecentRow(item: item, onOpen: { model.open(item) }, onRemove: { model.removeRecent(item) })
                         }
                     }
+                    .lookCard(list: true, padding: 8)
                 }
             }
 
@@ -48,8 +50,8 @@ struct PanelView: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 20)
         .frame(width: 340)
-        .foregroundStyle(Atelier.ink)
-        .background(Atelier.paper)
+        .foregroundStyle(Look.ink)
+        .lookRoot()
         .motion(Motion.standard, value: model.lastSendResult)
     }
 
@@ -66,12 +68,12 @@ struct PanelView: View {
         } label: {
             HStack(alignment: .center, spacing: Space.md) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Droprr").font(Atelier.serif(24))
+                    Text("Droprr").font(Look.display(Look.isAtelier ? 24 : 20))
                     HStack(spacing: 7) {
                         StatusDot(on: model.isListening)
                         Text(model.isListening ? "Ready" : model.status)
                             .font(.system(size: 11))
-                            .foregroundStyle(Atelier.muted)
+                            .foregroundStyle(Look.muted)
                             .lineLimit(1)
                     }
                 }
@@ -104,12 +106,12 @@ struct PanelView: View {
 
     private var emptyDevices: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            Text("No devices yet").font(Atelier.serif(18))
+            Text("No devices yet").font(Look.display(18))
             Text("Add your other devices in Settings to start sending.")
                 .font(.system(size: 12))
-                .foregroundStyle(Atelier.muted)
+                .foregroundStyle(Look.muted)
             Button("Open Settings", action: showSettings)
-                .buttonStyle(AtelierPrimaryStyle())
+                .buttonStyle(PrimaryStyle())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -151,13 +153,13 @@ private struct DeviceTile: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Hairline()
+            RowSeparator()
             HStack(spacing: Space.md) {
                 Image(systemName: Theme.symbol(for: peer))
                     .font(.system(size: 13))
-                    .foregroundStyle(hovering ? Atelier.ink : Atelier.muted)
+                    .foregroundStyle(hovering ? Look.ink : Look.muted)
                     .frame(width: 18)
-                Text(peer.name).font(Atelier.serif(16)).lineLimit(1)
+                Text(peer.name).font(Look.name(16)).lineLimit(1)
                 if waiting > 0 {
                     WaitingBadge(count: waiting, peerName: peer.name, onClear: onClearWaiting)
                 }
@@ -192,7 +194,7 @@ struct WaitingBadge: View {
                 Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
             }
             .font(.system(size: 11))
-            .foregroundStyle(hovering ? Atelier.ink : Atelier.muted)
+            .foregroundStyle(hovering ? Look.ink : Look.muted)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -220,11 +222,11 @@ private struct RecentRow: View {
                 HStack(spacing: Space.md) {
                     Image(systemName: Theme.symbol(for: item))
                         .font(.system(size: 13))
-                        .foregroundStyle(Atelier.muted)
+                        .foregroundStyle(Look.muted)
                         .frame(width: 18)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.title).font(.system(size: 13)).lineLimit(1).truncationMode(.middle)
-                        Text(item.subtitle).font(.system(size: 11)).foregroundStyle(Atelier.muted)
+                        Text(item.subtitle).font(.system(size: 11)).foregroundStyle(Look.muted)
                     }
                     Spacer(minLength: 0)
                 }
@@ -244,7 +246,7 @@ private struct RecentRow: View {
         .padding(.horizontal, Space.xs)
         .padding(.vertical, 8)
         .background(hovering ? Theme.secondaryTint.opacity(0.6) : .clear)
-        .overlay(alignment: .top) { Hairline() }
+        .overlay(alignment: .top) { RowSeparator() }
         .onHover { hovering = $0 }
     }
 
@@ -267,7 +269,7 @@ private struct RowAction: View {
             Image(systemName: symbol).font(.caption.weight(.semibold)).frame(width: 18, height: 18)
         }
         .buttonStyle(HoverButtonStyle(.plain))
-        .foregroundStyle(Atelier.muted)
+        .foregroundStyle(Look.muted)
         .accessibilityLabel(label)
         .hoverHint(label)
     }
@@ -283,10 +285,10 @@ private struct FooterButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text(title.uppercased())
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(1.5)
-                .foregroundStyle(hovering ? Atelier.ink : Atelier.muted)
+            Text(Look.isAtelier ? title.uppercased() : title)
+                .font(.system(size: Look.isAtelier ? 10 : 12, weight: Look.isAtelier ? .semibold : .medium))
+                .tracking(Look.isAtelier ? 1.5 : 0)
+                .foregroundStyle(hovering ? Look.ink : Look.muted)
                 .padding(.vertical, 4)
                 .contentShape(Rectangle())
         }

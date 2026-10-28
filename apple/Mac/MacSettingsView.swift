@@ -13,32 +13,37 @@ struct MacSettingsView: View {
 
     /// The cards without the scroll view (also used for debug snapshots).
     var content: some View {
-        VStack(alignment: .leading, spacing: 30) {
+        VStack(alignment: .leading, spacing: Look.isAtelier ? 30 : Space.xl) {
             VStack(alignment: .leading, spacing: Space.lg) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Kicker("Droprr")
-                    Text("Settings").font(Atelier.serif(38))
+                    if Look.isAtelier { Kicker("Droprr") }
+                    Text("Settings").font(Look.display(Look.isAtelier ? 38 : 32))
                 }
                 Hairline()
             }
             thisMac
+            style
             appearance
             devices
             receiving
             security
         }
-        .padding(.horizontal, 36)
+        .padding(.horizontal, Look.isAtelier ? 36 : 28)
         .padding(.top, Space.lg)
         .padding(.bottom, 36)
-        .foregroundStyle(Atelier.ink)
-        .toggleStyle(AtelierToggleStyle())
+        .foregroundStyle(Look.ink)
+        .toggleStyle(LookToggleStyle())
     }
 
     var body: some View {
         ScrollView { content }
         .frame(width: 580, height: 680)
-        .background { Atelier.paper.ignoresSafeArea() }
         .seamlessWindow()
+        .lookRoot()
+        .onChange(of: settings.style) {
+            // Window chrome (background, opacity, dark glass) follows the style too.
+            for window in NSApp.windows { AppDelegate.hideTitleBar(window) }
+        }
         .sheet(item: $editing) { peer in
             PeerEditor(peer: peer, isNew: !settings.peers.contains { $0.id == peer.id },
                        onRemove: { editing = nil; removing = peer }) { saved in
@@ -77,18 +82,19 @@ struct MacSettingsView: View {
 
     private var thisMac: some View {
         HStack(alignment: .center, spacing: Space.lg) {
-            VStack(alignment: .leading, spacing: Space.sm) {
-                Kicker("This Mac")
+            if !Look.isAtelier { LogoBadge(size: 46) }
+            VStack(alignment: .leading, spacing: Look.isAtelier ? Space.sm : 2) {
+                if Look.isAtelier { Kicker("This Mac") }
                 TextField("Device name", text: Binding(get: { settings.deviceName }, set: { settings.deviceName = $0 }))
                     .textFieldStyle(.plain)
-                    .font(Atelier.serif(26))
+                    .font(Look.isAtelier ? Look.display(26) : Look.display(18, weight: Look.style == .clay ? .heavy : .semibold))
                     .accessibilityLabel("Device name")
                 HStack(spacing: 7) {
                     StatusDot(on: model.isListening)
                     Text(model.isListening ? "Ready to receive" : "Not receiving")
                 }
                 .font(.system(size: 12))
-                .foregroundStyle(Atelier.muted)
+                .foregroundStyle(Look.muted)
             }
             Spacer()
             Button {
@@ -96,37 +102,45 @@ struct MacSettingsView: View {
                 bringToFront()
             } label: {
                 HStack(spacing: Space.sm) {
-                    Image(systemName: "qrcode").foregroundStyle(Theme.end)
+                    Image(systemName: "qrcode").foregroundStyle(Look.isAtelier ? Theme.end : .primary)
                     Text("Pair a phone")
                 }
             }
-            .buttonStyle(AtelierPrimaryStyle())
+            .buttonStyle(PrimaryStyle())
             .hoverHint("Show a QR code for your iPhone to scan")
+        }
+        .lookCard()
+    }
+
+    private var style: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            SectionHeader(title: "Style", detail: "How Droprr's windows look.")
+            StylePicker(settings: settings)
         }
     }
 
     private var appearance: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            SectionHeader(title: "Theme", detail: "Light and dark follow your Mac.")
+            SectionHeader(title: "Colors", detail: Look.forcesDark ? "Spatial is always dark." : "Light and dark follow your Mac.")
             ThemePicker(settings: settings)
         }
     }
 
     private var devices: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: Space.md) {
             SectionHeader(title: "Devices", detail: settings.peers.isEmpty ? "None yet" : "\(settings.peers.count) paired") {
                 Button("Add device") { editing = Peer(name: "", host: "") }
-                    .buttonStyle(AtelierLinkStyle())
+                    .buttonStyle(SecondaryStyle())
             }
-            .padding(.bottom, Space.md)
+            VStack(alignment: .leading, spacing: 0) {
             if settings.peers.isEmpty {
-                Hairline()
+                RowSeparator()
                 Text("Pair your iPhone with the QR code above, or add your PC by its Tailscale name.")
-                    .font(.system(size: 12)).foregroundStyle(Atelier.muted)
+                    .font(.system(size: 12)).foregroundStyle(Look.muted)
                     .padding(.vertical, Space.md)
             }
             ForEach(settings.peers) { peer in
-                Hairline()
+                RowSeparator()
                 DeviceRow(peer: peer, result: pingResults[peer.id],
                           onTest: { Task { await ping(peer) } },
                           onEdit: { editing = peer },
@@ -134,34 +148,36 @@ struct MacSettingsView: View {
                     .padding(.vertical, Space.md)
             }
             Hairline()
+            }
+            .lookCard(list: true)
         }
     }
 
     private var receiving: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: Space.md) {
             SectionHeader(title: "Receiving", detail: "Files go to Downloads › Droprr") {
                 Button("Open folder") {
                     try? FileManager.default.createDirectory(at: MacModel.inbox, withIntermediateDirectories: true)
                     NSWorkspace.shared.open(MacModel.inbox)
                 }
-                .buttonStyle(AtelierLinkStyle())
+                .buttonStyle(SecondaryStyle())
             }
-            .padding(.bottom, Space.md)
-            AtelierRow(title: "Copy received text and links",
+            VStack(alignment: .leading, spacing: 0) {
+            SettingRow(title: "Copy received text and links",
                        detail: "Clipboard managers are asked not to keep them.") {
                 Toggle("Copy received text and links", isOn: Binding(get: { settings.copyTextAndLinks }, set: { settings.copyTextAndLinks = $0 }))
                     .labelsHidden()
             }
-            AtelierRow(title: "Copy everything received",
+            SettingRow(title: "Copy everything received",
                        detail: "Includes files and images, as they arrive.") {
                 Toggle("Copy everything received", isOn: Binding(get: { settings.autoCopy }, set: { settings.autoCopy = $0 }))
                     .labelsHidden()
             }
-            AtelierRow(title: "Open at login", detail: "Keep receiving without opening the app.") {
+            SettingRow(title: "Open at login", detail: "Keep receiving without opening the app.") {
                 Toggle("Open at login", isOn: Binding(get: { model.launchAtLogin }, set: { model.launchAtLogin = $0 }))
                     .labelsHidden()
             }
-            AtelierRow(title: "Port", detail: "Other devices send here. 53318 is the default.") {
+            SettingRow(title: "Port", detail: "Other devices send here. 53318 is the default.") {
                 TextField("", value: Binding(get: { settings.port }, set: { settings.port = $0 }),
                           format: .number.grouping(.never))
                     .textFieldStyle(.plain)
@@ -172,6 +188,8 @@ struct MacSettingsView: View {
                     .accessibilityLabel("Port")
             }
             Hairline()
+            }
+            .lookCard(list: true)
         }
     }
 
@@ -193,16 +211,17 @@ struct MacSettingsView: View {
                 .accessibilityLabel("Token")
                 Button { showToken.toggle() } label: { Image(systemName: showToken ? "eye.slash" : "eye") }
                     .buttonStyle(HoverButtonStyle(.plain))
-                    .foregroundStyle(Atelier.muted)
+                    .foregroundStyle(Look.muted)
                     .accessibilityLabel(showToken ? "Hide token" : "Show token")
                     .hoverHint(showToken ? "Hide the token" : "Show the token")
                 Button("Copy") { Clipboard.copy(text: settings.token) }
-                    .buttonStyle(AtelierLinkStyle())
+                    .buttonStyle(SecondaryStyle())
                     .disabled(settings.token.isEmpty)
                 Button("New token") { settings.token = DroprrSettings.generateToken() }
-                    .buttonStyle(AtelierLinkStyle())
+                    .buttonStyle(SecondaryStyle())
                     .hoverHint("Paired devices will need to pair again")
             }
+            .lookCard(padding: 14)
         }
     }
 
@@ -232,14 +251,14 @@ private struct DeviceRow: View {
         HStack(alignment: .firstTextBaseline, spacing: Space.md) {
             Image(systemName: Theme.symbol(for: peer))
                 .font(.system(size: 14))
-                .foregroundStyle(Atelier.muted)
+                .foregroundStyle(Look.muted)
                 .frame(width: 20)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-                    Text(peer.name).font(Atelier.serif(18))
+                    Text(peer.name).font(Look.display(18))
                     Text(Theme.platformName(peer.platform).uppercased())
                         .font(.system(size: 9.5, weight: .semibold)).tracking(1.4)
-                        .foregroundStyle(Atelier.muted)
+                        .foregroundStyle(Look.muted)
                 }
                 Group {
                     if peer.isPhone {
@@ -248,7 +267,7 @@ private struct DeviceRow: View {
                         Text("\(peer.host):\(String(peer.port))").font(.system(size: 11).monospaced())
                     }
                 }
-                .foregroundStyle(Atelier.muted).lineLimit(1)
+                .foregroundStyle(Look.muted).lineLimit(1)
                 status
                 if !peer.isPaired {
                     Label("Not paired: scan its code or enter its token", systemImage: "exclamationmark.triangle.fill")
@@ -258,17 +277,17 @@ private struct DeviceRow: View {
             Spacer()
             if !peer.isPhone {
                 Button("Test", action: onTest)
-                    .buttonStyle(AtelierLinkStyle())
+                    .buttonStyle(SecondaryStyle())
                     .hoverHint("Check that \(peer.name) answers")
             }
             Button(action: onEdit) { Image(systemName: "pencil") }
                 .buttonStyle(HoverButtonStyle(.plain))
-                .foregroundStyle(Atelier.muted)
+                .foregroundStyle(Look.muted)
                 .accessibilityLabel("Edit \(peer.name)")
                 .hoverHint("Edit or rename")
             Button(action: onRemove) { Image(systemName: "trash") }
                 .buttonStyle(HoverButtonStyle(.plain))
-                .foregroundStyle(Atelier.muted)
+                .foregroundStyle(Look.muted)
                 .accessibilityLabel("Remove \(peer.name)")
                 .hoverHint("Remove this device")
         }
@@ -280,7 +299,7 @@ private struct DeviceRow: View {
 
     @ViewBuilder private var status: some View {
         switch result {
-        case .checking: Label("Checking…", systemImage: "ellipsis").font(.system(size: 11)).foregroundStyle(Atelier.muted)
+        case .checking: Label("Checking…", systemImage: "ellipsis").font(.system(size: 11)).foregroundStyle(Look.muted)
         case .ok(let text): Label(text, systemImage: "checkmark").font(.system(size: 11)).foregroundStyle(Theme.successText)
         case .failed(let text): Label(text, systemImage: "exclamationmark.triangle.fill").font(.system(size: 11)).foregroundStyle(.orange)
         case nil: EmptyView()
@@ -304,7 +323,7 @@ private struct SectionHeader<Accessory: View>: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 4) {
                 Kicker(title)
-                if let detail { Text(detail).font(.system(size: 12)).foregroundStyle(Atelier.muted) }
+                if let detail { Text(detail).font(.system(size: 12)).foregroundStyle(Look.muted) }
             }
             Spacer()
             accessory()
