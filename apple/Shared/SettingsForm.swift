@@ -252,6 +252,22 @@ private struct PeerEditor: View {
                     }
                 }
                 #endif
+                #if os(macOS)
+                if isNew {
+                    Section {
+                        HStack {
+                            Spacer()
+                            PairingQRCode(settings: DroprrSettings.shared, size: 170)
+                            Spacer()
+                        }
+                        .padding(.vertical, 6)
+                    } header: {
+                        Text("Pair a phone")
+                    } footer: {
+                        Text("Scan this with the Camera app or Droprr on your iPhone. It adds itself here. To add a computer, fill in its details below.")
+                    }
+                }
+                #endif
                 Section {
                     TextField("Name", text: $peer.name)
                     Toggle("This is an iPhone", isOn: $peer.isPhone)
@@ -286,6 +302,12 @@ private struct PeerEditor: View {
             }
             .formStyle(.grouped)
             .navigationTitle(isNew ? "Add Device" : peer.name)
+            #if os(macOS)
+            // A phone that scans the code adds itself, so this screen's job is done.
+            .onChange(of: DroprrSettings.shared.peers.count) { old, new in
+                if isNew && new > old { done(nil) }
+            }
+            #endif
             #if os(iOS)
             .sheet(isPresented: $scanning) {
                 PairingScannerSheet { code in
