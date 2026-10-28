@@ -123,7 +123,7 @@ final class MacModel {
         case .text, .url: Clipboard.copy(item)
         case .file: if settings.autoCopy { Clipboard.copy(item) }
         }
-        withAnimation { recent.insert(item, at: 0) }
+        Motion.perform { recent.insert(item, at: 0) }
         recent = Array(recent.prefix(8))
         Notifier.shared.notify(item)
     }

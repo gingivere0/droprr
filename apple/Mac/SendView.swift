@@ -13,8 +13,8 @@ struct SendView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.lg) {
+            HStack(spacing: Space.md) {
                 LogoBadge(size: 30)
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Send with Droprr").font(.title3.weight(.semibold))
@@ -31,7 +31,7 @@ struct SendView: View {
                 }
                 .buttonStyle(HoverButtonStyle(.prominent))
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 12)], spacing: 12) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: Space.md)], spacing: Space.md) {
                     ForEach(model.settings.peers) { peer in
                         DropTile(peer: peer, waiting: model.waiting(for: peer)) { files in
                             Task { await model.send(.files(files), to: peer) }
@@ -43,18 +43,18 @@ struct SendView: View {
                                 WaitingBadge(count: model.waiting(for: peer), peerName: peer.name) {
                                     model.clearWaiting(for: peer)
                                 }
-                                .padding(6)
+                                .padding(Space.sm)
                             }
                         }
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: Space.sm) {
                     TextField("Type or paste text or a link", text: $text, axis: .vertical)
                         .lineLimit(3...6)
                         .textFieldStyle(.plain)
-                        .padding(10)
-                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .padding(Space.md)
+                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
                     HStack {
                         Picker("To", selection: Binding(get: { textPeer?.id }, set: { textPeerID = $0 })) {
                             ForEach(model.settings.peers) { Text($0.name).tag(Optional($0.id)) }
@@ -90,9 +90,9 @@ struct SendView: View {
 
             SendStatusView(message: model.lastSendResult, progress: model.progress)
         }
-        .padding(20)
+        .padding(Space.xl)
         .frame(width: 460)
-        .animation(.default, value: model.lastSendResult)
+        .motion(Motion.standard, value: model.lastSendResult)
     }
 }
 
@@ -105,7 +105,7 @@ private struct DropTile: View {
 
     var body: some View {
         Button(action: onClick) {
-            VStack(spacing: 8) {
+            VStack(spacing: Space.sm) {
                 GlyphCircle(symbol: Theme.symbol(for: peer), size: 44, filled: targeted)
                 Text(peer.name).font(.headline).lineLimit(1)
                 Text(targeted ? "Release to send" : Theme.platformName(peer.platform))
@@ -113,12 +113,12 @@ private struct DropTile: View {
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .padding(.vertical, Space.lg)
             .background {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(targeted ? AnyShapeStyle(Theme.start.opacity(0.10)) : AnyShapeStyle(.background.secondary))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(targeted ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.quaternary),
+                RoundedRectangle(cornerRadius: Radius.feature, style: .continuous)
+                    .fill(targeted ? AnyShapeStyle(Theme.accentTint) : AnyShapeStyle(.background.secondary))
+                    .overlay(RoundedRectangle(cornerRadius: Radius.feature, style: .continuous)
+                        .strokeBorder(targeted ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.stroke),
                                       style: StrokeStyle(lineWidth: targeted ? 2 : 1, dash: targeted ? [] : [5])))
             }
             .scaleEffect(targeted ? 1.03 : 1)
@@ -139,6 +139,6 @@ private struct DropTile: View {
             }
             return true
         }
-        .animation(.spring(duration: 0.2), value: targeted)
+        .motion(Motion.fast, value: targeted)
     }
 }

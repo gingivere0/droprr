@@ -1,10 +1,24 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
-/// Droprr's look, taken from the icon pack: violet into coral, rounded cards, platform glyphs.
+/// Droprr's look. Values come from design-system/droprr (MASTER.md and tokens.json), shared with Windows.
 enum Theme {
-    static let start = Color(red: 0.36, green: 0.13, blue: 0.97)
-    static let end = Color(red: 1.0, green: 0.37, blue: 0.36)
+    /// brand.violet #5C21F7: accent fills, selection, the gradient's first stop.
+    static let start = Color(red: 0x5C / 255, green: 0x21 / 255, blue: 0xF7 / 255)
+    /// brand.coral #FF5E5C: second gradient stop and progress only. Never text on light backgrounds.
+    static let end = Color(red: 0xFF / 255, green: 0x5E / 255, blue: 0x5C / 255)
+    /// brand.gradient, 135°: logo, primary buttons, filled glyphs. Small surfaces only.
     static let gradient = LinearGradient(colors: [start, end], startPoint: .topLeading, endPoint: .bottomTrailing)
+    /// accent.text: violet in light mode, #A98BFF in dark so it stays readable.
+    static let accentText = Color.adaptive(light: (0x5C, 0x21, 0xF7), dark: (0xA9, 0x8B, 0xFF))
+    /// accent.tint: violet at 12% (light) or 20% (dark) for unfilled glyph circles and soft chips.
+    static let accentTint = Color.adaptive(light: (0x5C, 0x21, 0xF7), dark: (0x5C, 0x21, 0xF7), lightAlpha: 0.12, darkAlpha: 0.20)
+    /// Card and divider stroke.
+    static let stroke = Color.primary.opacity(0.08)
 
     static func symbol(for peer: Peer) -> String {
         switch peer.platform {
@@ -41,6 +55,82 @@ enum Theme {
     }
 }
 
+/// space.* — the 4-point grid. Use only these steps.
+enum Space {
+    static let xs: CGFloat = 4
+    static let sm: CGFloat = 8
+    static let md: CGFloat = 12
+    static let lg: CGFloat = 16
+    static let xl: CGFloat = 24
+    static let xxl: CGFloat = 32
+}
+
+/// radius.* by role. Always used with `style: .continuous`.
+enum Radius {
+    static let smallControl: CGFloat = 6
+    static let button: CGFloat = 7
+    static let row: CGFloat = 8
+    static let card: CGFloat = 12
+    static let feature: CGFloat = 14
+}
+
+/// motion.*: short ease-out transitions that respect Reduce Motion.
+enum Motion {
+    static let fast = Animation.easeOut(duration: 0.12)
+    static let standard = Animation.easeOut(duration: 0.2)
+    static let slow = Animation.easeOut(duration: 0.3)
+
+    static var reduced: Bool {
+        #if os(macOS)
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        #else
+        UIAccessibility.isReduceMotionEnabled
+        #endif
+    }
+
+    /// `withAnimation`, skipped when Reduce Motion is on.
+    static func perform<Result>(_ animation: Animation = standard, _ body: () throws -> Result) rethrows -> Result {
+        try withAnimation(reduced ? nil : animation, body)
+    }
+}
+
+private struct MotionModifier<V: Equatable>: ViewModifier {
+    var animation: Animation
+    var value: V
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content.animation(reduceMotion ? nil : animation, value: value)
+    }
+}
+
+extension View {
+    /// `.animation(_:value:)` that shows the final state immediately when Reduce Motion is on.
+    func motion<V: Equatable>(_ animation: Animation = Motion.standard, value: V) -> some View {
+        modifier(MotionModifier(animation: animation, value: value))
+    }
+}
+
+extension Color {
+    static func adaptive(light: (Int, Int, Int), dark: (Int, Int, Int), lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> Color {
+        func rgb(_ c: (Int, Int, Int)) -> (CGFloat, CGFloat, CGFloat) { (CGFloat(c.0) / 255, CGFloat(c.1) / 255, CGFloat(c.2) / 255) }
+        let (l, d) = (rgb(light), rgb(dark))
+        #if os(macOS)
+        return Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(srgbRed: d.0, green: d.1, blue: d.2, alpha: darkAlpha)
+                : NSColor(srgbRed: l.0, green: l.1, blue: l.2, alpha: lightAlpha)
+        })
+        #else
+        return Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: d.0, green: d.1, blue: d.2, alpha: darkAlpha)
+                : UIColor(red: l.0, green: l.1, blue: l.2, alpha: lightAlpha)
+        })
+        #endif
+    }
+}
+
 /// The app mark from the icon pack (file with swap arrows).
 struct LogoBadge: View {
     var size: CGFloat = 28
@@ -63,12 +153,12 @@ struct GlyphCircle: View {
 
     var body: some View {
         Circle()
-            .fill(filled ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.start.opacity(0.12)))
+            .fill(filled ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.accentTint))
             .frame(width: size, height: size)
             .overlay {
                 Image(systemName: symbol)
                     .font(.system(size: size * 0.45, weight: .medium))
-                    .foregroundStyle(filled ? AnyShapeStyle(.white) : AnyShapeStyle(Theme.start))
+                    .foregroundStyle(filled ? AnyShapeStyle(.white) : AnyShapeStyle(Theme.accentText))
             }
     }
 }
@@ -80,7 +170,7 @@ struct SendStatusView: View {
 
     var body: some View {
         if message != nil || progress != nil {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: Space.sm) {
                 if let progress {
                     ProgressView(value: progress).tint(Theme.end)
                 }
@@ -137,8 +227,8 @@ private struct HoverHint: ViewModifier {
             .popover(isPresented: $showing, arrowEdge: .bottom) {
                 Text(text)
                     .font(.callout)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, Space.md)
+                    .padding(.vertical, Space.sm)
             }
             .accessibilityHint(text)
     }
@@ -173,7 +263,7 @@ struct HoverButtonStyle: ButtonStyle {
                 .padding(.vertical, kind == .plain ? 3 : (compact ? 4 : 6))
                 .foregroundStyle(kind == .prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
                 .background {
-                    let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    let shape = RoundedRectangle(cornerRadius: Radius.button, style: .continuous)
                     switch kind {
                     case .prominent:
                         shape.fill(Theme.gradient)
@@ -188,7 +278,7 @@ struct HoverButtonStyle: ButtonStyle {
                 .opacity(isEnabled ? 1 : 0.45)
                 .contentShape(Rectangle())
                 .onHover { hovering = $0 }
-                .animation(.easeOut(duration: 0.12), value: active)
+                .motion(Motion.fast, value: active)
         }
     }
 }

@@ -6,8 +6,8 @@ struct PairView: View {
     @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
-        VStack(spacing: 16) {
-            HStack(spacing: 10) {
+        VStack(spacing: Space.lg) {
+            HStack(spacing: Space.md) {
                 LogoBadge(size: 30)
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Pair a Phone").font(.title3.weight(.semibold))
@@ -22,7 +22,7 @@ struct PairView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .padding(24)
+        .padding(Space.xl)
         .frame(width: 340)
         .onAppear { model.lastPaired = nil }
         .onChange(of: model.lastPaired) { _, name in
@@ -35,7 +35,7 @@ struct PairView: View {
         }
         .overlay {
             if let name = model.lastPaired {
-                VStack(spacing: 10) {
+                VStack(spacing: Space.md) {
                     Image(systemName: "checkmark.circle.fill").font(.system(size: 56)).foregroundStyle(Theme.gradient)
                     Text("Paired with \(name)").font(.title3.weight(.semibold))
                 }
@@ -44,6 +44,6 @@ struct PairView: View {
                 .transition(.opacity)
             }
         }
-        .animation(.default, value: model.lastPaired)
+        .motion(Motion.standard, value: model.lastPaired)
     }
 }

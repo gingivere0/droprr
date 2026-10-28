@@ -10,7 +10,7 @@ struct DroprrPhoneApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(model: model)
-                .tint(Theme.start)
+                .tint(Theme.accentText)
                 // Scanning the pairing QR code with the Camera app opens droprr://pair?…
                 .onOpenURL { url in model.pair(with: url.absoluteString) }
         }
@@ -55,7 +55,7 @@ final class PhoneModel {
 
     private func record(_ item: ReceivedItem, from source: String?) {
         if settings.autoCopy { Clipboard.copy(item) }
-        withAnimation {
+        Motion.perform {
             history.insert(HistoryEntry(item, source: source), at: 0)
             trimAndSave()
         }
@@ -75,26 +75,26 @@ final class PhoneModel {
 
     func markSeen(_ entry: HistoryEntry) {
         guard let i = history.firstIndex(where: { $0.id == entry.id }), history[i].isNew else { return }
-        withAnimation { history[i].isNew = false }
+        Motion.perform { history[i].isNew = false }
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [entry.id.uuidString])
         trimAndSave()
     }
 
     func markAllSeen() {
         let ids = newItems.map(\.id.uuidString)
-        withAnimation { for i in history.indices { history[i].isNew = false } }
+        Motion.perform { for i in history.indices { history[i].isNew = false } }
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids)
         trimAndSave()
     }
 
     func delete(_ entry: HistoryEntry) {
-        withAnimation { history.removeAll { $0.id == entry.id } }
+        Motion.perform { history.removeAll { $0.id == entry.id } }
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [entry.id.uuidString])
         trimAndSave()
     }
 
     func clearHistory() {
-        withAnimation { history.removeAll { !$0.isNew } }
+        Motion.perform { history.removeAll { !$0.isNew } }
         trimAndSave()
     }
 

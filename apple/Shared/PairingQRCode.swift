@@ -16,7 +16,7 @@ struct PairingQRCode: View {
                 .font(.callout).foregroundStyle(.secondary)
         } else if let address, let url = PairingInfo(name: settings.deviceName, host: address, port: settings.port,
                                                      token: settings.token, platform: DroprrSettings.platform).url {
-            VStack(spacing: 8) {
+            VStack(spacing: Space.sm) {
                 ZStack {
                     QRCodeImage(text: url.absoluteString)
                         .frame(width: size, height: size)
@@ -28,12 +28,12 @@ struct PairingQRCode: View {
                     }
                 }
                 .padding(size * 0.06)
-                .background(.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(.white, in: RoundedRectangle(cornerRadius: Radius.feature, style: .continuous))
                 .shadow(color: .black.opacity(0.1), radius: 8, y: 3)
                 Text("\(address):\(String(settings.port))").font(.caption.monospaced()).foregroundStyle(.secondary)
             }
         } else {
-            VStack(spacing: 8) {
+            VStack(spacing: Space.sm) {
                 Text("Tailscale isn't connected on this Mac, so a phone couldn't reach it.")
                     .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 Button("Check Again") { address = PairingInfo.tailscaleAddress() }

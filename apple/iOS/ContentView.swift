@@ -35,7 +35,7 @@ struct ContentView: View {
                 PairingStatusCard(status: status) { model.pairingStatus = nil }
             }
         }
-        .animation(.spring(duration: 0.3), value: model.pairingStatus)
+        .motion(Motion.slow, value: model.pairingStatus)
     }
 }
 
@@ -47,7 +47,7 @@ private struct PairingStatusCard: View {
     var body: some View {
         ZStack {
             Color.black.opacity(0.25).ignoresSafeArea()
-            VStack(spacing: 14) {
+            VStack(spacing: Space.lg) {
                 switch status {
                 case .working(let text):
                     ProgressView().controlSize(.large)
@@ -65,15 +65,15 @@ private struct PairingStatusCard: View {
                     Text(text).font(.subheadline).multilineTextAlignment(.center)
                     Button("OK", action: dismiss)
                         .font(.headline)
-                        .padding(.horizontal, 28)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, Space.xxl)
+                        .padding(.vertical, Space.md)
                         .foregroundStyle(.white)
                         .background(Theme.gradient, in: Capsule())
                 }
             }
-            .padding(24)
+            .padding(Space.xl)
             .frame(maxWidth: 300)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.feature, style: .continuous))
             .shadow(radius: 20)
         }
         .transition(.opacity)
@@ -103,7 +103,7 @@ private struct SendTab: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: Space.xl) {
                 if desktops.isEmpty {
                     EmptyDevicesCard()
                 } else {
@@ -112,10 +112,10 @@ private struct SendTab: View {
                     composer
                     sendButton
                     SendStatusView(message: model.lastSendResult, progress: model.progress)
-                        .padding(.horizontal, 4)
+                        .padding(.horizontal, Space.xs)
                 }
             }
-            .padding(20)
+            .padding(Space.lg)
         }
         .scrollDismissesKeyboard(.interactively)
         .background(backdrop)
@@ -128,36 +128,34 @@ private struct SendTab: View {
                     .fontWeight(.semibold)
             }
         }
-        .animation(.default, value: model.lastSendResult)
+        .motion(Motion.standard, value: model.lastSendResult)
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }
-            withAnimation(.snappy) { files = urls.compactMap(Self.copyToTemp) }
+            Motion.perform { files = urls.compactMap(Self.copyToTemp) }
         }
     }
 
     private var backdrop: some View {
-        Theme.gradient
-            .opacity(0.10)
-            .ignoresSafeArea()
-            .background(Color(.systemGroupedBackground))
+        // The gradient is for small surfaces only; screens use the system background.
+        Color(.systemGroupedBackground).ignoresSafeArea()
     }
 
     private var devicePicker: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.md) {
             SectionLabel("Send to")
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
+                HStack(spacing: Space.md) {
                     ForEach(desktops) { device in
                         let selected = device.id == peer?.id
                         Button {
-                            withAnimation(.snappy) { peerID = device.id }
+                            Motion.perform { peerID = device.id }
                         } label: {
-                            HStack(spacing: 8) {
+                            HStack(spacing: Space.sm) {
                                 Image(systemName: Theme.symbol(for: device))
                                 Text(device.name).fontWeight(.semibold)
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
+                            .padding(.horizontal, Space.lg)
+                            .padding(.vertical, Space.md)
                             .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
                             .background {
                                 Capsule().fill(selected ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.regularMaterial))
@@ -167,14 +165,14 @@ private struct SendTab: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, Space.xs)
             }
         }
     }
 
     /// Tapping a card selects it; nothing goes out until Send. Tap a selected card's × to clear it.
     private var actionGrid: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Space.md) {
             ActionCard(title: "Clipboard", symbol: "doc.on.clipboard.fill",
                        detail: clipboard.map(\.label), selected: clipboard != nil,
                        onClear: { clipboard = nil }) {
@@ -201,17 +199,17 @@ private struct SendTab: View {
             }
         }
         .disabled(model.sending)
-        .animation(.snappy, value: hasStaged)
+        .motion(Motion.standard, value: hasStaged)
     }
 
     private var composer: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.md) {
             SectionLabel("Text or link")
             TextField("Type or paste something", text: $text, axis: .vertical)
                 .lineLimit(3...8)
                 .focused($typing)
-                .padding(14)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .padding(Space.lg)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         }
     }
 
@@ -221,15 +219,15 @@ private struct SendTab: View {
             typing = false
             Task { await sendStaged(to: peer) }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: Space.sm) {
                 if model.sending { ProgressView().tint(.white) } else { Image(systemName: "paperplane.fill") }
                 Text(peer.map { "Send to \($0.name)" } ?? "Send")
             }
             .font(.headline)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 15)
+            .padding(.vertical, Space.lg)
             .foregroundStyle(.white)
-            .background(Theme.gradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Theme.gradient, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
             .shadow(color: Theme.start.opacity(hasStaged ? 0.3 : 0), radius: 10, y: 5)
         }
         .buttonStyle(PressableStyle())
@@ -255,7 +253,7 @@ private struct SendTab: View {
         if !attachments.isEmpty { payloads.append(.files(attachments)) }
 
         if await model.send(payloads, to: peer) {
-            withAnimation(.snappy) {
+            Motion.perform {
                 text = ""
                 clipboard = nil
                 photos = []
@@ -321,7 +319,7 @@ private struct ActionCardLabel: View {
     var selected: Bool
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: Space.sm) {
             ZStack {
                 Circle()
                     .fill(selected ? AnyShapeStyle(.white) : AnyShapeStyle(Theme.gradient))
@@ -338,9 +336,9 @@ private struct ActionCardLabel: View {
         }
         .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
+        .padding(.vertical, Space.lg)
         .background {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                 .fill(selected ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.regularMaterial))
         }
         .shadow(color: selected ? Theme.start.opacity(0.3) : .clear, radius: 8, y: 4)
@@ -354,12 +352,14 @@ private struct ClearBadge: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "xmark.circle.fill")
-                .font(.system(size: 20))
+                .font(.title3)
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(Theme.start, .white)
+                .frame(width: 44, height: 44)   // 44 pt tap target
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .offset(x: 6, y: -6)
+        .offset(x: Space.md, y: -Space.md)
         .accessibilityLabel("Clear")
     }
 }
@@ -368,7 +368,7 @@ private struct PressableStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.spring(duration: 0.2), value: configuration.isPressed)
+            .motion(Motion.fast, value: configuration.isPressed)
     }
 }
 
@@ -376,7 +376,7 @@ private struct EmptyDevicesCard: View {
     @Environment(\.startPairing) private var startPairing
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: Space.lg) {
             LogoBadge(size: 64)
             Text("Welcome to Droprr").font(.title2.weight(.bold))
             Text("On your PC or Mac, open Droprr and choose Pair a Phone. Then scan the code.")
@@ -385,17 +385,17 @@ private struct EmptyDevicesCard: View {
             Button(action: startPairing) {
                 Label("Scan Pairing Code", systemImage: "qrcode.viewfinder")
                     .font(.headline)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, Space.xl)
+                    .padding(.vertical, Space.md)
                     .foregroundStyle(.white)
                     .background(Theme.gradient, in: Capsule())
             }
             .buttonStyle(PressableStyle())
         }
         .frame(maxWidth: .infinity)
-        .padding(28)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .padding(.top, 40)
+        .padding(Space.xxl)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.feature, style: .continuous))
+        .padding(.top, Space.xxl)
     }
 }
 
@@ -409,9 +409,9 @@ private struct ReceivedTab: View {
     var body: some View {
         List {
             Section {
-                HStack(spacing: 12) {
+                HStack(spacing: Space.md) {
                     GlyphCircle(symbol: "arrow.down.circle", size: 36)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: Space.xs) {
                         Text(model.collecting ? "Checking your computers…" : (model.lastCollect ?? "Pull down to check"))
                             .font(.body.weight(.medium))
                             .foregroundStyle(.primary)
@@ -468,13 +468,13 @@ private struct ReceivedTab: View {
                 Label("Open received files in Files", systemImage: "folder")
                     .font(.subheadline.weight(.medium))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.vertical, Space.md)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.feature, style: .continuous))
             }
             .buttonStyle(.plain)
-            .foregroundStyle(Theme.start)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 8)
+            .foregroundStyle(Theme.accentText)
+            .padding(.horizontal, Space.lg)
+            .padding(.bottom, Space.sm)
         }
         .sheet(item: Binding(get: { preview.map(PreviewFile.init) }, set: { preview = $0?.url })) { file in
             // A sheet instead of .quickLookPreview so photos and videos can be flicked down to close.
@@ -487,14 +487,14 @@ private struct ReceivedTab: View {
                 Label(toast, systemImage: "checkmark.circle.fill")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, Space.lg)
+                    .padding(.vertical, Space.md)
                     .background(Theme.gradient, in: Capsule())
-                    .padding(.bottom, 16)
+                    .padding(.bottom, Space.lg)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(duration: 0.3), value: toast)
+        .motion(Motion.slow, value: toast)
     }
 
     private func row(_ entry: HistoryEntry) -> some View {
@@ -507,9 +507,9 @@ private struct ReceivedTab: View {
             case .url: show("Link copied")
             }
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: Space.md) {
                 GlyphCircle(symbol: Theme.symbol(for: item), size: 36, filled: entry.isNew)
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: Space.xs) {
                     Text(item.title)
                         .font(.body.weight(entry.isNew ? .semibold : .regular))
                         .foregroundStyle(.primary)
@@ -520,10 +520,11 @@ private struct ReceivedTab: View {
                 }
                 Spacer(minLength: 0)
                 if entry.isNew {
-                    Circle().fill(Theme.start).frame(width: 9, height: 9)
+                    Circle().fill(Theme.accentText).frame(width: Space.sm, height: Space.sm)
+                        .accessibilityLabel("New")
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, Space.xs)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

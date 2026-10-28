@@ -70,6 +70,7 @@ struct SettingsForm<Extra: View>: View {
                     } label: {
                         Image(systemName: showToken ? "eye.slash" : "eye")
                     }
+                    .accessibilityLabel(showToken ? "Hide token" : "Show token")
                     #if os(macOS)
                 .buttonStyle(HoverButtonStyle(.plain))
                 #else
@@ -175,9 +176,9 @@ private struct PeerRow: View {
     var onRemove: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Space.md) {
             GlyphCircle(symbol: Theme.symbol(for: peer), size: 34)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Space.xs) {
                 Text(peer.name).font(.body.weight(.medium))
                 Text(peer.isPhone ? "iPhone · collects items when opened" : "\(peer.host):\(String(peer.port))")
                     .font(.caption)
@@ -195,6 +196,7 @@ private struct PeerRow: View {
                     #endif
             }
             Button(action: onEdit) { Image(systemName: "pencil") }
+                .accessibilityLabel("Edit \(peer.name)")
                 #if os(macOS)
                 .buttonStyle(HoverButtonStyle(.plain))
                 #else
@@ -205,12 +207,13 @@ private struct PeerRow: View {
                 #endif
             #if os(macOS)
             Button(action: onRemove) { Image(systemName: "trash") }
+                .accessibilityLabel("Remove \(peer.name)")
                 .buttonStyle(HoverButtonStyle(.plain))
                 .foregroundStyle(.red)
                 .hoverHint("Remove this device")
             #endif
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, Space.xs)
     }
 
     @ViewBuilder private var statusLine: some View {
@@ -260,7 +263,7 @@ private struct PeerEditor: View {
                             PairingQRCode(settings: DroprrSettings.shared, size: 170)
                             Spacer()
                         }
-                        .padding(.vertical, 6)
+                        .padding(.vertical, Space.sm)
                     } header: {
                         Text("Pair a phone")
                     } footer: {

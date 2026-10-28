@@ -82,17 +82,17 @@ struct ShareView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: Space.lg) {
+                    HStack(spacing: Space.md) {
                         GlyphCircle(symbol: summarySymbol, size: 40, filled: true)
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: Space.xs) {
                             Text("Sharing").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                             Text(model.summary).font(.body.weight(.medium)).lineLimit(2)
                         }
                     }
-                    .padding(14)
+                    .padding(Space.lg)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
 
                     Text("SEND TO").font(.caption.weight(.semibold)).tracking(0.8).foregroundStyle(.secondary)
 
@@ -100,12 +100,12 @@ struct ShareView: View {
                         Text("Open the Droprr app and add a computer first.")
                             .foregroundStyle(.secondary)
                     }
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: Space.md), GridItem(.flexible(), spacing: Space.md)], spacing: Space.md) {
                         ForEach(desktops) { peer in
                             Button {
                                 Task { await model.send(to: peer) }
                             } label: {
-                                VStack(spacing: 10) {
+                                VStack(spacing: Space.md) {
                                     GlyphCircle(symbol: model.sentTo == peer.id ? "checkmark" : Theme.symbol(for: peer),
                                                 size: 50, filled: true)
                                     Text(peer.name).font(.subheadline.weight(.semibold)).lineLimit(1)
@@ -114,8 +114,8 @@ struct ShareView: View {
                                     }
                                 }
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 18)
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                .padding(.vertical, Space.lg)
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
                             }
                             .buttonStyle(.plain)
                             .disabled(model.loading || model.sending || model.payloads.isEmpty)
@@ -124,9 +124,9 @@ struct ShareView: View {
 
                     SendStatusView(message: model.status, progress: model.progress)
                 }
-                .padding(20)
+                .padding(Space.lg)
             }
-            .background(Theme.gradient.opacity(0.10).ignoresSafeArea())
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Droprr")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -134,15 +134,15 @@ struct ShareView: View {
                     Button("Cancel") { model.cancel() }
                 }
                 ToolbarItem(placement: .principal) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: Space.sm) {
                         LogoBadge(size: 22)
                         Text("Droprr").font(.headline)
                     }
                 }
             }
-            .animation(.default, value: model.status)
+            .motion(Motion.standard, value: model.status)
         }
-        .tint(Theme.start)
+        .tint(Theme.accentText)
     }
 
     private var summarySymbol: String {

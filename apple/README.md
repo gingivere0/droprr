@@ -64,4 +64,6 @@ The project uses Xcode folder-synced groups, so new `.swift` files in these fold
 without editing the project. Run `scripts/generate_project.py` only when adding a target or changing
 build settings.
 
-Icons come from `file-swap-icon-pack/` at the repo root.
+Icons come from `file-swap-icon-pack/` at the repo root. Colors, type, spacing, corner radii and motion follow
+[`design-system/droprr/`](../design-system/droprr/MASTER.md); the Swift tokens (`Theme`, `Space`, `Radius`,
+`Motion`) live in `Shared/Theme.swift`.

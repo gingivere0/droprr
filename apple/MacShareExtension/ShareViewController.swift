@@ -79,10 +79,10 @@ struct MacShareView: View {
     @Bindable var model: MacShareModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.lg) {
+            HStack(spacing: Space.md) {
                 LogoBadge(size: 30)
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: Space.xs) {
                     Text("Send with Droprr").font(.headline)
                     Text(model.summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
@@ -93,19 +93,19 @@ struct MacShareView: View {
                 Text("Open Droprr from the menu bar and add a device first.")
                     .foregroundStyle(.secondary)
             }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: Space.md)], spacing: Space.md) {
                 ForEach(model.settings.peers) { peer in
                     Button {
                         Task { await model.send(to: peer) }
                     } label: {
-                        VStack(spacing: 6) {
+                        VStack(spacing: Space.sm) {
                             GlyphCircle(symbol: model.sentTo == peer.id ? "checkmark" : Theme.symbol(for: peer),
                                         size: 40, filled: true)
                             Text(peer.name).font(.callout.weight(.medium)).lineLimit(1)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .padding(.vertical, Space.md)
+                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .disabled(model.loading || model.sending || model.payloads.isEmpty)
@@ -120,8 +120,8 @@ struct MacShareView: View {
                     .keyboardShortcut(.cancelAction)
             }
         }
-        .padding(16)
+        .padding(Space.lg)
         .frame(width: 360)
-        .animation(.default, value: model.status)
+        .motion(Motion.standard, value: model.status)
     }
 }

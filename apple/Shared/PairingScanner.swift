@@ -21,9 +21,9 @@ struct PairingScannerSheet: View {
                         Text("Point at the QR code in Droprr on your PC or Mac (Pair a Phone).")
                             .font(.callout.weight(.medium))
                             .multilineTextAlignment(.center)
-                            .padding(14)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .padding(24)
+                            .padding(Space.lg)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.feature, style: .continuous))
+                            .padding(Space.xl)
                     }
                 } else {
                     ContentUnavailableView("Camera unavailable", systemImage: "camera.fill",
