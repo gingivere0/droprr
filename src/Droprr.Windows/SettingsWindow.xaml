@@ -1,67 +1,102 @@
-<Window x:Class="Droprr.SettingsWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Droprr Settings" Width="640" Height="720" MinWidth="520" MinHeight="520"
-        WindowStartupLocation="CenterScreen" FontFamily="{StaticResource AppFont}">
+<ui:FluentWindow x:Class="Droprr.SettingsWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 Title="Droprr Settings" Width="720" Height="780" MinWidth="560" MinHeight="560"
+                 WindowStartupLocation="CenterScreen"
+                 ExtendsContentIntoTitleBar="True" WindowBackdropType="Mica" WindowCornerPreference="Round">
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="20,16,20,4">
-                <TextBlock Text="Settings" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,16" />
+        <ui:TitleBar x:Name="AppTitleBar" Grid.Row="0" Title="Droprr Settings" />
 
-                <Border Style="{StaticResource Card}">
-                    <StackPanel>
-                        <TextBlock Text="This PC" Style="{StaticResource SectionHeader}" />
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="12" />
-                                <ColumnDefinition Width="120" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="Device name" Style="{StaticResource FieldLabel}" />
-                                <TextBox x:Name="DeviceName" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="Port" Style="{StaticResource FieldLabel}" />
-                                <TextBox x:Name="Port" />
-                            </StackPanel>
-                        </Grid>
-                        <TextBlock Text="Save received items to" Style="{StaticResource FieldLabel}" Margin="0,12,0,4" />
-                        <DockPanel>
-                            <Button DockPanel.Dock="Right" Content="Browse…" Padding="12,5" Margin="8,0,0,0" Click="OnBrowse" />
-                            <TextBox x:Name="SaveFolder" />
-                        </DockPanel>
-                        <CheckBox x:Name="CopyFilesBox" Margin="0,14,0,0" Content="Auto-copy received items to clipboard"
-                                  ToolTip="Text and links are always copied. This also copies files, and images as pictures." />
-                        <CheckBox x:Name="StartWithWindowsBox" Content="Start Droprr when I sign in to Windows" Margin="0,8,0,0" />
-                        <CheckBox x:Name="StartMenuBox" Content="Add Droprr to the Start menu and Windows Search" Margin="0,8,0,0" />
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="24,4,24,12">
+                <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" />
+
+                <!-- This PC -->
+                <TextBlock Text="This PC" Style="{StaticResource SectionHeader}" />
+                <ui:CardControl Icon="{ui:SymbolIcon Desktop24}" Margin="0,0,0,4">
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <TextBlock Text="Device name" />
+                            <TextBlock Text="The name other devices see" Style="{StaticResource Caption}" />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <ui:TextBox x:Name="DeviceName" Width="240" />
+                </ui:CardControl>
+                <ui:CardControl Icon="{ui:SymbolIcon PlugConnected24}" Margin="0,0,0,4">
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <TextBlock Text="Port" />
+                            <TextBlock Text="53318 unless every device is set to something else" Style="{StaticResource Caption}" />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <ui:TextBox x:Name="Port" Width="120" />
+                </ui:CardControl>
+                <ui:CardControl Icon="{ui:SymbolIcon Folder24}" Margin="0,0,0,4">
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <TextBlock Text="Save received items to" />
+                            <TextBlock Text="Leave empty for Downloads\Droprr" Style="{StaticResource Caption}" />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <ui:TextBox x:Name="SaveFolder" Width="220" />
+                        <ui:Button Content="Browse…" Margin="8,0,0,0" Click="OnBrowse" />
                     </StackPanel>
-                </Border>
+                </ui:CardControl>
+                <ui:CardControl Icon="{ui:SymbolIcon Clipboard24}" Margin="0,0,0,4">
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <TextBlock Text="Auto-copy received items to clipboard" />
+                            <TextBlock Text="Text and links are always copied. This also copies files, and images as pictures."
+                                       Style="{StaticResource Caption}" />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <ui:ToggleSwitch x:Name="CopyFilesBox" AutomationProperties.Name="Auto-copy received items to clipboard" />
+                </ui:CardControl>
+                <ui:CardControl Icon="{ui:SymbolIcon Power24}" Margin="0,0,0,4">
+                    <ui:CardControl.Header>
+                        <TextBlock Text="Start Droprr when I sign in to Windows" />
+                    </ui:CardControl.Header>
+                    <ui:ToggleSwitch x:Name="StartWithWindowsBox" AutomationProperties.Name="Start Droprr when I sign in to Windows" />
+                </ui:CardControl>
+                <ui:CardControl Icon="{ui:SymbolIcon Search24}">
+                    <ui:CardControl.Header>
+                        <TextBlock Text="Add Droprr to the Start menu and Windows Search" />
+                    </ui:CardControl.Header>
+                    <ui:ToggleSwitch x:Name="StartMenuBox" AutomationProperties.Name="Add Droprr to the Start menu and Windows Search" />
+                </ui:CardControl>
 
-                <Border Style="{StaticResource Card}">
+                <!-- Token -->
+                <TextBlock Text="Token" Style="{StaticResource SectionHeader}" />
+                <ui:Card>
                     <StackPanel>
-                        <TextBlock Text="Token" Style="{StaticResource SectionHeader}" />
-                        <TextBlock TextWrapping="Wrap" Opacity="0.8" Margin="0,0,0,10"
-                                   Text="Every device and shortcut that sends to this PC needs this token. Keep it private." />
                         <DockPanel>
-                            <Button DockPanel.Dock="Right" Content="New token" Padding="12,5" Margin="8,0,0,0" Click="OnNewToken" />
-                            <Button DockPanel.Dock="Right" Content="Copy" Padding="12,5" Margin="8,0,0,0" Click="OnCopyToken" />
-                            <Button DockPanel.Dock="Right" x:Name="ShowTokenButton" Content="Show" Padding="12,5" Margin="8,0,0,0" Click="OnShowToken" />
-                            <TextBox x:Name="TokenText" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" />
+                            <ui:SymbolIcon DockPanel.Dock="Left" Symbol="Key24" FontSize="20" Margin="0,0,16,0" VerticalAlignment="Top" />
+                            <TextBlock Style="{StaticResource Caption}" FontSize="13"
+                                       Text="Every device that sends to this PC needs this token. Pairing a phone hands it over for you. Keep it private." />
+                        </DockPanel>
+                        <DockPanel Margin="36,12,0,0">
+                            <ui:Button DockPanel.Dock="Right" Content="New token" Icon="{ui:SymbolIcon ArrowSync24}" Margin="8,0,0,0" Click="OnNewToken" />
+                            <ui:Button DockPanel.Dock="Right" Content="Copy" Icon="{ui:SymbolIcon Copy24}" Margin="8,0,0,0" Click="OnCopyToken" />
+                            <ui:Button DockPanel.Dock="Right" x:Name="ShowTokenButton" Content="Show" Icon="{ui:SymbolIcon Eye24}" Margin="8,0,0,0" Click="OnShowToken" />
+                            <ui:TextBox x:Name="TokenText" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" />
                         </DockPanel>
                     </StackPanel>
-                </Border>
+                </ui:Card>
 
-                <Border Style="{StaticResource Card}">
+                <!-- Devices -->
+                <TextBlock Text="Devices" Style="{StaticResource SectionHeader}" />
+                <ui:Card>
                     <StackPanel>
-                        <TextBlock Text="Devices" Style="{StaticResource SectionHeader}" />
-                        <TextBlock TextWrapping="Wrap" Opacity="0.8" Margin="0,0,0,10"
-                                   Text="Computers by Tailscale name. Turn on iPhone for phones: items for them wait on this PC until they run &quot;Get from PC&quot;." />
+                        <TextBlock Style="{StaticResource Caption}" FontSize="13" Margin="0,0,0,10"
+                                   Text="Computers by Tailscale name. Turn on iPhone for phones: items for them wait on this PC until the phone collects them." />
                         <DataGrid x:Name="PeerGrid" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column"
                                   MinHeight="120" GridLinesVisibility="None" SelectionMode="Single">
                             <DataGrid.Columns>
@@ -72,27 +107,25 @@
                                 <DataGridTextColumn Header="Token (if different)" Binding="{Binding Token}" Width="2*" />
                             </DataGrid.Columns>
                         </DataGrid>
-                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <Button Content="Add device" Padding="12,5" Click="OnAddPeer" />
-                            <Button Content="Remove" Padding="12,5" Margin="8,0,0,0" Click="OnRemovePeer" />
-                            <Button Padding="12,5" Margin="8,0,0,0" Click="OnPair">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xED14;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="0,2,8,0" />
-                                    <TextBlock Text="Pair a phone…" />
-                                </StackPanel>
-                            </Button>
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <ui:Button Content="Add device" Icon="{ui:SymbolIcon Add24}" Click="OnAddPeer" />
+                            <ui:Button Content="Remove" Icon="{ui:SymbolIcon Delete24}" Margin="8,0,0,0" Click="OnRemovePeer" />
+                            <ui:Button Content="Pair a phone…" Icon="{ui:SymbolIcon QrCode24}" Margin="8,0,0,0" Click="OnPair" />
                         </StackPanel>
                     </StackPanel>
-                </Border>
+                </ui:Card>
             </StackPanel>
         </ScrollViewer>
 
-        <DockPanel Grid.Row="1" Margin="20,8,20,20" LastChildFill="False">
-            <Button Content="Open settings file" Padding="12,5" Click="OnOpenFile" />
-            <Button DockPanel.Dock="Right" Content="Save" Padding="24,5" Margin="8,0,0,0" IsDefault="True" Click="OnSave"
-                    Style="{DynamicResource AccentButtonStyle}" />
-            <Button DockPanel.Dock="Right" Content="Cancel" Padding="16,5" IsCancel="True" Click="OnCancel" />
-            <TextBlock x:Name="Error" DockPanel.Dock="Right" Foreground="IndianRed" VerticalAlignment="Center" Margin="0,0,12,0" />
-        </DockPanel>
+        <Border Grid.Row="2" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+            <DockPanel Margin="24,12,24,16" LastChildFill="False">
+                <ui:Button Content="Open settings file" Icon="{ui:SymbolIcon DocumentEdit24}" Appearance="Transparent" Click="OnOpenFile" />
+                <ui:Button DockPanel.Dock="Right" Content="Save" Icon="{ui:SymbolIcon Save24}" Appearance="Primary"
+                           Margin="8,0,0,0" Padding="20,6" IsDefault="True" Click="OnSave" />
+                <ui:Button DockPanel.Dock="Right" Content="Cancel" IsCancel="True" Click="OnCancel" />
+                <TextBlock x:Name="Error" DockPanel.Dock="Right" Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                           VerticalAlignment="Center" Margin="0,0,12,0" />
+            </DockPanel>
+        </Border>
     </Grid>
-</Window>
+</ui:FluentWindow>

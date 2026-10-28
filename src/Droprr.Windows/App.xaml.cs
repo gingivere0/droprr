@@ -50,6 +50,7 @@ public partial class App : Application
     {
         base.OnStartup(e);
         try { Shortcuts.SetProcessAppId(); } catch { /* only affects taskbar grouping and notification branding */ }
+        AppTheme.Initialize();
         try
         {
             Settings = SettingsStore.Load();

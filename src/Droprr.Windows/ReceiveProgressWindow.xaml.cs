@@ -3,12 +3,12 @@ using System.Windows;
 namespace Droprr;
 
 // Small corner window shown while a large item arrives.
-public partial class ReceiveProgressWindow : Window
+public partial class ReceiveProgressWindow : Wpf.Ui.Controls.FluentWindow
 {
     public ReceiveProgressWindow()
     {
         InitializeComponent();
-        Icon = AppIcon.ImageSource;
+        AppTheme.Setup(this, AppTitleBar);
         Loaded += (_, _) =>
         {
             var area = SystemParameters.WorkArea;

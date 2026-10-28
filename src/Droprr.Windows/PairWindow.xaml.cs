@@ -12,18 +12,20 @@ namespace Droprr;
 
 // Shows the pairing QR code described in docs/PROTOCOL.md ("Pairing QR"). The code holds the token, so it's
 // only ever built in memory while this window is open: never written to disk or logged.
-public partial class PairWindow : Window
+public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
 {
     public PairWindow(AppSettings settings)
     {
         InitializeComponent();
-        Icon = AppIcon.ImageSource;
+        AppTheme.Setup(this, AppTitleBar);
 
         var host = TailscaleNetwork.FindAddresses().FirstOrDefault()?.ToString();
         if (host is null)
         {
-            Error.Text = "Tailscale isn't connected on this PC, so a phone couldn't reach it. Connect Tailscale and try again.";
-            Error.Visibility = Visibility.Visible;
+            Error.Message = "Tailscale isn't connected on this PC, so a phone couldn't reach it. Connect Tailscale and try again.";
+            Error.IsOpen = true;
+            CodePanel.Visibility = Visibility.Collapsed;
+            ScanHint.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -44,8 +46,10 @@ public partial class PairWindow : Window
         Code.Source = null;
         CodePanel.Visibility = Visibility.Collapsed;
         ScanHint.Visibility = Visibility.Collapsed;
+        Details.Visibility = Visibility.Collapsed;
+        PrivacyNote.IsOpen = false;
         PairedPanel.Visibility = Visibility.Visible;
-        PairedText.Text = $"Paired with {peer.Name} ✓";
+        PairedText.Text = $"Paired with {peer.Name}";
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
         timer.Tick += (_, _) =>
         {

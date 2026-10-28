@@ -82,7 +82,7 @@ Without the iPhone app, you can still send to a computer from the share sheet, a
 
 | Path | What's there |
 | --- | --- |
-| `src/Droprr.Windows/` | The Windows app (WPF on .NET 10) |
+| `src/Droprr.Windows/` | The Windows app (WPF on .NET 10, styled with [WPF UI](https://github.com/lepoco/wpfui)) |
 | `apple/` | The Mac and iPhone apps (SwiftUI, Xcode project) |
 | `docs/PROTOCOL.md` | The HTTP protocol every Droprr app speaks |
 | `docs/ios-shortcut.md` | Optional iPhone Shortcuts |

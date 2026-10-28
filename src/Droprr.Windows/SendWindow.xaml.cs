@@ -14,7 +14,7 @@ public sealed record FileEntry(string FullPath)
     public string Name => Path.GetFileName(FullPath);
 }
 
-public partial class SendWindow : Window
+public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
 {
     AppSettings _settings;
     readonly ObservableCollection<FileEntry> _files = new();
@@ -22,7 +22,7 @@ public partial class SendWindow : Window
     public SendWindow(AppSettings settings, IEnumerable<string> files)
     {
         InitializeComponent();
-        Icon = AppIcon.ImageSource;
+        AppTheme.Setup(this, AppTitleBar);
         _settings = settings;
 
         FileList.ItemsSource = _files;

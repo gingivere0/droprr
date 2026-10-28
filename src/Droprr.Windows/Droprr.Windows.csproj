@@ -12,8 +12,6 @@
     <Version>0.2.0</Version>
     <IconPack>..\..\file-swap-icon-pack\windows\</IconPack>
     <ApplicationIcon>$(IconPack)app.ico</ApplicationIcon>
-    <!-- WPF's Fluent theme (ThemeMode) is still marked experimental. -->
-    <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,11 +19,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="$(IconPack)app.ico" LogicalName="Droprr.app.ico" />    <None Include="settings.example.json" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="$(IconPack)app.ico" LogicalName="Droprr.app.ico" />
+    <None Include="settings.example.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="QRCoder" Version="1.8.1" />
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
 
 </Project>

@@ -8,8 +8,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
-using System.Windows.Media;
+using Wpf.Ui.Controls;
 using Forms = System.Windows.Forms;
+using MenuItem = Wpf.Ui.Controls.MenuItem;
+using TextBlock = System.Windows.Controls.TextBlock;
 
 namespace Droprr;
 
@@ -23,16 +25,19 @@ sealed class TrayIcon : IDisposable
     };
 
     readonly Forms.NotifyIcon _icon;
-    // A WPF menu rather than a WinForms one, so it gets the Fluent theme's rounded corners and light or dark colors.
+    // A WPF menu rather than a WinForms one, so WPF UI styles it: rounded corners, light or dark, Fluent icons.
     readonly ContextMenu _menu = new();
     readonly MenuItem _status = new() { IsEnabled = false };
     readonly MenuItem _pending = new() { IsEnabled = false, Visibility = Visibility.Collapsed };
     readonly List<MenuItem> _clearItems = new();
     readonly App _app;
-    readonly MenuItem _recentMenu = MenuEntry("Recent", "");
+    readonly MenuItem _recentMenu = MenuEntry("Recent", SymbolRegular.History24);
     // Invisible window the menu opens from: a tray menu only closes on an outside click when its window has focus.
     readonly Window _anchor = new()
     {
+        // An explicit empty style keeps WPF UI's window style off it, which would try to change
+        // AllowsTransparency after the window is shown and throw.
+        Style = new Style(typeof(Window)),
         WindowStyle = WindowStyle.None,
         ResizeMode = ResizeMode.NoResize,
         ShowInTaskbar = false,
@@ -52,12 +57,12 @@ sealed class TrayIcon : IDisposable
         _menu.Items.Add(_status);
         _menu.Items.Add(_pending);
         _menu.Items.Add(new Separator());
-        _menu.Items.Add(MenuEntry("Send to device…", "", () => app.ShowSendWindow([])));
+        _menu.Items.Add(MenuEntry("Send to device…", SymbolRegular.Send24, () => app.ShowSendWindow([])));
         _menu.Items.Add(_recentMenu);
-        _menu.Items.Add(MenuEntry("Open Droprr folder", "", () => OpenFolder(app.Settings.ResolveSaveFolder())));
+        _menu.Items.Add(MenuEntry("Open Droprr folder", SymbolRegular.FolderOpen24, () => OpenFolder(app.Settings.ResolveSaveFolder())));
         _menu.Items.Add(new Separator());
-        _menu.Items.Add(MenuEntry("Settings…", "", app.ShowSettings));
-        _menu.Items.Add(MenuEntry("Exit", "", app.ExitApp));
+        _menu.Items.Add(MenuEntry("Settings…", SymbolRegular.Settings24, app.ShowSettings));
+        _menu.Items.Add(MenuEntry("Exit", SymbolRegular.Power24, app.ExitApp));
         _menu.Placement = PlacementMode.MousePoint;
         _menu.PlacementTarget = _anchor;
         _menu.Closed += (_, _) => _anchor.Hide();
@@ -80,12 +85,12 @@ sealed class TrayIcon : IDisposable
         UpdateRecent([]);
     }
 
-    static MenuItem MenuEntry(string text, string glyph, Action? onClick = null)
+    static MenuItem MenuEntry(string text, SymbolRegular symbol, Action? onClick = null)
     {
         var item = new MenuItem
         {
             Header = new TextBlock { Text = text },
-            Icon = new TextBlock { Text = glyph, FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 14 },
+            Icon = new SymbolIcon(symbol),
         };
         if (onClick is not null)
             item.Click += (_, _) => onClick();
@@ -117,7 +122,7 @@ sealed class TrayIcon : IDisposable
         foreach (var (peer, _) in pending)
         {
             var label = pending.Count == 1 ? "Clear waiting items" : $"Clear items waiting for {peer}";
-            var clear = MenuEntry(label, "", () => _app.ClearWaiting(peer));
+            var clear = MenuEntry(label, SymbolRegular.Delete24, () => _app.ClearWaiting(peer));
             _clearItems.Add(clear);
             _menu.Items.Insert(at++, clear);
         }
@@ -149,9 +154,9 @@ sealed class TrayIcon : IDisposable
         {
             var (prefix, glyph) = item.Kind switch
             {
-                ItemKind.File => ("File", ""),
-                ItemKind.Url => ("Link", ""),
-                _ => ("Text", ""),
+                ItemKind.File => ("File", SymbolRegular.Document24),
+                ItemKind.Url => ("Link", SymbolRegular.Link24),
+                _ => ("Text", SymbolRegular.TextDescription24),
             };
             _recentMenu.Items.Add(MenuEntry(Truncate($"{prefix}: {item.Display.ReplaceLineEndings(" ")}", 60), glyph, () => Open(item)));
         }

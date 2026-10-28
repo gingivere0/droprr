@@ -8,7 +8,7 @@ using Microsoft.Win32;
 
 namespace Droprr;
 
-public partial class SettingsWindow : Window
+public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
 {
     readonly App _app;
     readonly AppSettings _settings;
@@ -18,7 +18,7 @@ public partial class SettingsWindow : Window
     internal SettingsWindow(App app)
     {
         InitializeComponent();
-        Icon = AppIcon.ImageSource;
+        AppTheme.Setup(this, AppTitleBar);
         _app = app;
 
         // Edit a fresh copy from disk; nothing changes until Save.
@@ -59,6 +59,7 @@ public partial class SettingsWindow : Window
     {
         TokenText.Text = _tokenVisible ? _settings.Token : new string('•', 24);
         ShowTokenButton.Content = _tokenVisible ? "Hide" : "Show";
+        ShowTokenButton.Icon = new Wpf.Ui.Controls.SymbolIcon(_tokenVisible ? Wpf.Ui.Controls.SymbolRegular.EyeOff24 : Wpf.Ui.Controls.SymbolRegular.Eye24);
     }
 
     void OnShowToken(object sender, RoutedEventArgs e)
@@ -69,12 +70,17 @@ public partial class SettingsWindow : Window
 
     void OnCopyToken(object sender, RoutedEventArgs e) => ClipboardHelper.TrySetText(_settings.Token);
 
-    void OnNewToken(object sender, RoutedEventArgs e)
+    async void OnNewToken(object sender, RoutedEventArgs e)
     {
-        var answer = MessageBox.Show(this,
-            "Make a new token? Every device and shortcut that sends to this PC will need the new one.",
-            "New token", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (answer != MessageBoxResult.OK)
+        var box = new Wpf.Ui.Controls.MessageBox
+        {
+            Title = "Make a new token?",
+            Content = "Every device and shortcut that sends to this PC will need the new one. Phones can get it by pairing again.",
+            PrimaryButtonText = "Make new token",
+            CloseButtonText = "Cancel",
+            Owner = this,
+        };
+        if (await box.ShowDialogAsync() != Wpf.Ui.Controls.MessageBoxResult.Primary)
             return;
         _settings.Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         _tokenVisible = true;
