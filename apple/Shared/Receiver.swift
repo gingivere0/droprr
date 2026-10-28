@@ -101,19 +101,22 @@ final class DroprrReceiver {
             break
         case "application/x-www-form-urlencoded":
             return try receiveForm(bodyFile)
-        case "text/plain":
-            return [try textItem(type: "text", content: String(decoding: try Data(contentsOf: bodyFile), as: UTF8.self))]
         default:
-            // Lenient input: any other body is a raw file (iOS Shortcuts "File" request bodies).
-            let ext = UTType(mimeType: mime)?.preferredFilenameExtension
-            var filename = request.header("x-droprr-filename")?.removingPercentEncoding
+            let suppliedName = request.header("x-droprr-filename")?.removingPercentEncoding
                 ?? request.header("content-disposition").flatMap { Self.parameter("filename", in: $0) }
                 ?? ""
-            if filename.isEmpty {
-                filename = "Droprr \(Self.stamp())" + (ext.map { ".\($0)" } ?? "")
-            } else if (filename as NSString).pathExtension.isEmpty, let ext {
-                filename += ".\(ext)"
+            if mime == "text/plain" && suppliedName.isEmpty {
+                let text = String(decoding: try Data(contentsOf: bodyFile), as: UTF8.self)
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let url = URL(string: trimmed), let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
+                    return [try textItem(type: "url", content: trimmed)]
+                }
+                return [try textItem(type: "text", content: text)]
             }
+            // Lenient input: any other body is a raw file (iOS Shortcuts "File" request bodies).
+            let ext = UTType(mimeType: mime)?.preferredFilenameExtension ?? "bin"
+            var filename = suppliedName.isEmpty ? Self.fallbackName() : suppliedName
+            if (filename as NSString).pathExtension.isEmpty { filename += ".\(ext)" }
             let dest = uniqueDestination(for: filename)
             try FileManager.default.moveItem(at: bodyFile, to: dest)
             return [ReceivedItem(kind: .file(dest))]
@@ -169,7 +172,7 @@ final class DroprrReceiver {
                 disposition = line
             }
             if let filename = Self.parameter("filename", in: disposition) {
-                let dest = uniqueDestination(for: filename.isEmpty ? "Droprr \(Self.stamp())" : filename)
+                let dest = uniqueDestination(for: filename.isEmpty ? Self.fallbackName() + ".bin" : filename)
                 try body.write(to: dest)
                 items.append(ReceivedItem(kind: .file(dest)))
             } else if let field = Self.parameter("name", in: disposition), field == "text" || field == "url" {
@@ -226,6 +229,13 @@ final class DroprrReceiver {
             return value
         }
         return nil
+    }
+
+    /// "Droprr yyyy-MM-dd HHmmss", without an extension.
+    private static func fallbackName() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HHmmss"
+        return "Droprr \(f.string(from: Date()))"
     }
 
     private static func stamp() -> String {
