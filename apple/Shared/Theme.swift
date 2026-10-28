@@ -279,13 +279,12 @@ extension ReceivedItem {
 }
 
 #if os(macOS)
-/// Shows a small hint after the pointer rests on a view for a second. Drawn as a non-interactive
-/// overlay (not a popover), so it never takes focus or swallows the click on the control beneath.
+/// Shows a small hint after the pointer rests on a view for a second, like a native tooltip:
+/// a borderless floating window just below the pointer that ignores the mouse. It can't be clipped
+/// by the panel or window edges and never takes focus or swallows clicks.
 private struct HoverHint: ViewModifier {
     var text: String
     var delay: Duration
-    var edge: VerticalEdge
-    @State private var showing = false
     @State private var timer: Task<Void, Never>?
 
     func body(content: Content) -> some View {
@@ -293,36 +292,59 @@ private struct HoverHint: ViewModifier {
             .onHover { inside in
                 timer?.cancel()
                 if inside {
-                    timer = Task {
+                    timer = Task { @MainActor in
                         try? await Task.sleep(for: delay)
-                        if !Task.isCancelled { showing = true }
+                        if !Task.isCancelled { HintWindow.shared.show(text) }
                     }
                 } else {
-                    showing = false
+                    HintWindow.shared.hide()
                 }
             }
-            .simultaneousGesture(TapGesture().onEnded { timer?.cancel(); showing = false })
-            .overlay(alignment: edge == .top ? .top : .bottom) {
-                if showing {
-                    Text(text)
-                        .font(.callout)
-                        .foregroundStyle(.primary)
-                        .fixedSize()
-                        .padding(.horizontal, Space.sm)
-                        .padding(.vertical, Space.xs)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: Radius.row, style: .continuous).strokeBorder(Theme.stroke))
-                        .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
-                        .alignmentGuide(edge == .top ? .top : .bottom) { d in
-                            edge == .top ? d[.bottom] + Space.xs : d[.top] - Space.xs
-                        }
-                        .allowsHitTesting(false)
-                        .transition(.opacity)
-                }
-            }
-            .zIndex(showing ? 10 : 0)
+            .simultaneousGesture(TapGesture().onEnded { timer?.cancel(); HintWindow.shared.hide() })
+            .onDisappear { timer?.cancel(); HintWindow.shared.hide() }
             .accessibilityHint(text)
     }
+}
+
+@MainActor
+private final class HintWindow {
+    static let shared = HintWindow()
+    private let panel: NSPanel
+    private let host = NSHostingView(rootView: AnyView(EmptyView()))
+
+    private init() {
+        panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.ignoresMouseEvents = true
+        panel.level = .popUpMenu
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
+        panel.contentView = host
+    }
+
+    func show(_ text: String) {
+        host.rootView = AnyView(
+            Text(text)
+                .font(.callout)
+                .fixedSize()
+                .padding(.horizontal, Space.sm)
+                .padding(.vertical, Space.xs)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Radius.row, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
+        )
+        let size = host.fittingSize
+        let mouse = NSEvent.mouseLocation
+        var origin = NSPoint(x: mouse.x - size.width / 2, y: mouse.y - size.height - 22)   // just below the pointer
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) })?.visibleFrame {
+            origin.x = min(max(origin.x, screen.minX + 4), screen.maxX - size.width - 4)
+            if origin.y < screen.minY + 4 { origin.y = mouse.y + 18 }   // no room below: show above
+        }
+        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        panel.orderFrontRegardless()
+    }
+
+    func hide() { panel.orderOut(nil) }
 }
 
 /// Mac buttons that visibly shade on hover, so it's clear what's clickable.
@@ -376,7 +398,7 @@ struct HoverButtonStyle: ButtonStyle {
 
 extension View {
     func hoverHint(_ text: String, after delay: Duration = .seconds(1), edge: VerticalEdge = .top) -> some View {
-        modifier(HoverHint(text: text, delay: delay, edge: edge))
+        modifier(HoverHint(text: text, delay: delay))
     }
 }
 #endif
