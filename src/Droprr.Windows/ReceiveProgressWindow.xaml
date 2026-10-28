@@ -2,18 +2,18 @@
                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-                 Title="Droprr" Width="360" Height="150" MinHeight="0" MinWidth="0" ResizeMode="NoResize"
+                 Title="Droprr" Width="360" Height="160" MinHeight="0" MinWidth="0" ResizeMode="NoResize"
                  Topmost="True" ShowActivated="False" ShowInTaskbar="False"
                  ExtendsContentIntoTitleBar="True" WindowBackdropType="Mica" WindowCornerPreference="Round">
     <StackPanel>
         <ui:TitleBar x:Name="AppTitleBar" Title="Droprr" ShowMaximize="False" ShowMinimize="False" />
-        <StackPanel Margin="20,0,20,20">
+        <StackPanel Margin="24,0,24,24">
             <DockPanel>
-                <ui:SymbolIcon Symbol="ArrowDownload24" FontSize="20" Margin="0,0,10,0" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
-                <TextBlock Text="Receiving…" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <ui:SymbolIcon Symbol="ArrowDownload24" FontSize="20" Margin="0,0,8,0" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                <TextBlock Text="Receiving…" Style="{StaticResource BodyStrongText}" VerticalAlignment="Center" />
             </DockPanel>
-            <ProgressBar x:Name="Bar" Margin="0,14,0,8" Maximum="100" />
-            <TextBlock x:Name="Detail" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            <ProgressBar x:Name="Bar" Style="{StaticResource BrandProgressBar}" Margin="0,12,0,8" Maximum="100" />
+            <TextBlock x:Name="Detail" Style="{StaticResource Caption}" />
         </StackPanel>
     </StackPanel>
 </ui:FluentWindow>

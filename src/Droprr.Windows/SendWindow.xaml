@@ -13,7 +13,7 @@
 
         <ui:TitleBar x:Name="AppTitleBar" Grid.Row="0" Title="Send with Droprr" ShowMaximize="False" />
 
-        <Grid Grid.Row="1" Margin="20,4,20,20">
+        <Grid Grid.Row="1" Margin="{StaticResource WindowPadding}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -28,7 +28,7 @@
             <DockPanel Grid.Row="0" Margin="0,0,0,8">
                 <ui:Button DockPanel.Dock="Right" Appearance="Transparent" Icon="{ui:SymbolIcon Settings24}"
                            ToolTip="Settings" AutomationProperties.Name="Settings" Click="OnSettings" />
-                <TextBlock Text="Send to" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="Send to" Style="{StaticResource BodyStrongText}" VerticalAlignment="Center" />
             </DockPanel>
 
             <DockPanel Grid.Row="1" Margin="0,0,0,16">
@@ -51,7 +51,7 @@
                 </ComboBox>
             </DockPanel>
 
-            <Border Grid.Row="2" CornerRadius="8" BorderThickness="1"
+            <Border Grid.Row="2" CornerRadius="{StaticResource RadiusCard}" BorderThickness="1"
                     Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
                 <Grid>
@@ -65,12 +65,12 @@
                 </Grid>
             </Border>
 
-            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,16">
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,12,0,16">
                 <ui:Button Content="Add files…" Icon="{ui:SymbolIcon Add24}" Click="OnAddFiles" />
                 <ui:Button Content="Clear" Icon="{ui:SymbolIcon Delete24}" Margin="8,0,0,0" Click="OnClearFiles" />
             </StackPanel>
 
-            <TextBlock Grid.Row="4" Text="Text or link" FontWeight="SemiBold" Margin="0,0,0,8" />
+            <TextBlock Grid.Row="4" Text="Text or link" Style="{StaticResource BodyStrongText}" Margin="0,0,0,8" />
             <ui:TextBox Grid.Row="5" x:Name="MessageText" AcceptsReturn="True" TextWrapping="Wrap"
                         VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto"
                         PlaceholderText="Type or paste text or a link" />
@@ -78,11 +78,11 @@
             <DockPanel Grid.Row="6" Margin="0,16,0,0" LastChildFill="False">
                 <ui:Button Content="Paste" Icon="{ui:SymbolIcon ClipboardPaste24}" Click="OnPaste" />
                 <ui:Button x:Name="SendButton" DockPanel.Dock="Right" Content="Send" Icon="{ui:SymbolIcon Send24}"
-                           Appearance="Primary" Padding="20,6" IsDefault="True" Click="OnSend" />
+                           Appearance="Primary" IsDefault="True" Click="OnSend" />
             </DockPanel>
 
             <StackPanel Grid.Row="7" Margin="0,12,0,0">
-                <ProgressBar x:Name="Progress" Height="4" Visibility="Collapsed" Margin="0,0,0,8" />
+                <ProgressBar x:Name="Progress" Style="{StaticResource BrandProgressBar}" Visibility="Collapsed" Margin="0,0,0,8" />
                 <TextBlock x:Name="EmptyState" TextWrapping="Wrap" Margin="0,0,0,4" Visibility="Collapsed">
                     No devices yet.
                     <Hyperlink Click="OnSettings">Open Settings</Hyperlink>

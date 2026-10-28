@@ -9,19 +9,9 @@
                 <!-- WPF UI (lepoco/wpfui): Windows 11 styles for every control. AppTheme switches light and dark. -->
                 <ui:ThemesDictionary Theme="Dark" />
                 <ui:ControlsDictionary />
+                <!-- Droprr's design tokens (design-system/droprr/tokens.json) and type roles. -->
+                <ResourceDictionary Source="Themes/Tokens.xaml" />
             </ResourceDictionary.MergedDictionaries>
-
-            <Style x:Key="SectionHeader" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="14" />
-                <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Margin" Value="0,20,0,8" />
-                <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
-            </Style>
-            <Style x:Key="Caption" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="12" />
-                <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

@@ -16,7 +16,7 @@
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="24,4,24,12">
-                <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock Text="Settings" Style="{StaticResource TitleText}" />
 
                 <!-- This PC -->
                 <TextBlock Text="This PC" Style="{StaticResource SectionHeader}" />
@@ -78,15 +78,15 @@
                 <ui:Card>
                     <StackPanel>
                         <DockPanel>
-                            <ui:SymbolIcon DockPanel.Dock="Left" Symbol="Key24" FontSize="20" Margin="0,0,16,0" VerticalAlignment="Top" />
-                            <TextBlock Style="{StaticResource Caption}" FontSize="13"
+                            <ui:SymbolIcon DockPanel.Dock="Left" Symbol="Key24" FontSize="20" Margin="0,0,12,0" VerticalAlignment="Top" />
+                            <TextBlock Style="{StaticResource Caption}"
                                        Text="Every device that sends to this PC needs this token. Pairing a phone hands it over for you. Keep it private." />
                         </DockPanel>
-                        <DockPanel Margin="36,12,0,0">
+                        <DockPanel Margin="32,12,0,0">
                             <ui:Button DockPanel.Dock="Right" Content="New token" Icon="{ui:SymbolIcon ArrowSync24}" Margin="8,0,0,0" Click="OnNewToken" />
                             <ui:Button DockPanel.Dock="Right" Content="Copy" Icon="{ui:SymbolIcon Copy24}" Margin="8,0,0,0" Click="OnCopyToken" />
                             <ui:Button DockPanel.Dock="Right" x:Name="ShowTokenButton" Content="Show" Icon="{ui:SymbolIcon Eye24}" Margin="8,0,0,0" Click="OnShowToken" />
-                            <ui:TextBox x:Name="TokenText" IsReadOnly="True" FontFamily="Cascadia Mono, Consolas" />
+                            <ui:TextBox x:Name="TokenText" IsReadOnly="True" FontFamily="{StaticResource MonoFont}" FontSize="{StaticResource FontSizeCaption}" />
                         </DockPanel>
                     </StackPanel>
                 </ui:Card>
@@ -95,7 +95,7 @@
                 <TextBlock Text="Devices" Style="{StaticResource SectionHeader}" />
                 <ui:Card>
                     <StackPanel>
-                        <TextBlock Style="{StaticResource Caption}" FontSize="13" Margin="0,0,0,10"
+                        <TextBlock Style="{StaticResource Caption}" Margin="0,0,0,12"
                                    Text="Computers by Tailscale name. Turn on iPhone for phones: items for them wait on this PC until the phone collects them." />
                         <DataGrid x:Name="PeerGrid" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column"
                                   MinHeight="120" GridLinesVisibility="None" SelectionMode="Single">
@@ -121,7 +121,7 @@
             <DockPanel Margin="24,12,24,16" LastChildFill="False">
                 <ui:Button Content="Open settings file" Icon="{ui:SymbolIcon DocumentEdit24}" Appearance="Transparent" Click="OnOpenFile" />
                 <ui:Button DockPanel.Dock="Right" Content="Save" Icon="{ui:SymbolIcon Save24}" Appearance="Primary"
-                           Margin="8,0,0,0" Padding="20,6" IsDefault="True" Click="OnSave" />
+                           Margin="8,0,0,0" IsDefault="True" Click="OnSave" />
                 <ui:Button DockPanel.Dock="Right" Content="Cancel" IsCancel="True" Click="OnCancel" />
                 <TextBlock x:Name="Error" DockPanel.Dock="Right" Foreground="{DynamicResource SystemFillColorCriticalBrush}"
                            VerticalAlignment="Center" Margin="0,0,12,0" />
