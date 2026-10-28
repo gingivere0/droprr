@@ -65,9 +65,10 @@ static class AppTheme
         SetBrush("OnAccentWellBrush", c.OnAccent, 0.16);
         SetBrush("AccentTextFillColorPrimaryBrush", c.AccentText);
         SetBrush("AccentTintBrush", c.AccentTint);
-        // Tonal buttons: the tint darkened about 6% on hover and 12% when pressed.
-        SetBrush("TonalHoverBrush", Blend(c.AccentTint, Colors.Black, 0.06));
-        SetBrush("TonalPressedBrush", Blend(c.AccentTint, Colors.Black, 0.12));
+        // Tonal buttons: the tint darkened 4% on hover and 8% when pressed, with textPrimary labels in those
+        // states, so the label stays at 4.5:1 or better in every theme and mode.
+        SetBrush("TonalHoverBrush", Blend(c.AccentTint, Colors.Black, 0.04));
+        SetBrush("TonalPressedBrush", Blend(c.AccentTint, Colors.Black, 0.08));
 
         // Secondary: one contrasting tile per screen (the message tile) and the "N waiting" badges. Raw
         // secondary is decorative only (dots, swatches); controls and text use secondaryText, and an icon well

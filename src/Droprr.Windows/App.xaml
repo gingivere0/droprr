@@ -29,7 +29,8 @@
             </Style>
 
             <!-- A tonal secondary action (Send clipboard): accent tint fill, accent text, no border. Hover and
-                 press darken the tint; disabled fades to 40%. Same height as the primary button. -->
+                 press darken the tint and switch the label to textPrimary; disabled fades to 40%. Same height as
+                 the primary button. -->
             <Style x:Key="TonalButton" TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
                 <Setter Property="Background" Value="{DynamicResource AccentTintBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
@@ -39,10 +40,13 @@
                 <Setter Property="MouseOverBackground" Value="{DynamicResource TonalHoverBrush}" />
                 <Setter Property="MouseOverBorderBrush" Value="Transparent" />
                 <Setter Property="PressedBackground" Value="{DynamicResource TonalPressedBrush}" />
-                <Setter Property="PressedForeground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                <Setter Property="PressedForeground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
                 <Setter Property="PressedBorderBrush" Value="Transparent" />
                 <Setter Property="Padding" Value="16,8" />
                 <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                    </Trigger>
                     <Trigger Property="IsEnabled" Value="False">
                         <Setter Property="Opacity" Value="0.4" />
                     </Trigger>
