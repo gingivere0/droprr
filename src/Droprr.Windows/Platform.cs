@@ -54,37 +54,6 @@ static class KnownFolders
         [MarshalAs(UnmanagedType.LPWStr)] out string path);
 }
 
-static class SendToMenu
-{
-    // Adds "Droprr" to Explorer's Send To menu; Explorer passes the selected files after --send.
-    public static void Register()
-    {
-        var exe = Environment.ProcessPath;
-        if (exe is null || Path.GetFileName(exe).Equals("dotnet.exe", StringComparison.OrdinalIgnoreCase))
-            return;
-
-        var shellType = Type.GetTypeFromProgID("WScript.Shell");
-        if (shellType is null)
-            return;
-
-        var link = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.SendTo), "Droprr.lnk");
-        dynamic shell = Activator.CreateInstance(shellType)!;
-        try
-        {
-            dynamic shortcut = shell.CreateShortcut(link);
-            shortcut.TargetPath = exe;
-            shortcut.Arguments = "--send";
-            shortcut.WorkingDirectory = Path.GetDirectoryName(exe);
-            shortcut.Description = "Send to another device with Droprr";
-            shortcut.Save();
-        }
-        finally
-        {
-            Marshal.FinalReleaseComObject(shell);
-        }
-    }
-}
-
 static class ClipboardHelper
 {
     // The clipboard can be briefly locked by another app, so retry a few times.

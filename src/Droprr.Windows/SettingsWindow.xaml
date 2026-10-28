@@ -37,6 +37,7 @@
                             <TextBox x:Name="SaveFolder" />
                         </DockPanel>
                         <CheckBox x:Name="StartWithWindowsBox" Content="Start Droprr when I sign in to Windows" Margin="0,14,0,0" />
+                        <CheckBox x:Name="StartMenuBox" Content="Add Droprr to the Start menu and Windows Search" Margin="0,8,0,0" />
                     </StackPanel>
                 </Border>
 

@@ -28,6 +28,7 @@ public partial class SettingsWindow : Window
         SaveFolder.Text = _settings.SaveFolder ?? "";
         SaveFolder.ToolTip = $"Leave empty to use {_settings.ResolveSaveFolder()}";
         StartWithWindowsBox.IsChecked = StartWithWindows.IsEnabled;
+        StartMenuBox.IsChecked = _settings.AddToStartMenu;
         _peers = new ObservableCollection<Peer>(_settings.Peers);
         PeerGrid.ItemsSource = _peers;
         ShowToken();
@@ -119,10 +120,12 @@ public partial class SettingsWindow : Window
         _settings.Port = port;
         _settings.SaveFolder = string.IsNullOrWhiteSpace(SaveFolder.Text) ? null : SaveFolder.Text.Trim();
         _settings.Peers = _peers.ToList();
+        _settings.AddToStartMenu = StartMenuBox.IsChecked == true;
         try
         {
             SettingsStore.Save(_settings);
             StartWithWindows.Set(StartWithWindowsBox.IsChecked == true);
+            Shortcuts.SyncStartMenu(_settings.AddToStartMenu);
         }
         catch (Exception ex)
         {

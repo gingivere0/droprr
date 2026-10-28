@@ -39,6 +39,9 @@ public sealed class AppSettings
     public int Port { get; set; } = DefaultPort;
     public string Token { get; set; } = "";
     public string? SaveFolder { get; set; }
+
+    // A Start menu shortcut, which is what makes Droprr show up in Windows Search.
+    public bool AddToStartMenu { get; set; } = true;
     public List<Peer> Peers { get; set; } = new();
 
     public Peer? FindPeer(string name) =>

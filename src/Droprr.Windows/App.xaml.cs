@@ -33,6 +33,7 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        try { Shortcuts.SetProcessAppId(); } catch { /* only affects taskbar grouping and notification branding */ }
         try
         {
             Settings = SettingsStore.Load();
@@ -67,7 +68,9 @@ public partial class App : Application
             return;
         }
 
-        try { SendToMenu.Register(); } catch { /* the Send To entry is a convenience; keep running without it */ }
+        // Conveniences: Droprr keeps running without them.
+        try { Shortcuts.RegisterSendTo(); } catch { }
+        try { Shortcuts.SyncStartMenu(Settings.AddToStartMenu); } catch { }
         // Keep the sign-in entry pointing at this exe if Droprr was moved or rebuilt elsewhere.
         try { if (StartWithWindows.IsEnabled) StartWithWindows.Set(true); } catch { /* not fatal */ }
 

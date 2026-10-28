@@ -35,6 +35,7 @@ Right-click the tray icon and choose **Settings…**. There you can:
 
 - rename this PC, change the port, and pick where received items are saved,
 - turn on **Start Droprr when I sign in to Windows**,
+- keep **Add Droprr to the Start menu and Windows Search** on (the default) so typing "Droprr" in Windows Search finds it,
 - show, copy, or replace the token every device needs, and
 - add, edit, or remove devices. Computers are listed by Tailscale host name; turn on **iPhone** for phones.
 
