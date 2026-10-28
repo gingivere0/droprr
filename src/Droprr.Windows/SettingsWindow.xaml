@@ -91,7 +91,7 @@
             <Button Content="Open settings file" Padding="12,5" Click="OnOpenFile" />
             <Button DockPanel.Dock="Right" Content="Save" Padding="24,5" Margin="8,0,0,0" IsDefault="True" Click="OnSave"
                     Style="{DynamicResource AccentButtonStyle}" />
-            <Button DockPanel.Dock="Right" Content="Cancel" Padding="16,5" IsCancel="True" />
+            <Button DockPanel.Dock="Right" Content="Cancel" Padding="16,5" IsCancel="True" Click="OnCancel" />
             <TextBlock x:Name="Error" DockPanel.Dock="Right" Foreground="IndianRed" VerticalAlignment="Center" Margin="0,0,12,0" />
         </DockPanel>
     </Grid>

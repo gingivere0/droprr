@@ -34,6 +34,13 @@ public partial class SettingsWindow : Window
         PeerGrid.ItemsSource = _peers;
         ShowToken();
 
+        // Esc closes without saving, unless something inside used it first (like cancelling a cell edit).
+        KeyDown += (_, e) =>
+        {
+            if (e.Key == System.Windows.Input.Key.Escape && !e.Handled)
+                Close();
+        };
+
         // Show a device the moment it pairs, without losing edits made here that aren't saved yet.
         app.DevicePaired += OnDevicePaired;
         Closed += (_, _) => app.DevicePaired -= OnDevicePaired;
@@ -73,6 +80,9 @@ public partial class SettingsWindow : Window
         _tokenVisible = true;
         ShowToken();
     }
+
+    // IsCancel only closes windows opened with ShowDialog, and Settings opens as a normal window.
+    void OnCancel(object sender, RoutedEventArgs e) => Close();
 
     void OnBrowse(object sender, RoutedEventArgs e)
     {
