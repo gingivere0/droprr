@@ -4,45 +4,64 @@ Native SwiftUI apps that speak the protocol in [`docs/PROTOCOL.md`](../docs/PROT
 
 | Target | What it is |
 | --- | --- |
-| `DroprrMac` | Menu bar app. Receives into `~/Downloads/Droprr` (text and links go to the clipboard), sends files, text and the clipboard, and keeps an outbox for iPhones (served at `/inbox`). Optional launch at login. |
-| `DroprrMacShare` | Mac share extension: Share › Droprr in Finder, Safari, Photos and other apps. Items for an iPhone are handed to the running Mac app's outbox over loopback (`POST /outbox/<peer id>`, Apple-internal). |
-| `DroprriOS` | iPhone app. Sends the clipboard, photos, files and text. Receives directly only while open, and collects anything the desktops queued (`GET /inbox`) each time it opens or when you pull to refresh on Received. Files appear in Files › On My iPhone › Droprr. |
-| `DroprrShare` | Share extension inside the iPhone app. Pick "Droprr" in any share sheet, then tap a device. |
+| `DroprrMac` | Menu bar app. Receives into `~/Downloads/Droprr`, sends files, text and the clipboard, keeps an outbox for iPhones (`/inbox`), and shows a pairing QR code. |
+| `DroprrMacShare` | Mac share extension: Share › Droprr in Finder, Safari, Photos and other apps. |
+| `DroprriOS` | iPhone app. Sends the clipboard, photos, files and text, collects items the computers queued for it each time it opens, and pairs by scanning a QR code. |
+| `DroprrShare` | iPhone share extension: pick Droprr in any share sheet, then tap a computer. |
 
-The receiver only accepts connections from loopback and Tailscale addresses
-(100.64.0.0/10 and fd7a:115c:a1e0::/48), and every request needs the shared pairing token.
+## Setup
 
-## First-time setup
-
-1. Copy the local config and fill in your own team ID and a bundle ID prefix.
-   This file is gitignored, so personal values never reach the repo.
+1. Create your local config and fill in your team ID and a bundle ID prefix. The file is gitignored,
+   so personal values never reach the repo.
 
    ```bash
    cp Config/Local.xcconfig.example Config/Local.xcconfig
    ```
 
-2. Open the project in Xcode.
+2. Open the project, then run `DroprrMac` on the Mac and `DroprriOS` on the iPhone.
+   Xcode creates the signing profiles and app groups.
 
    ```bash
    open Droprr.xcodeproj
    ```
 
-3. Run `DroprrMac` on the Mac. Run `DroprriOS` on your iPhone (plug it in or pair it over Wi‑Fi,
-   then pick it as the run destination). Xcode creates the signing profiles and the app group for you.
+3. Install Tailscale on every device and sign in to the same tailnet.
 
-4. On every device, open Settings and:
-   - paste the **same pairing token** (or generate one on one device and copy it to the others),
-   - add each other device by its **Tailscale name** (for example `my-pc`) or 100.x address,
-   - press **Test** next to a device to check it answers.
+4. Pair the iPhone with each computer: on the computer, choose **Pair a Phone** (the QR button in the
+   Mac's menu bar panel, or Add Device in Settings). On the iPhone, scan the code with the Camera app
+   or with Droprr (Settings › QR button). The phone stores that computer's token, and the computer adds
+   the phone automatically.
 
-The first time the Mac app receives a connection, macOS may ask whether Droprr may accept incoming
-network connections. Allow it.
+5. To send from the Mac to the PC, add the PC in the Mac's Settings with its Tailscale name and its token.
 
-## Notes
+## How it works
 
-- Icons come from `file-swap-icon-pack/` at the repo root (app icons, menu bar template, in-app logo).
-- Mac settings live in the `<team ID>.droprr` app group so the share extension can read them.
+- **Receiving (Mac):** a small HTTP server on port 53318 that only accepts loopback and Tailscale
+  addresses (100.64.0.0/10 and fd7a:115c:a1e0::/48) and checks the Bearer token. Text and links are
+  copied to the clipboard; the *Auto-copy received items* setting also copies files and images.
+- **Phones:** iOS can't listen in the background, so sends to an iPhone wait in the Mac's outbox
+  (`~/Library/Application Support/<bundle id>/Outbox`, 7-day expiry). The iPhone collects them with
+  `GET /inbox` whenever it opens or you pull to refresh on Received.
+- **Tokens:** each computer has its own token. The iPhone keeps one per computer, from that computer's QR code.
+- **Mac share extension:** sandboxed, so it hands items for an iPhone to the running Mac app over
+  loopback (`POST /outbox/<peer id>`, Apple-internal, not part of the protocol).
+- **Settings storage:** UserDefaults in an app group (`<team ID>.droprr` on the Mac,
+  `group.<prefix>.droprr` on iOS) so the share extensions can read them.
 
-- Default port is 53318, matching the Windows app. Change it in Settings if needed.
-- The project uses Xcode folder-synced groups, so new `.swift` files dropped into `Shared/`, `Mac/`,
-  `iOS/` or `ShareExtension/` are picked up without editing the project. `Shared/` is compiled into all three targets.
+## Project layout
+
+| Folder | Compiled into |
+| --- | --- |
+| `Shared/` | All four targets: protocol client and server, settings, pairing, theme |
+| `Mac/` | `DroprrMac` |
+| `MacShareExtension/` | `DroprrMacShare` |
+| `iOS/` | `DroprriOS` |
+| `ShareExtension/` | `DroprrShare` |
+| `Config/` | Info.plists, entitlements and xcconfigs |
+| `scripts/` | `generate_project.py`, which rebuilds the Xcode project |
+
+The project uses Xcode folder-synced groups, so new `.swift` files in these folders are picked up
+without editing the project. Run `scripts/generate_project.py` only when adding a target or changing
+build settings.
+
+Icons come from `file-swap-icon-pack/` at the repo root.
