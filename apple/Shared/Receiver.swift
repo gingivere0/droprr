@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 struct ReceivedItem: Identifiable {
     enum Kind {
@@ -93,10 +94,30 @@ final class DroprrReceiver {
     private func receive(_ request: HTTPServer.Request) throws -> [ReceivedItem] {
         let contentType = request.header("content-type") ?? ""
         let mime = contentType.split(separator: ";").first.map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? ""
-        guard mime == "application/json" || mime == "multipart/form-data" else {
-            throw Failure(415, "body must be multipart/form-data or application/json")
-        }
         guard let bodyFile = request.bodyFile else { throw Failure(400, "empty body") }
+
+        switch mime {
+        case "application/json", "multipart/form-data":
+            break
+        case "application/x-www-form-urlencoded":
+            return try receiveForm(bodyFile)
+        case "text/plain":
+            return [try textItem(type: "text", content: String(decoding: try Data(contentsOf: bodyFile), as: UTF8.self))]
+        default:
+            // Lenient input: any other body is a raw file (iOS Shortcuts "File" request bodies).
+            let ext = UTType(mimeType: mime)?.preferredFilenameExtension
+            var filename = request.header("x-droprr-filename")?.removingPercentEncoding
+                ?? request.header("content-disposition").flatMap { Self.parameter("filename", in: $0) }
+                ?? ""
+            if filename.isEmpty {
+                filename = "Droprr \(Self.stamp())" + (ext.map { ".\($0)" } ?? "")
+            } else if (filename as NSString).pathExtension.isEmpty, let ext {
+                filename += ".\(ext)"
+            }
+            let dest = uniqueDestination(for: filename)
+            try FileManager.default.moveItem(at: bodyFile, to: dest)
+            return [ReceivedItem(kind: .file(dest))]
+        }
 
         if mime == "application/json" {
             let data = try Data(contentsOf: bodyFile)
@@ -111,6 +132,19 @@ final class DroprrReceiver {
 
         guard let boundary = Self.parameter("boundary", in: contentType) else { throw Failure(400, "missing multipart boundary") }
         return try receiveMultipart(bodyFile, boundary: boundary)
+    }
+
+    private func receiveForm(_ bodyFile: URL) throws -> [ReceivedItem] {
+        var components = URLComponents()
+        components.percentEncodedQuery = String(decoding: try Data(contentsOf: bodyFile), as: UTF8.self)
+            .replacingOccurrences(of: "+", with: "%20")
+        var fields: [String: String] = [:]
+        for item in components.queryItems ?? [] { fields[item.name] = item.value ?? "" }
+        var items: [ReceivedItem] = []
+        if let content = fields["content"] { items.append(try textItem(type: fields["type"] == "url" ? "url" : "text", content: content)) }
+        if let text = fields["text"] { items.append(try textItem(type: "text", content: text)) }
+        if let url = fields["url"] { items.append(try textItem(type: "url", content: url)) }
+        return items
     }
 
     private func receiveMultipart(_ bodyFile: URL, boundary: String) throws -> [ReceivedItem] {
