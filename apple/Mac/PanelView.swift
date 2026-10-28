@@ -152,15 +152,14 @@ private struct DeviceTile: View {
     }
 }
 
-/// "3 waiting ×": clicking clears the items queued for a phone, after a confirmation.
+/// "3 waiting ×": clicking clears the items queued for a phone.
 struct WaitingBadge: View {
     var count: Int
     var peerName: String
     var onClear: () -> Void
-    @State private var confirming = false
 
     var body: some View {
-        Button { confirming = true } label: {
+        Button(action: onClear) {
             HStack(spacing: 3) {
                 Text("\(count) waiting")
                 Image(systemName: "xmark.circle.fill").opacity(0.7)
@@ -169,12 +168,6 @@ struct WaitingBadge: View {
         }
         .buttonStyle(HoverButtonStyle(.bordered, compact: true))
         .hoverHint("Clear the \(count) item\(count == 1 ? "" : "s") waiting for \(peerName)")
-        .confirmationDialog("Clear \(count) waiting item\(count == 1 ? "" : "s") for \(peerName)?",
-                            isPresented: $confirming) {
-            Button("Clear", role: .destructive, action: onClear)
-        } message: {
-            Text("They won't be delivered when Droprr next opens on \(peerName).")
-        }
     }
 }
 
