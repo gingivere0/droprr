@@ -7,3 +7,5 @@ DEVELOPMENT_TEAM =
 #include? "Local.xcconfig"
 
 DROPRR_APP_GROUP = group.$(DROPRR_BUNDLE_PREFIX).droprr
+// macOS app groups are prefixed with the team ID instead of "group.".
+DROPRR_MAC_APP_GROUP = $(DEVELOPMENT_TEAM).droprr

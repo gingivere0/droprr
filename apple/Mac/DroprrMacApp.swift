@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -6,9 +7,12 @@ struct DroprrMacApp: App {
     @State private var model = MacModel()
 
     var body: some Scene {
-        MenuBarExtra("Droprr", systemImage: "paperplane.fill") {
-            MenuContent(model: model)
+        MenuBarExtra {
+            PanelView(model: model)
+        } label: {
+            Image("MenuBarIcon")
         }
+        .menuBarExtraStyle(.window)
 
         Window("Send with Droprr", id: "send") {
             SendView(model: model)
@@ -16,8 +20,7 @@ struct DroprrMacApp: App {
         .windowResizability(.contentSize)
 
         Settings {
-            SettingsForm(settings: model.settings)
-                .frame(width: 460, height: 520)
+            MacSettingsView(model: model)
                 .onChange(of: model.settings.port) { model.restartIfNeeded() }
         }
     }
@@ -28,10 +31,16 @@ struct DroprrMacApp: App {
 final class MacModel {
     let settings = DroprrSettings.shared
     var status = "Starting…"
+    var isListening = false
     var recent: [ReceivedItem] = []
     var lastSendResult: String?
+    var progress: Double?
+    var isSending = false
+    /// Bumped whenever the outbox changes so views re-read counts.
+    var outboxVersion = 0
 
     @ObservationIgnored private var receiver: DroprrReceiver!
+    @ObservationIgnored let outbox: Outbox
     @ObservationIgnored private var listeningPort = 0
 
     static var inbox: URL {
@@ -39,9 +48,18 @@ final class MacModel {
     }
 
     init() {
+        outbox = Outbox(settings: settings)
         receiver = DroprrReceiver(settings: settings, inbox: Self.inbox)
-        receiver.onStateChange = { [weak self] in self?.status = $0 }
+        receiver.outbox = outbox
+        receiver.onStateChange = { [weak self] state in
+            self?.status = state
+            self?.isListening = state.hasPrefix("Listening")
+        }
         receiver.onItem = { [weak self] in self?.received($0) }
+        outbox.onChange = { [weak self] in self?.outboxVersion += 1 }
+        Notifier.shared.onOpen = { url in
+            if url.isFileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) } else { NSWorkspace.shared.open(url) }
+        }
         Notifier.shared.requestPermission()
         restartIfNeeded()
     }
@@ -59,8 +77,8 @@ final class MacModel {
         case .url(let url): Clipboard.copy(url: url)
         case .file: break
         }
-        recent.insert(item, at: 0)
-        recent = Array(recent.prefix(15))
+        withAnimation { recent.insert(item, at: 0) }
+        recent = Array(recent.prefix(8))
         Notifier.shared.notify(item)
     }
 
@@ -72,47 +90,93 @@ final class MacModel {
         }
     }
 
-    // MARK: Sending
+    func waiting(for peer: Peer) -> Int {
+        _ = outboxVersion
+        return peer.isPhone ? outbox.count(for: peer) : 0
+    }
 
-    func send(clipboardTo peer: Peer) async {
-        let pb = NSPasteboard.general
-        if let files = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !files.isEmpty {
-            await send(files: files, to: peer)
-        } else if let string = pb.string(forType: .string) {
-            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let url = URL(string: trimmed), let scheme = url.scheme, ["http", "https"].contains(scheme.lowercased()) {
-                await run("link", to: peer) { try await $0.send(url: url) }
-            } else {
-                await run("text", to: peer) { try await $0.send(text: string) }
+    // MARK: Launch at login
+
+    var launchAtLogin: Bool {
+        get { SMAppService.mainApp.status == .enabled }
+        set {
+            do {
+                if newValue { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+            } catch {
+                lastSendResult = "Couldn't change Launch at Login: \(error.localizedDescription)"
             }
-        } else if let image = NSImage(pasteboard: pb), let png = image.pngData {
-            let file = FileManager.default.temporaryDirectory.appendingPathComponent("Clipboard \(UUID().uuidString.prefix(6)).png")
-            try? png.write(to: file)
-            await send(files: [file], to: peer)
-        } else {
-            lastSendResult = "The clipboard is empty."
         }
     }
 
-    func send(text: String, to peer: Peer) async {
-        await run("text", to: peer) { try await $0.send(text: text) }
+    // MARK: Sending
+
+    func clipboardPayload() -> SendPayload? {
+        let pb = NSPasteboard.general
+        if let files = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !files.isEmpty {
+            return .files(files)
+        }
+        if let string = pb.string(forType: .string), !string.isEmpty {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let url = URL(string: trimmed), let scheme = url.scheme, ["http", "https"].contains(scheme.lowercased()) {
+                return .url(url)
+            }
+            return .text(string)
+        }
+        if let image = NSImage(pasteboard: pb), let png = image.pngData {
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent("Clipboard \(UUID().uuidString.prefix(6)).png")
+            try? png.write(to: file)
+            return .files([file])
+        }
+        return nil
     }
 
-    func send(files: [URL], to peer: Peer) async {
-        let label = files.count == 1 ? files[0].lastPathComponent : "\(files.count) files"
-        await run(label, to: peer) { try await $0.send(files: files) }
+    func sendClipboard(to peer: Peer) async {
+        guard let payload = clipboardPayload() else {
+            lastSendResult = "The clipboard is empty."
+            return
+        }
+        await send(payload, to: peer)
     }
 
-    private func run(_ label: String, to peer: Peer, _ action: (DroprrClient) async throws -> Void) async {
+    func chooseFiles(for peer: Peer) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.prompt = "Send"
+        panel.message = "Choose files to send to \(peer.name)"
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+        Task { await send(.files(panel.urls), to: peer) }
+    }
+
+    func send(_ payload: SendPayload, to peer: Peer) async {
         settings.lastPeerID = peer.id
-        lastSendResult = "Sending \(label) to \(peer.name)…"
+        // Phones can't receive in the background, so their items wait in the outbox.
+        if peer.isPhone {
+            do {
+                try outbox.enqueue(payload, for: peer)
+                lastSendResult = "\(payload.label.capitalizedFirst) is waiting for \(peer.name). It arrives when Droprr opens there."
+            } catch {
+                lastSendResult = "Couldn't queue for \(peer.name): \(error.localizedDescription)"
+            }
+            return
+        }
+        isSending = true
+        progress = nil
+        lastSendResult = "Sending \(payload.label) to \(peer.name)…"
+        defer { isSending = false; progress = nil }
         do {
-            try await action(DroprrClient(peer: peer, token: settings.token))
-            lastSendResult = "Sent \(label) to \(peer.name)."
+            let client = DroprrClient(peer: peer, token: settings.token)
+            try await payload.send(with: client) { [weak self] in self?.progress = $0 }
+            lastSendResult = "Sent \(payload.label) to \(peer.name)."
         } catch {
             lastSendResult = "Couldn't send to \(peer.name): \(error.localizedDescription)"
         }
     }
+}
+
+extension String {
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }
 
 private extension NSImage {

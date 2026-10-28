@@ -12,6 +12,19 @@ struct Peer: Codable, Identifiable, Hashable {
     var name: String
     var host: String
     var port: Int = DroprrDefaults.port
+    /// "windows", "macos" or "ios", learned from /ping or set by hand. Sends to "ios" peers are queued.
+    var platform: String?
+    /// The name the device reports in /ping, which it also uses for /inbox?for=.
+    var remoteName: String?
+
+    var isPhone: Bool {
+        get { platform == "ios" }
+        set { platform = newValue ? "ios" : (platform == "ios" ? nil : platform) }
+    }
+
+    func matches(deviceName: String) -> Bool {
+        [name, remoteName].contains { $0?.caseInsensitiveCompare(deviceName) == .orderedSame }
+    }
 
     var baseURL: URL? {
         let h = host.trimmingCharacters(in: .whitespaces)
@@ -37,7 +50,14 @@ final class DroprrSettings {
 
     init() {
         let group = Bundle.main.object(forInfoDictionaryKey: "DroprrAppGroup") as? String
-        defaults = group.flatMap { $0.isEmpty ? nil : UserDefaults(suiteName: $0) } ?? .standard
+        defaults = group.flatMap { $0.isEmpty || $0.hasPrefix(".") ? nil : UserDefaults(suiteName: $0) } ?? .standard
+        // Earlier Mac builds kept settings in the app's own defaults; carry them into the shared group once.
+        if defaults !== UserDefaults.standard, defaults.string(forKey: "token") == nil,
+           UserDefaults.standard.string(forKey: "token") != nil {
+            for key in ["token", "deviceName", "port", "peers", "lastPeerID"] {
+                if let value = UserDefaults.standard.object(forKey: key) { defaults.set(value, forKey: key) }
+            }
+        }
 
         token = defaults.string(forKey: "token") ?? ""
         deviceName = defaults.string(forKey: "deviceName") ?? DroprrSettings.defaultDeviceName

@@ -10,6 +10,7 @@ final class HTTPServer {
         var path: String
         var headers: [String: String]   // lowercased names
         var bodyFile: URL?
+        var remoteHost: String?
 
         func header(_ name: String) -> String? { headers[name.lowercased()] }
     }
@@ -18,6 +19,9 @@ final class HTTPServer {
         var status: Int
         var body: Data
         var contentType = "application/json"
+        var headers: [String: String] = [:]
+        /// When set, the body is streamed from this file instead of `body`.
+        var file: URL?
 
         static func json(_ status: Int, _ object: [String: Any]) -> Response {
             Response(status: status, body: (try? JSONSerialization.data(withJSONObject: object, options: .withoutEscapingSlashes)) ?? Data())
@@ -206,8 +210,10 @@ private final class HTTPConnection {
             headers[name] = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
         }
         let rawPath = String(parts[1])
-        let path = rawPath.split(separator: "?", maxSplits: 1).first.map(String.init) ?? rawPath
-        return .init(method: String(parts[0]).uppercased(), path: path, headers: headers, bodyFile: nil)
+        let path = rawPath
+        var remoteHost: String?
+        if case .hostPort(let host, _) = connection.endpoint { remoteHost = "\(host)".components(separatedBy: "%").first }
+        return .init(method: String(parts[0]).uppercased(), path: path, headers: headers, bodyFile: nil, remoteHost: remoteHost)
     }
 
     private func dispatch() {
@@ -221,13 +227,43 @@ private final class HTTPConnection {
 
     private func respond(_ response: HTTPServer.Response) {
         finished = true
-        let reason = HTTPURLResponse.localizedString(forStatusCode: response.status).capitalized
+        let reasons = [200: "OK", 400: "Bad Request", 401: "Unauthorized", 404: "Not Found", 415: "Unsupported Media Type",
+                       431: "Request Header Fields Too Large", 500: "Internal Server Error", 503: "Service Unavailable"]
+        let reason = reasons[response.status] ?? "Status"
+        var length = response.body.count
+        var input: FileHandle?
+        if let file = response.file, let handle = try? FileHandle(forReadingFrom: file) {
+            input = handle
+            length = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        }
         var head = "HTTP/1.1 \(response.status) \(reason)\r\n"
         head += "Content-Type: \(response.contentType)\r\n"
-        head += "Content-Length: \(response.body.count)\r\n"
+        head += "Content-Length: \(length)\r\n"
+        for (name, value) in response.headers { head += "\(name): \(value)\r\n" }
         head += "Connection: close\r\n\r\n"
-        connection.send(content: Data(head.utf8) + response.body, completion: .contentProcessed { [weak self] _ in
-            self?.connection.cancel()
+        guard let input else {
+            connection.send(content: Data(head.utf8) + response.body, completion: .contentProcessed { [weak self] _ in
+                self?.connection.cancel()
+            })
+            return
+        }
+        connection.send(content: Data(head.utf8), completion: .contentProcessed { _ in })
+        sendChunks(from: input)
+    }
+
+    /// Streams a file one chunk at a time, waiting for each send so memory stays flat.
+    private func sendChunks(from input: FileHandle) {
+        let chunk = (try? input.read(upToCount: 1 << 20)) ?? nil
+        guard let chunk, !chunk.isEmpty else {
+            try? input.close()
+            connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { [weak self] _ in
+                self?.connection.cancel()
+            })
+            return
+        }
+        connection.send(content: chunk, completion: .contentProcessed { [weak self] error in
+            guard let self, error == nil else { try? input.close(); return }
+            self.sendChunks(from: input)
         })
     }
 

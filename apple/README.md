@@ -4,8 +4,9 @@ Native SwiftUI apps that speak the protocol in [`docs/PROTOCOL.md`](../docs/PROT
 
 | Target | What it is |
 | --- | --- |
-| `DroprrMac` | Menu bar app. Receives into `~/Downloads/Droprr` (text and links go to the clipboard), sends files, text and the clipboard. |
-| `DroprriOS` | iPhone app. Sends the clipboard, photos, files and text. Receives only while it is open (iOS stops background listeners); received files appear in Files › On My iPhone › Droprr. |
+| `DroprrMac` | Menu bar app. Receives into `~/Downloads/Droprr` (text and links go to the clipboard), sends files, text and the clipboard, and keeps an outbox for iPhones (served at `/inbox`). Optional launch at login. |
+| `DroprrMacShare` | Mac share extension: Share › Droprr in Finder, Safari, Photos and other apps. Items for an iPhone are handed to the running Mac app's outbox over loopback (`POST /outbox/<peer id>`, Apple-internal). |
+| `DroprriOS` | iPhone app. Sends the clipboard, photos, files and text. Receives directly only while open, and collects anything the desktops queued (`GET /inbox`) each time it opens or when you pull to refresh on Received. Files appear in Files › On My iPhone › Droprr. |
 | `DroprrShare` | Share extension inside the iPhone app. Pick "Droprr" in any share sheet, then tap a device. |
 
 The receiver only accepts connections from loopback and Tailscale addresses
@@ -38,6 +39,9 @@ The first time the Mac app receives a connection, macOS may ask whether Droprr m
 network connections. Allow it.
 
 ## Notes
+
+- Icons come from `file-swap-icon-pack/` at the repo root (app icons, menu bar template, in-app logo).
+- Mac settings live in the `<team ID>.droprr` app group so the share extension can read them.
 
 - Default port is 53318, matching the Windows app. Change it in Settings if needed.
 - The project uses Xcode folder-synced groups, so new `.swift` files dropped into `Shared/`, `Mac/`,

@@ -14,11 +14,11 @@ enum SendPayload {
         }
     }
 
-    func send(with client: DroprrClient) async throws {
+    func send(with client: DroprrClient, progress: ((Double) -> Void)? = nil) async throws {
         switch self {
         case .text(let text): try await client.send(text: text)
         case .url(let url): try await client.send(url: url)
-        case .files(let files): try await client.send(files: files)
+        case .files(let files): try await client.send(files: files, progress: progress)
         }
     }
 }

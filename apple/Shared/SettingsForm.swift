@@ -5,25 +5,40 @@ import AppKit
 import UIKit
 #endif
 
+enum PingResult { case checking, ok(String), failed(String) }
+
 /// Token, device name, port and peers. Shared by the Mac Settings window and the iPhone Settings tab.
-struct SettingsForm: View {
+struct SettingsForm<Extra: View>: View {
     @Bindable var settings: DroprrSettings
+    var extra: Extra
     @State private var editing: Peer?
-    @State private var pingResults: [UUID: String] = [:]
+    @State private var pingResults: [UUID: PingResult] = [:]
     @State private var showToken = false
+
+    init(settings: DroprrSettings, @ViewBuilder extra: () -> Extra = { EmptyView() }) {
+        self.settings = settings
+        self.extra = extra()
+    }
 
     var body: some View {
         Form {
             Section {
-                TextField("Device name", text: $settings.deviceName)
-                TextField("Port", value: $settings.port, format: .number.grouping(.never))
-                #if os(iOS)
-                    .keyboardType(.numberPad)
-                #endif
+                ForEach(settings.peers) { peer in
+                    PeerRow(peer: peer, result: pingResults[peer.id],
+                            onTest: { Task { await ping(peer) } },
+                            onEdit: { editing = peer })
+                }
+                .onDelete { settings.peers.remove(atOffsets: $0) }
+                Button {
+                    editing = Peer(name: "", host: "")
+                } label: {
+                    Label("Add Device", systemImage: "plus.circle.fill")
+                }
+                .buttonStyle(.borderless)
             } header: {
-                Text("This device")
+                Text("Devices")
             } footer: {
-                Text("Other devices send to this port. Default \(String(DroprrDefaults.port)).")
+                Text("Use each computer's Tailscale name (e.g. my-pc) or 100.x address. iPhones add themselves the first time they check in.")
             }
 
             Section {
@@ -39,11 +54,15 @@ struct SettingsForm: View {
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
                     #endif
-                    Button(showToken ? "Hide" : "Show") { showToken.toggle() }
-                        .buttonStyle(.borderless)
+                    Button {
+                        showToken.toggle()
+                    } label: {
+                        Image(systemName: showToken ? "eye.slash" : "eye")
+                    }
+                    .buttonStyle(.borderless)
                 }
                 HStack {
-                    Button("Generate new token") { settings.token = DroprrSettings.generateToken() }
+                    Button("Generate New") { settings.token = DroprrSettings.generateToken() }
                     Spacer()
                     Button("Copy") { Clipboard.copy(text: settings.token) }
                         .disabled(settings.token.isEmpty)
@@ -52,43 +71,31 @@ struct SettingsForm: View {
             } header: {
                 Text("Pairing token")
             } footer: {
-                Text("Use the same token on every device. It stays on this device and is never synced.")
+                Text("Use the same token on every device. It stays on this device.")
             }
 
             Section {
-                ForEach(settings.peers) { peer in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(peer.name)
-                            Text("\(peer.host):\(String(peer.port))").font(.caption).foregroundStyle(.secondary)
-                            if let result = pingResults[peer.id] {
-                                Text(result).font(.caption)
-                            }
-                        }
-                        Spacer()
-                        Button("Test") { Task { await ping(peer) } }
-                            .buttonStyle(.borderless)
-                        Button("Edit") { editing = peer }
-                            .buttonStyle(.borderless)
-                    }
-                }
-                .onDelete { settings.peers.remove(atOffsets: $0) }
-                Button("Add device…") { editing = Peer(name: "", host: "") }
-                    .buttonStyle(.borderless)
+                TextField("Device name", text: $settings.deviceName)
+                TextField("Port", value: $settings.port, format: .number.grouping(.never))
+                #if os(iOS)
+                    .keyboardType(.numberPad)
+                #endif
+                extra
             } header: {
-                Text("Devices")
+                Text("This device")
             } footer: {
-                Text("Use each device's Tailscale name (e.g. my-pc) or its 100.x address.")
+                Text("Other devices see this name. Port \(String(DroprrDefaults.port)) is the default.")
             }
         }
         .formStyle(.grouped)
         .sheet(item: $editing) { peer in
-            PeerEditor(peer: peer) { saved in
+            PeerEditor(peer: peer, isNew: !settings.peers.contains { $0.id == peer.id }) { saved in
                 if let saved {
                     if let i = settings.peers.firstIndex(where: { $0.id == saved.id }) {
                         settings.peers[i] = saved
                     } else {
                         settings.peers.append(saved)
+                        Task { await ping(saved) }
                     }
                 }
                 editing = nil
@@ -97,34 +104,95 @@ struct SettingsForm: View {
     }
 
     private func ping(_ peer: Peer) async {
-        pingResults[peer.id] = "Checking…"
+        pingResults[peer.id] = .checking
         do {
             let info = try await DroprrClient(peer: peer, token: settings.token).ping()
-            pingResults[peer.id] = "✓ \(info.name) (\(info.platform) \(info.version))"
+            pingResults[peer.id] = .ok("\(Theme.platformName(info.platform)) · v\(info.version)")
+            if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) {
+                settings.peers[i].platform = info.platform
+                settings.peers[i].remoteName = info.name
+            }
         } catch {
-            pingResults[peer.id] = "✗ \(error.localizedDescription)"
+            pingResults[peer.id] = .failed(peer.isPhone ? "Not reachable now (normal for an iPhone)" : error.localizedDescription)
+        }
+    }
+}
+
+private struct PeerRow: View {
+    var peer: Peer
+    var result: PingResult?
+    var onTest: () -> Void
+    var onEdit: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            GlyphCircle(symbol: Theme.symbol(for: peer), size: 34)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(peer.name).font(.body.weight(.medium))
+                Text(peer.isPhone ? "iPhone · collects items when opened" : "\(peer.host):\(String(peer.port))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                statusLine
+            }
+            Spacer()
+            if !peer.isPhone {
+                Button("Test", action: onTest).buttonStyle(.bordered).controlSize(.small)
+            }
+            Button(action: onEdit) { Image(systemName: "pencil") }
+                .buttonStyle(.borderless)
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder private var statusLine: some View {
+        if let result {
+            switch result {
+            case .checking:
+                Label("Checking…", systemImage: "ellipsis").font(.caption2).foregroundStyle(.secondary)
+            case .ok(let text):
+                Label(text, systemImage: "checkmark.circle.fill").font(.caption2).foregroundStyle(.green)
+            case .failed(let text):
+                Label(text, systemImage: "exclamationmark.triangle.fill").font(.caption2).foregroundStyle(.orange)
+            }
         }
     }
 }
 
 private struct PeerEditor: View {
     @State var peer: Peer
+    var isNew: Bool
     var done: (Peer?) -> Void
 
     var body: some View {
         NavigationStack {
             Form {
-                TextField("Name", text: $peer.name)
-                TextField("Tailscale name or address", text: $peer.host)
-                    .autocorrectionDisabled()
-                    #if os(iOS)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                    #endif
-                TextField("Port", value: $peer.port, format: .number.grouping(.never))
+                Section {
+                    TextField("Name", text: $peer.name)
+                    Toggle("This is an iPhone", isOn: $peer.isPhone)
+                }
+                if !peer.isPhone {
+                    Section {
+                        TextField("Tailscale name or address", text: $peer.host)
+                            .autocorrectionDisabled()
+                            #if os(iOS)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.URL)
+                            #endif
+                        TextField("Port", value: $peer.port, format: .number.grouping(.never))
+                    } footer: {
+                        Text("Find the name in the Tailscale app, for example my-pc.")
+                    }
+                } else {
+                    Section {
+                        Text("Items you send to an iPhone wait on this device until Droprr opens on the phone.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
             .formStyle(.grouped)
-            .navigationTitle(peer.name.isEmpty ? "New device" : peer.name)
+            .navigationTitle(isNew ? "Add Device" : peer.name)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { done(nil) } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -132,12 +200,12 @@ private struct PeerEditor: View {
                         if peer.name.isEmpty { peer.name = peer.host }
                         done(peer)
                     }
-                    .disabled(peer.host.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(peer.isPhone ? peer.name.isEmpty : peer.host.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
         #if os(macOS)
-        .frame(minWidth: 360, minHeight: 220)
+        .frame(minWidth: 380, minHeight: 280)
         #endif
     }
 }

@@ -7,27 +7,46 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		E58922B04954A607FDB4416C /* DroprrShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 04499D89D0CA81339943290D /* DroprrShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		75BC4D956D59C80F82309E75 /* DroprrShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 04499D89D0CA81339943290D /* DroprrShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		381D88ADDE4140F90F98E55F /* DroprrMacShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3952C4AEEE1A3B6CD77A0A6F /* DroprrMacShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		431387EB7262E1CFC79B125E /* PBXContainerItemProxy */ = {
+		4E245760AC733BD465368A07 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = EB2D224FF4598D1810189A69;
 			remoteInfo = DroprrShare;
 		};
+		5A7FB49B26FF8F29F76265F4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8506AE41766A5D89B64BD326;
+			remoteInfo = DroprrMacShare;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		425893CE4AEDF359C5F0F0D7 /* Embed Foundation Extensions */ = {
+		5924BD806B6FC15AD79134CA /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				E58922B04954A607FDB4416C /* DroprrShare.appex in Embed Foundation Extensions */,
+				75BC4D956D59C80F82309E75 /* DroprrShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B159B9E8C3F305AABB14CE1C /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				381D88ADDE4140F90F98E55F /* DroprrMacShare.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -39,12 +58,16 @@
 		2690B6FB7F788D47811147AB /* Mac-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Mac-Info.plist; sourceTree = "<group>"; };
 		8DE8A07B0A3261F14C149A77 /* iOS-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = iOS-Info.plist; sourceTree = "<group>"; };
 		6D8B31369AF1AE0064770230 /* Share-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Share-Info.plist; sourceTree = "<group>"; };
+		27DD6AB17F609D59337C87EB /* MacShare-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = MacShare-Info.plist; sourceTree = "<group>"; };
+		DEEDDF578BD2EB8E70E23CBD /* Mac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Mac.entitlements; sourceTree = "<group>"; };
 		F83AB8ECBB0F33CD719D39E7 /* iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iOS.entitlements; sourceTree = "<group>"; };
 		B6BDCDEE22870FEC9CF6622D /* Share.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Share.entitlements; sourceTree = "<group>"; };
+		47B12F209F8BD9A40C6C3D68 /* MacShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MacShare.entitlements; sourceTree = "<group>"; };
 		65F51FB8EEEE81FA81F12B03 /* Local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Local.xcconfig.example; sourceTree = "<group>"; };
 		F4EC33B737B324A096D05CDE /* Droprr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Droprr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		07300136B33DCDF7AF0A17F8 /* Droprr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Droprr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		04499D89D0CA81339943290D /* DroprrShare.appex */ = {isa = PBXFileReference; explicitFileType = wrapper.app-extension; includeInIndex = 0; path = DroprrShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		3952C4AEEE1A3B6CD77A0A6F /* DroprrMacShare.appex */ = {isa = PBXFileReference; explicitFileType = wrapper.app-extension; includeInIndex = 0; path = DroprrMacShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -66,6 +89,11 @@
 		BF94C8D40C6EB7091F5580A2 /* ShareExtension */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = ShareExtension;
+			sourceTree = "<group>";
+		};
+		5B8629E347D5B9201276EAB2 /* MacShareExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MacShareExtension;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -92,6 +120,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		ABBEBF72A1C57142920E3D2A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -102,6 +137,7 @@
 				28FE0AA51FDF854E48082BB3 /* Mac */,
 				71DDF9B7B33990B3EDB97276 /* iOS */,
 				BF94C8D40C6EB7091F5580A2 /* ShareExtension */,
+				5B8629E347D5B9201276EAB2 /* MacShareExtension */,
 				5386A2EAF0036C0154CF9012 /* Config */,
 				86024CAD1E83101D97359D73 /* Products */,
 			);
@@ -114,8 +150,11 @@
 				2690B6FB7F788D47811147AB /* Mac-Info.plist */,
 				8DE8A07B0A3261F14C149A77 /* iOS-Info.plist */,
 				6D8B31369AF1AE0064770230 /* Share-Info.plist */,
+				27DD6AB17F609D59337C87EB /* MacShare-Info.plist */,
+				DEEDDF578BD2EB8E70E23CBD /* Mac.entitlements */,
 				F83AB8ECBB0F33CD719D39E7 /* iOS.entitlements */,
 				B6BDCDEE22870FEC9CF6622D /* Share.entitlements */,
+				47B12F209F8BD9A40C6C3D68 /* MacShare.entitlements */,
 				65F51FB8EEEE81FA81F12B03 /* Local.xcconfig.example */,
 			);
 			path = Config;
@@ -127,6 +166,7 @@
 				F4EC33B737B324A096D05CDE /* Droprr.app */,
 				07300136B33DCDF7AF0A17F8 /* Droprr.app */,
 				04499D89D0CA81339943290D /* DroprrShare.appex */,
+				3952C4AEEE1A3B6CD77A0A6F /* DroprrMacShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -141,10 +181,12 @@
 				3284F8DBAA924ADD5579FA5A /* Sources */,
 				465FEF455DEDFAB326AF6807 /* Frameworks */,
 				6BFB1367808D402E85CC3812 /* Resources */,
+				B159B9E8C3F305AABB14CE1C /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				76827205F8FBA0E7C2661D8F /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				2CAAAAB80B903BE3ED26246B /* Shared */,
@@ -164,12 +206,12 @@
 				5D15B79FEFA86D61F38B103D /* Sources */,
 				C083CAF926B423255BDF0476 /* Frameworks */,
 				FE6A4BB845F0AE66918D1244 /* Resources */,
-				425893CE4AEDF359C5F0F0D7 /* Embed Foundation Extensions */,
+				5924BD806B6FC15AD79134CA /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				2254342BECCEAFBD04538E0A /* PBXTargetDependency */,
+				0CA5B0F3DF88A3AF2DACD4CC /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				2CAAAAB80B903BE3ED26246B /* Shared */,
@@ -205,6 +247,29 @@
 			productReference = 04499D89D0CA81339943290D /* DroprrShare.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		8506AE41766A5D89B64BD326 /* DroprrMacShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FEAE4D5C9B9E57A6EEA9B3C2 /* Build configuration list for PBXNativeTarget "DroprrMacShare" */;
+			buildPhases = (
+				F3B5EDB22458A11536D86A5A /* Sources */,
+				ABBEBF72A1C57142920E3D2A /* Frameworks */,
+				F08EEE676A629E0FB5ECA1BE /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				2CAAAAB80B903BE3ED26246B /* Shared */,
+				5B8629E347D5B9201276EAB2 /* MacShareExtension */,
+			);
+			name = DroprrMacShare;
+			packageProductDependencies = (
+			);
+			productName = DroprrMacShare;
+			productReference = 3952C4AEEE1A3B6CD77A0A6F /* DroprrMacShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -222,6 +287,9 @@
 						CreatedOnToolsVersion = 26.0;
 					};
 					EB2D224FF4598D1810189A69 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+					8506AE41766A5D89B64BD326 = {
 						CreatedOnToolsVersion = 26.0;
 					};
 				};
@@ -243,6 +311,7 @@
 				79C1B30FBEF49249D7636B4F /* DroprrMac */,
 				AB0B0784B66B733B2775DDA3 /* DroprriOS */,
 				EB2D224FF4598D1810189A69 /* DroprrShare */,
+				8506AE41766A5D89B64BD326 /* DroprrMacShare */,
 			);
 		};
 /* End PBXProject section */
@@ -263,6 +332,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		FA9EA84EE36788F6DAB4AD0D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F08EEE676A629E0FB5ECA1BE /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -293,13 +369,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F3B5EDB22458A11536D86A5A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		2254342BECCEAFBD04538E0A /* PBXTargetDependency */ = {
+		0CA5B0F3DF88A3AF2DACD4CC /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = EB2D224FF4598D1810189A69 /* DroprrShare */;
-			targetProxy = 431387EB7262E1CFC79B125E /* PBXContainerItemProxy */;
+			targetProxy = 4E245760AC733BD465368A07 /* PBXContainerItemProxy */;
+		};
+		76827205F8FBA0E7C2661D8F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8506AE41766A5D89B64BD326 /* DroprrMacShare */;
+			targetProxy = 5A7FB49B26FF8F29F76265F4 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -342,6 +430,8 @@
 		7938382F52A7A1A394E0E725 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Config/Mac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -365,6 +455,8 @@
 		054DCED4864CCAB02D9E964D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Config/Mac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -388,6 +480,7 @@
 		963A352B97748B18405A3620 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Config/iOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -413,6 +506,7 @@
 		451056732067D69511C0F813 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Config/iOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -483,6 +577,54 @@
 			};
 			name = Release;
 		};
+		57A42D3A43CD47E1F50FEE51 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Config/MacShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/MacShare-Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks @executable_path/../../../../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.mac.share";
+				PRODUCT_NAME = DroprrMacShare;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		9D8039D8C0A57DE02C315837 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Config/MacShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/MacShare-Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks @executable_path/../../../../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.mac.share";
+				PRODUCT_NAME = DroprrMacShare;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -518,6 +660,15 @@
 			buildConfigurations = (
 				98B2982575565DF4C39005D8 /* Debug */,
 				C541694B6E469B4FC6700EF8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FEAE4D5C9B9E57A6EEA9B3C2 /* Build configuration list for PBXNativeTarget "DroprrMacShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				57A42D3A43CD47E1F50FEE51 /* Debug */,
+				9D8039D8C0A57DE02C315837 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

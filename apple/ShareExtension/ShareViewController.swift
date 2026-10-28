@@ -25,6 +25,8 @@ final class ShareModel {
     var loading = true
     var status: String?
     var sending = false
+    var progress: Double?
+    var sentTo: UUID?
 
     @ObservationIgnored private weak var context: NSExtensionContext?
 
@@ -39,20 +41,7 @@ final class ShareModel {
     }
 
     func load() async {
-        let providers = (context?.inputItems as? [NSExtensionItem] ?? []).flatMap { $0.attachments ?? [] }
-        var files: [URL] = []
-        for provider in providers {
-            switch await Self.load(provider) {
-            case .files(let urls): files += urls
-            case .some(let other): payloads.append(other)
-            case nil: break
-            }
-        }
-        // Safari shares a link plus its page title as text; the link is what matters.
-        if payloads.contains(where: { if case .url = $0 { return true } else { return false } }) {
-            payloads.removeAll { if case .text = $0 { return true } else { return false } }
-        }
-        if !files.isEmpty { payloads.append(.files(files)) }
+        payloads = await SharedItems.payloads(from: context?.inputItems as? [NSExtensionItem] ?? [])
         loading = false
     }
 
@@ -63,100 +52,105 @@ final class ShareModel {
         status = "Sending to \(peer.name)…"
         let client = DroprrClient(peer: peer, token: settings.token)
         do {
-            for payload in payloads { try await payload.send(with: client) }
-            status = "Sent to \(peer.name)."
+            for payload in payloads {
+                try await payload.send(with: client) { [weak self] in self?.progress = $0 }
+            }
+            progress = nil
+            sentTo = peer.id
+            status = "Sent to \(peer.name)"
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
             try? await Task.sleep(for: .milliseconds(600))
             context?.completeRequest(returningItems: nil)
         } catch {
+            progress = nil
             status = "Couldn't send: \(error.localizedDescription)"
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
     }
 
     func cancel() {
         context?.cancelRequest(withError: CocoaError(.userCancelled))
     }
-
-    nonisolated private static func load(_ provider: NSItemProvider) async -> SendPayload? {
-        let fileURL = UTType.fileURL.identifier
-        let url = UTType.url.identifier
-        if provider.hasItemConformingToTypeIdentifier(url) && !provider.hasItemConformingToTypeIdentifier(fileURL) {
-            if let item = try? await provider.loadItem(forTypeIdentifier: url) {
-                if let link = item as? URL ?? (item as? Data).flatMap({ URL(dataRepresentation: $0, relativeTo: nil) }) {
-                    return link.isFileURL ? copy(link).map { .files([$0]) } : .url(link)
-                }
-            }
-        }
-        let types = provider.registeredTypeIdentifiers.compactMap(UTType.init)
-        let isPlainText = !types.isEmpty && types.allSatisfy { $0.conforms(to: .text) } && !provider.hasItemConformingToTypeIdentifier(fileURL)
-        if isPlainText, let item = try? await provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) {
-            if let text = item as? String { return .text(text) }
-            if let data = item as? Data { return .text(String(decoding: data, as: UTF8.self)) }
-        }
-        // Everything else (photos, videos, documents) as a file.
-        guard let type = types.first(where: { $0.conforms(to: .data) || $0.conforms(to: .package) })?.identifier
-                ?? provider.registeredTypeIdentifiers.first else { return nil }
-        return await withCheckedContinuation { continuation in
-            _ = provider.loadFileRepresentation(forTypeIdentifier: type) { temp, _ in
-                // The system deletes `temp` when this returns, so copy it out first.
-                var name = temp?.lastPathComponent ?? "Shared item"
-                if let suggested = provider.suggestedName, !suggested.isEmpty {
-                    let ext = temp?.pathExtension ?? ""
-                    name = ext.isEmpty || suggested.hasSuffix(".\(ext)") ? suggested : "\(suggested).\(ext)"
-                }
-                continuation.resume(returning: temp.flatMap { copy($0, as: name) }.map { .files([$0]) })
-            }
-        }
-    }
-
-    nonisolated private static func copy(_ source: URL, as name: String? = nil) -> URL? {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let dest = dir.appendingPathComponent(name ?? source.lastPathComponent)
-        let scoped = source.startAccessingSecurityScopedResource()
-        defer { if scoped { source.stopAccessingSecurityScopedResource() } }
-        return (try? FileManager.default.copyItem(at: source, to: dest)) != nil ? dest : nil
-    }
 }
+
 
 struct ShareView: View {
     @Bindable var model: ShareModel
 
+    private var desktops: [Peer] { model.settings.peers.filter { !$0.isPhone } }
+
     var body: some View {
         NavigationStack {
-            List {
-                Section("Sharing") {
-                    Text(model.summary).lineLimit(3)
-                }
-                Section("Send to") {
-                    if model.settings.peers.isEmpty {
-                        Text("Open the Droprr app and add a device first.")
-                    }
-                    ForEach(model.settings.peers) { peer in
-                        Button {
-                            Task { await model.send(to: peer) }
-                        } label: {
-                            HStack {
-                                Label(peer.name, systemImage: "desktopcomputer")
-                                Spacer()
-                                if peer.id == model.settings.lastPeerID {
-                                    Image(systemName: "clock.arrow.circlepath").foregroundStyle(.secondary)
-                                }
-                            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 12) {
+                        GlyphCircle(symbol: summarySymbol, size: 40, filled: true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Sharing").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            Text(model.summary).font(.body.weight(.medium)).lineLimit(2)
                         }
-                        .disabled(model.loading || model.sending || model.payloads.isEmpty)
                     }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                    Text("SEND TO").font(.caption.weight(.semibold)).tracking(0.8).foregroundStyle(.secondary)
+
+                    if desktops.isEmpty {
+                        Text("Open the Droprr app and add a computer first.")
+                            .foregroundStyle(.secondary)
+                    }
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                        ForEach(desktops) { peer in
+                            Button {
+                                Task { await model.send(to: peer) }
+                            } label: {
+                                VStack(spacing: 10) {
+                                    GlyphCircle(symbol: model.sentTo == peer.id ? "checkmark" : Theme.symbol(for: peer),
+                                                size: 50, filled: true)
+                                    Text(peer.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                    if peer.id == model.settings.lastPeerID {
+                                        Text("Last used").font(.caption2).foregroundStyle(.secondary)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 18)
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(model.loading || model.sending || model.payloads.isEmpty)
+                        }
+                    }
+
+                    SendStatusView(message: model.status, progress: model.progress)
                 }
-                if let status = model.status {
-                    Section { Text(status) }
-                }
+                .padding(20)
             }
+            .background(Theme.gradient.opacity(0.10).ignoresSafeArea())
             .navigationTitle("Droprr")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { model.cancel() }
                 }
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 6) {
+                        LogoBadge(size: 22)
+                        Text("Droprr").font(.headline)
+                    }
+                }
             }
+            .animation(.default, value: model.status)
+        }
+        .tint(Theme.start)
+    }
+
+    private var summarySymbol: String {
+        switch model.payloads.first {
+        case .url: return "link"
+        case .text: return "text.alignleft"
+        case .files: return "doc.fill"
+        case nil: return "square.and.arrow.up"
         }
     }
 }

@@ -25,6 +25,8 @@ enum DroprrError: LocalizedError {
 struct DroprrClient {
     var peer: Peer
     var token: String
+    /// "/send" normally; the Mac share extension uses "/outbox/<peer id>" on its own Mac to queue for a phone.
+    var sendPath = "/send"
 
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default
@@ -49,20 +51,59 @@ struct DroprrClient {
         try await sendJSON(type: "url", content: url.absoluteString)
     }
 
-    func send(files: [URL]) async throws {
+    func send(files: [URL], progress: ((Double) -> Void)? = nil) async throws {
         guard !files.isEmpty else { return }
         let boundary = "droprr-\(UUID().uuidString)"
         let body = try Self.writeMultipart(files: files, boundary: boundary)
         defer { try? FileManager.default.removeItem(at: body) }
 
-        var request = try makeRequest(path: "/send", method: "POST")
+        var request = try makeRequest(path: sendPath, method: "POST")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        let (data, response) = try await Self.session.upload(for: request, fromFile: body)
+        let delegate = progress.map(UploadProgress.init)
+        let (data, response) = try await Self.session.upload(for: request, fromFile: body, delegate: delegate)
+        try check(response, data)
+    }
+
+    // MARK: Inbox (phone pull, see docs/PROTOCOL.md)
+
+    struct InboxItem: Decodable, Identifiable {
+        var id: String
+        var type: String
+        var name: String
+        var size: Int
+        var content: String?
+    }
+
+    func inbox(for deviceName: String) async throws -> [InboxItem] {
+        let name = deviceName.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? deviceName
+        var request = try makeRequest(path: "/inbox?for=\(name)", method: "GET")
+        request.timeoutInterval = 5
+        let (data, response) = try await Self.session.data(for: request)
+        try check(response, data)
+        struct Listing: Decodable { var items: [InboxItem] }
+        return try JSONDecoder().decode(Listing.self, from: data).items
+    }
+
+    /// Downloads a file item to a temporary location; the caller moves it into place.
+    func download(_ item: InboxItem) async throws -> URL {
+        let request = try makeRequest(path: "/inbox/\(item.id)", method: "GET")
+        let (temp, response) = try await Self.session.download(for: request)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw DroprrError.server(http.statusCode, (try? String(contentsOf: temp, encoding: .utf8)) ?? "")
+        }
+        let kept = FileManager.default.temporaryDirectory.appendingPathComponent("droprr-inbox-\(UUID().uuidString)")
+        try FileManager.default.moveItem(at: temp, to: kept)
+        return kept
+    }
+
+    func acknowledge(_ item: InboxItem) async throws {
+        let request = try makeRequest(path: "/inbox/\(item.id)", method: "DELETE")
+        let (data, response) = try await Self.session.data(for: request)
         try check(response, data)
     }
 
     private func sendJSON(type: String, content: String) async throws {
-        var request = try makeRequest(path: "/send", method: "POST")
+        var request = try makeRequest(path: sendPath, method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["type": type, "content": content])
         let (data, response) = try await Self.session.data(for: request)
@@ -71,7 +112,7 @@ struct DroprrClient {
 
     private func makeRequest(path: String, method: String) throws -> URLRequest {
         guard !token.isEmpty else { throw DroprrError.noToken }
-        guard let base = peer.baseURL, let url = URL(string: path, relativeTo: base) else { throw DroprrError.badPeer }
+        guard let base = peer.baseURL, let url = URL(string: base.absoluteString + path) else { throw DroprrError.badPeer }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -109,5 +150,17 @@ struct DroprrClient {
         }
         try handle.write(contentsOf: Data("--\(boundary)--\r\n".utf8))
         return out
+    }
+}
+
+private final class UploadProgress: NSObject, URLSessionTaskDelegate {
+    let report: (Double) -> Void
+    init(_ report: @escaping (Double) -> Void) { self.report = report }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64,
+                    totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
+        guard totalBytesExpectedToSend > 0 else { return }
+        let fraction = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
+        DispatchQueue.main.async { self.report(fraction) }
     }
 }
