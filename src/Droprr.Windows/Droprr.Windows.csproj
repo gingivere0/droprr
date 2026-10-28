@@ -21,10 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="$(IconPack)app.ico" LogicalName="Droprr.app.ico" />
-    <EmbeddedResource Include="$(IconPack)tray\black.ico" LogicalName="Droprr.tray-black.ico" />
-    <EmbeddedResource Include="$(IconPack)tray\white.ico" LogicalName="Droprr.tray-white.ico" />
-    <None Include="settings.example.json" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="$(IconPack)app.ico" LogicalName="Droprr.app.ico" />    <None Include="settings.example.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

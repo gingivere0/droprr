@@ -111,17 +111,11 @@ static class AppIcon
     // Artwork from file-swap-icon-pack/windows, embedded so tray and windows match the exe.
     static Stream Open(string name) => typeof(AppIcon).Assembly.GetManifestResourceStream($"Droprr.{name}")!;
 
-    // Monochrome tray artwork: black on a light taskbar, white on a dark one, at the small-icon size for the current DPI.
+    // The colored app icon at the small-icon size for the current DPI.
     public static Icon CreateTrayIcon()
     {
-        using var stream = Open(TaskbarIsLight() ? "tray-black.ico" : "tray-white.ico");
+        using var stream = Open("app.ico");
         return new Icon(stream, System.Windows.Forms.SystemInformation.SmallIconSize);
-    }
-
-    static bool TaskbarIsLight()
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-        return key?.GetValue("SystemUsesLightTheme") is 1;
     }
 
     static ImageSource? _imageSource;

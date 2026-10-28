@@ -5,7 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
-using Microsoft.Win32;
 
 namespace Droprr;
 
@@ -50,7 +49,6 @@ sealed class TrayIcon : IDisposable
             Visible = true,
         };
         _icon.DoubleClick += (_, _) => app.ShowSendWindow([]);
-        SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         _icon.BalloonTipClicked += (_, _) => OnNotificationClicked();
         UpdateRecent([]);
     }
@@ -143,19 +141,8 @@ sealed class TrayIcon : IDisposable
 
     static string Truncate(string text, int max) => text.Length <= max ? text : text[..(max - 1)] + "…";
 
-    // Switching between light and dark mode swaps the black and white tray artwork.
-    void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
-    {
-        if (e.Category != UserPreferenceCategory.General)
-            return;
-        var old = _icon.Icon;
-        _icon.Icon = AppIcon.CreateTrayIcon();
-        old?.Dispose();
-    }
-
     public void Dispose()
     {
-        SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _icon.Visible = false;
         _icon.Dispose();
     }
