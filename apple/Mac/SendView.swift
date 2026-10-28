@@ -54,6 +54,19 @@ struct SendView: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
+            Button {
+                openSettings()
+                bringToFront()
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.title3)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(HoverButtonStyle(.plain))
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Settings")
+            .hoverHint("Settings (⌘,)")
+            .keyboardShortcut(",")
         }
     }
 
@@ -175,9 +188,16 @@ struct SendView: View {
                 guard let peer = selected else { return }
                 Task { await model.sendClipboard(to: peer) }
             } label: {
-                Label("Send Clipboard", systemImage: "doc.on.clipboard")
+                // Tonal button at the Send button's height; Send stays the only filled one.
+                HStack(spacing: Space.sm) {
+                    Image(systemName: "doc.on.clipboard.fill")
+                    Text("Send clipboard")
+                }
+                .font(.headline)
+                .padding(.horizontal, Space.sm)
+                .padding(.vertical, Space.xs)
             }
-            .buttonStyle(HoverButtonStyle(.bordered))
+            .buttonStyle(HoverButtonStyle(.secondary))
             .keyboardShortcut("v", modifiers: [.command, .shift])
             .hoverHint("Send what's on the clipboard (⇧⌘V)")
             .disabled(selected == nil || model.isSending)

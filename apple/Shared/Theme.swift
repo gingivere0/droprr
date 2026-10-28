@@ -349,7 +349,7 @@ private final class HintWindow {
 
 /// Mac buttons that visibly shade on hover, so it's clear what's clickable.
 struct HoverButtonStyle: ButtonStyle {
-    enum Kind { case bordered, prominent, plain }
+    enum Kind { case bordered, prominent, secondary, plain }
     var kind: Kind
     var compact = false
 
@@ -374,7 +374,8 @@ struct HoverButtonStyle: ButtonStyle {
             configuration.label
                 .padding(.horizontal, kind == .plain ? 4 : (compact ? 8 : 12))
                 .padding(.vertical, kind == .plain ? 3 : (compact ? 4 : 6))
-                .foregroundStyle(kind == .prominent ? AnyShapeStyle(Theme.onPrimaryButton) : AnyShapeStyle(.primary))
+                .foregroundStyle(kind == .prominent ? AnyShapeStyle(Theme.onPrimaryButton)
+                                 : kind == .secondary ? AnyShapeStyle(Theme.accentText) : AnyShapeStyle(.primary))
                 .background {
                     let shape = RoundedRectangle(cornerRadius: Radius.button, style: .continuous)
                     switch kind {
@@ -382,6 +383,10 @@ struct HoverButtonStyle: ButtonStyle {
                         shape.fill(Theme.primaryButton)
                             .overlay(shape.fill(Color.white.opacity(active ? 0.18 : 0)))
                             .overlay(shape.fill(Color.black.opacity(configuration.isPressed ? 0.15 : 0)))
+                    case .secondary:
+                        // Tonal button (shared with Windows): accent tint, darker on hover/press.
+                        shape.fill(Theme.accentTint)
+                            .overlay(shape.fill(Color.primary.opacity(configuration.isPressed ? 0.12 : active ? 0.06 : 0)))
                     case .bordered:
                         shape.fill(Color.primary.opacity(configuration.isPressed ? 0.22 : active ? 0.15 : 0.07))
                     case .plain:
