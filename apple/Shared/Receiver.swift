@@ -1,5 +1,4 @@
 import Foundation
-import UniformTypeIdentifiers
 
 struct ReceivedItem: Identifiable {
     enum Kind {
@@ -103,20 +102,14 @@ final class DroprrReceiver {
             return try receiveForm(bodyFile)
         default:
             let suppliedName = request.header("x-droprr-filename")?.removingPercentEncoding
-                ?? request.header("content-disposition").flatMap { Self.parameter("filename", in: $0) }
+                ?? request.header("content-disposition").flatMap(Self.filename(in:))
                 ?? ""
             if mime == "text/plain" && suppliedName.isEmpty {
-                let text = String(decoding: try Data(contentsOf: bodyFile), as: UTF8.self)
-                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let url = URL(string: trimmed), let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
-                    return [try textItem(type: "url", content: trimmed)]
-                }
-                return [try textItem(type: "text", content: text)]
+                return [try classify(String(decoding: try Data(contentsOf: bodyFile), as: UTF8.self))]
             }
             // Lenient input: any other body is a raw file (iOS Shortcuts "File" request bodies).
-            let ext = UTType(mimeType: mime)?.preferredFilenameExtension ?? "bin"
             var filename = suppliedName.isEmpty ? Self.fallbackName() : suppliedName
-            if (filename as NSString).pathExtension.isEmpty { filename += ".\(ext)" }
+            if (filename as NSString).pathExtension.isEmpty { filename += ".\(Self.rawExtensions[mime] ?? "bin")" }
             let dest = uniqueDestination(for: filename)
             try FileManager.default.moveItem(at: bodyFile, to: dest)
             return [ReceivedItem(kind: .file(dest))]
@@ -138,15 +131,21 @@ final class DroprrReceiver {
     }
 
     private func receiveForm(_ bodyFile: URL) throws -> [ReceivedItem] {
-        var components = URLComponents()
-        components.percentEncodedQuery = String(decoding: try Data(contentsOf: bodyFile), as: UTF8.self)
-            .replacingOccurrences(of: "+", with: "%20")
         var fields: [String: String] = [:]
-        for item in components.queryItems ?? [] { fields[item.name] = item.value ?? "" }
+        for pair in String(decoding: try Data(contentsOf: bodyFile), as: UTF8.self).split(separator: "&") {
+            let kv = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            func decode(_ s: Substring) -> String {
+                let spaced = s.replacingOccurrences(of: "+", with: " ")
+                return spaced.removingPercentEncoding ?? spaced
+            }
+            let name = decode(kv[0])
+            if fields[name] == nil { fields[name] = kv.count > 1 ? decode(kv[1]) : "" }
+        }
         var items: [ReceivedItem] = []
-        if let content = fields["content"] { items.append(try textItem(type: fields["type"] == "url" ? "url" : "text", content: content)) }
-        if let text = fields["text"] { items.append(try textItem(type: "text", content: text)) }
-        if let url = fields["url"] { items.append(try textItem(type: "url", content: url)) }
+        for name in ["url", "content", "text", "file"] {
+            guard let value = fields[name], !value.isEmpty else { continue }
+            items.append(name == "url" ? try textItem(type: "url", content: value) : try classify(value))
+        }
         return items
     }
 
@@ -171,15 +170,25 @@ final class DroprrReceiver {
             for line in head.components(separatedBy: "\r\n") where line.lowercased().hasPrefix("content-disposition:") {
                 disposition = line
             }
-            if let filename = Self.parameter("filename", in: disposition) {
+            if let filename = Self.filename(in: disposition) {
                 let dest = uniqueDestination(for: filename.isEmpty ? Self.fallbackName() + ".bin" : filename)
                 try body.write(to: dest)
                 items.append(ReceivedItem(kind: .file(dest)))
-            } else if let field = Self.parameter("name", in: disposition), field == "text" || field == "url" {
-                items.append(try textItem(type: field, content: String(decoding: body, as: UTF8.self)))
+            } else if !body.isEmpty {
+                items.append(try classify(String(decoding: body, as: UTF8.self)))
             }
         }
         return items
+    }
+
+    /// Text, or a url item when the value is a single web URL (see "Lenient inputs" in PROTOCOL.md).
+    private func classify(_ value: String) throws -> ReceivedItem {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.contains(where: { $0.isWhitespace }), let url = URL(string: trimmed),
+           let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme), url.host != nil {
+            return try textItem(type: "url", content: trimmed)
+        }
+        return try textItem(type: "text", content: value)
     }
 
     /// Validates a text or url item and saves a copy next to received files, as the protocol asks.
@@ -229,6 +238,22 @@ final class DroprrReceiver {
             return value
         }
         return nil
+    }
+
+    private static let rawExtensions = [
+        "image/jpeg": "jpg", "image/png": "png", "image/heic": "heic", "image/heif": "heif",
+        "image/gif": "gif", "image/webp": "webp", "video/quicktime": "mov", "video/mp4": "mp4",
+        "audio/mpeg": "mp3", "audio/mp4": "m4a", "application/pdf": "pdf", "application/zip": "zip",
+        "text/plain": "txt",
+    ]
+
+    /// `filename*` (RFC 5987, e.g. UTF-8''My%20File.jpg) wins over `filename`.
+    static func filename(in disposition: String) -> String? {
+        if let extended = parameter("filename*", in: disposition) {
+            let value = extended.components(separatedBy: "''").last ?? extended
+            if let decoded = value.removingPercentEncoding, !decoded.isEmpty { return decoded }
+        }
+        return parameter("filename", in: disposition)
     }
 
     /// "Droprr yyyy-MM-dd HHmmss", without an extension.
