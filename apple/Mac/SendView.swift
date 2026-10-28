@@ -54,22 +54,24 @@ struct SendView: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
-            Button {
-                openSettings()
-                bringToFront()
-            } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.title3)
-                    .frame(width: 32, height: 32)
-            }
-            .buttonStyle(HoverButtonStyle(.plain))
-            .foregroundStyle(.secondary)
-            .accessibilityLabel("Settings")
-            .hoverHint("Settings (⌘,)")
-            .keyboardShortcut(",")
-            // Sit closer to the top edge: about 30% less space above the gear.
-            .frame(maxHeight: .infinity, alignment: .top)
-            .offset(y: -12)
+        }
+        // The gear floats in the top-right corner without changing the header's layout,
+        // about 30% closer to the top edge than the header row.
+        .overlay(alignment: .topTrailing) {
+                Button {
+                    openSettings()
+                    bringToFront()
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.title3)
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(HoverButtonStyle(.plain))
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Settings")
+                .hoverHint("Settings (⌘,)")
+                .keyboardShortcut(",")
+                .offset(y: -3)
         }
     }
 
