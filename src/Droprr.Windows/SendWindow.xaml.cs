@@ -53,7 +53,76 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         {
             app.SettingsSaved += OnSettingsSaved;
             Closed += (_, _) => app.SettingsSaved -= OnSettingsSaved;
+            ShowReceived(app.Recent);
         }
+    }
+
+    // The Received tile lists the app's recent items, kept up to date as items arrive or are removed.
+    internal void ShowReceived(ObservableCollection<RecentItem> recent)
+    {
+        ReceivedList.ItemsSource = recent;
+        void UpdateEmpty() => ReceivedEmpty.Visibility = recent.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateEmpty();
+        recent.CollectionChanged += (_, _) => UpdateEmpty();
+        // Recheck for moved or deleted files whenever the window comes forward.
+        Activated += (_, _) =>
+        {
+            foreach (var item in recent)
+                item.Refresh();
+        };
+    }
+
+    static RecentItem? RecentFrom(object sender) => (sender as FrameworkElement)?.DataContext as RecentItem;
+
+    // A click on the row (not one of its buttons, which handle their own clicks) opens the item.
+    void OnReceivedClick(object sender, MouseButtonEventArgs e)
+    {
+        if (RecentFrom(sender) is { IsAvailable: true } item)
+            ReceivedActions.Open(item.Item);
+    }
+
+    // Keyboard: Enter opens the selected item, Delete removes it from the list.
+    void OnReceivedKeyDown(object sender, KeyEventArgs e)
+    {
+        if (ReceivedList.SelectedItem is not RecentItem item)
+            return;
+        if (e.Key == Key.Enter && item.IsAvailable)
+        {
+            ReceivedActions.Open(item.Item);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Delete)
+        {
+            RemoveRecent(item);
+            e.Handled = true;
+        }
+    }
+
+    void OnCopyRecent(object sender, RoutedEventArgs e)
+    {
+        if (RecentFrom(sender) is { } item)
+            ReceivedActions.Copy(item.Item);
+    }
+
+    void OnShowRecent(object sender, RoutedEventArgs e)
+    {
+        if (RecentFrom(sender) is { } item)
+            ReceivedActions.ShowInFolder(item.Item);
+    }
+
+    void OnRemoveRecent(object sender, RoutedEventArgs e)
+    {
+        if (RecentFrom(sender) is { } item)
+            RemoveRecent(item);
+    }
+
+    // Removes the item from the list only; the file itself is never deleted.
+    void RemoveRecent(RecentItem item)
+    {
+        if (Application.Current is App app)
+            app.RemoveRecent(item);
+        else if (ReceivedList.ItemsSource is ObservableCollection<RecentItem> list)
+            list.Remove(item);
     }
 
     void ShowPeers()

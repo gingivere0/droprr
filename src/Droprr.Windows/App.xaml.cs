@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
@@ -12,7 +13,7 @@ namespace Droprr;
 
 public partial class App : Application
 {
-    const int MaxRecent = 10;
+    const int MaxRecent = 20;
     const long LargeTransferBytes = 8 * 1024 * 1024;
 
     // Running state
@@ -27,7 +28,7 @@ public partial class App : Application
     readonly Dictionary<Guid, ReceiveProgressWindow> _receiving = new();
 
     // Received items and the clipboard
-    readonly List<ReceivedItem> _recent = new();
+    DispatcherTimer? _recentRefresh;
     readonly List<string> _clipboardFiles = new();
     DispatcherTimer? _clipboardBatch;
 
@@ -45,6 +46,16 @@ public partial class App : Application
 
     // Raised on the UI thread after a device pairs, with its saved peer entry.
     internal event Action<Peer>? DevicePaired;
+
+    // Received items, newest first: the Send window's Received tile and the tray's Recent menu.
+    internal ObservableCollection<RecentItem> Recent { get; } = new();
+
+    // Removes an item from the list only; its file stays where it is.
+    internal void RemoveRecent(RecentItem item)
+    {
+        Recent.Remove(item);
+        _tray?.UpdateRecent(Recent);
+    }
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -95,6 +106,12 @@ public partial class App : Application
         try { if (StartWithWindows.IsEnabled) StartWithWindows.Set(true); } catch { /* not fatal */ }
 
         _tray = new TrayIcon(this);
+        // Keeps "2 min ago" current and notices files moved or deleted since they arrived.
+        _recentRefresh = new DispatcherTimer(TimeSpan.FromSeconds(30), DispatcherPriority.Background, (_, _) =>
+        {
+            foreach (var item in Recent)
+                item.Refresh();
+        }, Dispatcher);
         WatchOutbox();
         _updateCheck = new DispatcherTimer(TimeSpan.FromSeconds(5), DispatcherPriority.Background, (_, _) => CheckForUpdate(), Dispatcher);
         await StartReceiverAsync();
@@ -386,10 +403,10 @@ public partial class App : Application
         else if (Settings.CopyFilesToClipboard && item.Path is not null)
             QueueFileForClipboard(item.Path);
 
-        _recent.Insert(0, item);
-        if (_recent.Count > MaxRecent)
-            _recent.RemoveRange(MaxRecent, _recent.Count - MaxRecent);
-        _tray?.UpdateRecent(_recent);
+        Recent.Insert(0, new RecentItem(item));
+        while (Recent.Count > MaxRecent)
+            Recent.RemoveAt(Recent.Count - 1);
+        _tray?.UpdateRecent(Recent);
 
         var title = item.Kind switch
         {

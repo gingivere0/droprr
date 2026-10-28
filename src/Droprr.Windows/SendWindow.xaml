@@ -178,6 +178,78 @@
                 </Border>
             </Grid>
 
+            <!-- Received: newest first, each with Copy, Show in folder, and remove buttons (like a downloads list). -->
+            <Border Style="{StaticResource Tile}" Margin="0,12,0,0" Padding="16,12,8,8">
+                <StackPanel>
+                    <TextBlock Text="Received" Style="{StaticResource TileTitle}" Margin="0,0,0,8" />
+                    <TextBlock x:Name="ReceivedEmpty" Text="Nothing received yet." Style="{StaticResource Caption}" Margin="0,0,0,8" />
+                    <ListBox x:Name="ReceivedList" MaxHeight="200" Background="Transparent" BorderThickness="0" Padding="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Received items"
+                             KeyDown="OnReceivedKeyDown">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                                <Setter Property="AutomationProperties.HelpText" Value="{Binding Detail}" />
+                                <EventSetter Event="MouseLeftButtonUp" Handler="OnReceivedClick" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Row" CornerRadius="{StaticResource RadiusChip}" Padding="8,6" Background="Transparent">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource AccentTintBrush}" />
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource AccentTintBrush}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type local:RecentItem}">
+                                <DockPanel>
+                                    <Border DockPanel.Dock="Left" Width="32" Height="32" CornerRadius="{StaticResource RadiusTile}"
+                                            Background="{DynamicResource AccentTintBrush}" Margin="0,0,12,0">
+                                        <ui:SymbolIcon Symbol="{Binding Symbol}" FontSize="16" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                    </Border>
+                                    <ui:Button DockPanel.Dock="Right" Appearance="Transparent" Icon="{ui:SymbolIcon Dismiss16}" Padding="6"
+                                               ToolTip="Remove from list" AutomationProperties.Name="Remove from list" Click="OnRemoveRecent" />
+                                    <ui:Button DockPanel.Dock="Right" Appearance="Transparent" Icon="{ui:SymbolIcon FolderOpen20}" Padding="6"
+                                               ToolTip="Show in folder" AutomationProperties.Name="Show in folder" Click="OnShowRecent"
+                                               Visibility="{Binding IsFile, Converter={StaticResource BoolToVisibility}}"
+                                               IsEnabled="{Binding IsAvailable}" />
+                                    <ui:Button DockPanel.Dock="Right" Appearance="Transparent" Icon="{ui:SymbolIcon Copy20}" Padding="6"
+                                               ToolTip="Copy" AutomationProperties.Name="Copy" Click="OnCopyRecent"
+                                               IsEnabled="{Binding IsAvailable}" />
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,8,0">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsMissing}" Value="True">
+                                                            <Setter Property="TextDecorations" Value="Strikethrough" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding Detail}" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </Border>
+
             <!-- Status tile -->
             <ProgressBar x:Name="Progress" Style="{StaticResource BrandProgressBar}" Visibility="Collapsed" Margin="0,12,0,0" />
             <Border x:Name="SuccessTile" Style="{StaticResource Tile}" Visibility="Collapsed" Margin="0,12,0,0"
