@@ -25,7 +25,6 @@ Every error response, on any endpoint, has a 4xx or 5xx status and this body:
 | `400` | Bad body: empty content, unknown `type`, invalid URL, malformed JSON, or no items. |
 | `401` | Missing or wrong token. |
 | `404` | Unknown path. |
-| `415` | `/send` body isn't `multipart/form-data` or `application/json`. |
 | `500` | The receiver failed, for example while writing to disk. |
 
 ## `GET /ping`
@@ -59,7 +58,7 @@ Each part with a `filename` is saved as a file. Use the field name `file` for ea
 curl -H "Authorization: Bearer <token>" -F "file=@photo.jpg" -F "file=@notes.pdf" http://my-pc:53318/send
 ```
 
-A multipart body may also carry plain form fields named `text` or `url`. Each one is handled like the matching JSON form below, which helps clients such as iOS Shortcuts that find form bodies easier to build. Other form fields are ignored.
+A multipart body may also carry plain form fields. They become text or url items; see [Multipart parts](#multipart-parts).
 
 ### Text and links: `application/json`
 
@@ -83,6 +82,68 @@ Response `200` when everything in the request was saved:
 ```
 
 `received` (integer) is the number of items saved: files plus `text` and `url` items.
+
+## Lenient inputs
+
+Clients such as iOS Shortcuts can't always build the bodies above, so `POST /send` also accepts the following. This is part of protocol version 1, and every receiver must implement it exactly. The response and error shapes are unchanged.
+
+### How the body is classified
+
+| Content-Type | Filename present? | Result |
+| --- | --- | --- |
+| `multipart/form-data` | per part | See [Multipart parts](#multipart-parts). |
+| `application/json` | n/a | The JSON form above. |
+| `application/x-www-form-urlencoded` | n/a | See [URL-encoded forms](#url-encoded-forms). |
+| `text/plain` | no | One **text** item, or one **url** item if the body is a single web URL. |
+| `text/plain` | yes | One **file**. |
+| anything else, or missing | either | One **file** (a raw upload). |
+
+"Filename present" means an `X-Droprr-Filename` header or a `Content-Disposition` header with a filename.
+
+**Single web URL:** after trimming leading and trailing whitespace, the value contains no whitespace and parses as an absolute URL with scheme `http` or `https`.
+
+### Raw uploads
+
+The whole request body is the file. This is what Shortcuts sends for **Request Body: File**. The file name is the first of:
+
+1. the `X-Droprr-Filename` header, percent-decoded (for example `My%20Photo.HEIC` becomes `My Photo.HEIC`);
+2. the `filename*` parameter of a `Content-Disposition` header, then its `filename` parameter;
+3. `Droprr yyyy-MM-dd HHmmss` (local time).
+
+If the resulting name has no extension (including the fallback), the receiver appends one from the table below, based on the Content-Type's media type with any parameters removed. For example, `X-Droprr-Filename: IMG_0042` with `Content-Type: image/heic` is saved as `IMG_0042.heic`.
+
+| Media type | Extension |
+| --- | --- |
+| `image/jpeg` | `.jpg` |
+| `image/png` | `.png` |
+| `image/heic` | `.heic` |
+| `image/heif` | `.heif` |
+| `image/gif` | `.gif` |
+| `image/webp` | `.webp` |
+| `video/quicktime` | `.mov` |
+| `video/mp4` | `.mp4` |
+| `audio/mpeg` | `.mp3` |
+| `audio/mp4` | `.m4a` |
+| `application/pdf` | `.pdf` |
+| `application/zip` | `.zip` |
+| `text/plain` | `.txt` |
+| anything else, or missing | `.bin` |
+
+Whichever name is used goes through the same cleanup as multipart file names. An empty body is a `400` with `"empty body"`.
+
+### Multipart parts
+
+- A part with a filename (`filename` or `filename*` in its `Content-Disposition`) is a **file**, whatever its field name.
+- A part without a filename is **text**, or **url** if its value is a single web URL, whatever its field name. Empty parts are ignored.
+
+### URL-encoded forms
+
+Fields are read in this order: `url`, `content`, `text`, `file`. Other fields and empty values are ignored.
+
+- `url` is always a **url** item, and must be a valid absolute URL (otherwise `400`).
+- `content`, `text`, and `file` are **text**, or **url** if the value is a single web URL.
+
+This is what Shortcuts sends for a Form body whose field is Text rather than File.
 
 ## What a receiver does
 
