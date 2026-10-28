@@ -1,0 +1,9 @@
+// Shared build settings. Personal values (team ID, bundle ID prefix) go in
+// Config/Local.xcconfig, which is gitignored. Copy Local.xcconfig.example to start.
+
+DROPRR_BUNDLE_PREFIX = com.example
+DEVELOPMENT_TEAM =
+
+#include? "Local.xcconfig"
+
+DROPRR_APP_GROUP = group.$(DROPRR_BUNDLE_PREFIX).droprr
