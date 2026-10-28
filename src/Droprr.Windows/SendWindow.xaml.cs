@@ -41,6 +41,11 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         InputBindings.Add(new KeyBinding(ApplicationCommands.Close, Key.Escape, ModifierKeys.None));
 
         PeerBox.ItemsSource = _peers;
+        var clipboardCheck = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        clipboardCheck.Tick += (_, _) => UpdateSendClipboard();
+        Activated += (_, _) => UpdateSendClipboard();
+        Loaded += (_, _) => { UpdateSendClipboard(); clipboardCheck.Start(); };
+        Closed += (_, _) => clipboardCheck.Stop();
         FileList.ItemsSource = _files;
         _files.CollectionChanged += (_, _) => DropHint.Visibility = _files.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         AddPaths(files);
@@ -267,7 +272,47 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             MessageText.Text = Clipboard.GetText();
     }
 
+    // Send clipboard: whatever is on the clipboard (files, or else text) goes straight to the selected device,
+    // leaving the files and text already in this window alone.
+    async void OnSendClipboard(object sender, RoutedEventArgs e)
+    {
+        var paths = Clipboard.ContainsFileDropList()
+            ? Clipboard.GetFileDropList().Cast<string>().Where(File.Exists).ToList()
+            : new List<string>();
+        var text = paths.Count == 0 && Clipboard.ContainsText() ? Clipboard.GetText().Trim() : "";
+        if (paths.Count == 0 && text.Length == 0)
+        {
+            ShowStatus(InfoBarSeverity.Informational, "The clipboard is empty.");
+            return;
+        }
+        await SendAsync(paths, text, clearWindow: false);
+    }
+
+    // Enabled only when the clipboard holds files or text.
+    void UpdateSendClipboard()
+    {
+        try
+        {
+            SendClipboardButton.IsEnabled = Clipboard.ContainsFileDropList() || Clipboard.ContainsText();
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            // Another app has the clipboard open; check again on the next tick.
+        }
+    }
+
     async void OnSend(object sender, RoutedEventArgs e)
+    {
+        var text = MessageText.Text.Trim();
+        if (_files.Count == 0 && text.Length == 0)
+        {
+            ShowStatus(InfoBarSeverity.Informational, "Add files or type some text first.");
+            return;
+        }
+        await SendAsync(_files.Select(f => f.FullPath).ToList(), text, clearWindow: true);
+    }
+
+    async System.Threading.Tasks.Task SendAsync(List<string> paths, string text, bool clearWindow)
     {
         if (!SendButton.IsEnabled)
             return;
@@ -282,14 +327,7 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             ShowStatus(InfoBarSeverity.Warning, $"{peer.Name} isn't paired. Scan its code or enter its token in Settings.");
             return;
         }
-        var text = MessageText.Text.Trim();
-        if (_files.Count == 0 && text.Length == 0)
-        {
-            ShowStatus(InfoBarSeverity.Informational, "Add files or type some text first.");
-            return;
-        }
 
-        var paths = _files.Select(f => f.FullPath).ToList();
         var total = Math.Max(1, paths.Sum(p => new FileInfo(p).Length));
         long done = 0;
         var progress = new Progress<long>(n =>
@@ -299,6 +337,7 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         });
 
         SendButton.IsEnabled = false;
+        SendClipboardButton.IsEnabled = false;
         Progress.Value = 0;
         Progress.Visibility = paths.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         // Queuing for a phone is quiet: its "N waiting" badge and the tray count show the result.
@@ -321,8 +360,11 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
                     await Sender.SendTextAsync(peer, peer.Token, text);
                 ShowStatus(InfoBarSeverity.Success, $"Sent to {peer.Name}.");
             }
-            _files.Clear();
-            MessageText.Clear();
+            if (clearWindow)
+            {
+                _files.Clear();
+                MessageText.Clear();
+            }
         }
         catch (Exception ex)
         {
@@ -331,6 +373,7 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         finally
         {
             SendButton.IsEnabled = true;
+            UpdateSendClipboard();
             Progress.Visibility = Visibility.Collapsed;
         }
     }

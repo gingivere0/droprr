@@ -27,15 +27,16 @@
     </ui:FluentWindow.Resources>
 
     <StackPanel>
-        <ui:TitleBar x:Name="AppTitleBar" Title="Send with Droprr" ShowMaximize="False" />
+        <ui:TitleBar x:Name="AppTitleBar" Title="Send with Droprr" ShowMaximize="False">
+            <ui:TitleBar.TrailingContent>
+                <ui:Button Appearance="Transparent" Icon="{ui:SymbolIcon Settings24}" BorderThickness="0"
+                           ToolTip="Settings" AutomationProperties.Name="Settings" Click="OnSettings" />
+            </ui:TitleBar.TrailingContent>
+        </ui:TitleBar>
 
         <StackPanel Margin="{StaticResource WindowPadding}">
             <!-- Title row -->
-            <DockPanel Margin="0,0,0,12">
-                <ui:Button DockPanel.Dock="Right" Appearance="Transparent" Icon="{ui:SymbolIcon Settings24}"
-                           ToolTip="Settings" AutomationProperties.Name="Settings" Click="OnSettings" />
-                <TextBlock Text="Send to" Style="{StaticResource SubtitleText}" VerticalAlignment="Center" />
-            </DockPanel>
+            <TextBlock Text="Send to" Style="{StaticResource SubtitleText}" Margin="0,0,0,12" />
 
             <!-- Device tiles in a row; the selected one is filled with the accent. -->
             <ListBox x:Name="PeerBox" Background="Transparent" BorderThickness="0" Padding="0"
@@ -263,12 +264,13 @@
             <ui:InfoBar x:Name="StatusBar" Margin="0,12,0,0" IsOpen="False" IsClosable="True" />
 
             <!-- Bottom bar: a secondary button on the left, the primary Send on the right. -->
-            <DockPanel Margin="0,16,0,0" LastChildFill="False">
-                <ui:Button Content="Paste" Icon="{ui:SymbolIcon ClipboardPaste24}"
-                           ToolTip="Paste files or text (Ctrl+V)" Click="OnPaste" />
-                <ui:Button x:Name="SendButton" DockPanel.Dock="Right" Content="Send" Icon="{ui:SymbolIcon Send24}"
+            <StackPanel Margin="0,16,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+                <ui:Button x:Name="SendClipboardButton" Content="Send clipboard" Icon="{ui:SymbolIcon Clipboard24}"
+                           Style="{StaticResource TonalButton}" Margin="0,0,8,0"
+                           ToolTip="Send what's on the clipboard to the selected device" Click="OnSendClipboard" />
+                <ui:Button x:Name="SendButton" Content="Send" Icon="{ui:SymbolIcon Send24}"
                            Style="{StaticResource PrimaryActionButton}" IsDefault="True" ToolTip="Send (Ctrl+Enter)" Click="OnSend" />
-            </DockPanel>
+            </StackPanel>
         </StackPanel>
     </StackPanel>
 </ui:FluentWindow>
