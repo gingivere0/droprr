@@ -215,14 +215,30 @@ final class MacModel {
     }
 
     func chooseFiles(for peer: Peer) {
+        let urls = pickFiles(prompt: "Send", message: "Choose files to send to \(peer.name)")
+        guard !urls.isEmpty else { return }
+        Task { await send(.files(urls), to: peer) }
+    }
+
+    /// Shows an open panel and returns the chosen files (empty if cancelled).
+    func pickFiles(prompt: String = "Add", message: String = "Choose files to send") -> [URL] {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
-        panel.prompt = "Send"
-        panel.message = "Choose files to send to \(peer.name)"
+        panel.prompt = prompt
+        panel.message = message
         NSApp.activate(ignoringOtherApps: true)
-        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
-        Task { await send(.files(panel.urls), to: peer) }
+        return panel.runModal() == .OK ? panel.urls : []
+    }
+
+    /// Sends several payloads in order, stopping at the first failure. Returns true if all arrived.
+    @discardableResult
+    func send(_ payloads: [SendPayload], to peer: Peer) async -> Bool {
+        for payload in payloads {
+            await send(payload, to: peer)
+            if let result = lastSendResult, result.hasPrefix("Couldn't") { return false }
+        }
+        return true
     }
 
     func send(_ payload: SendPayload, to peer: Peer) async {

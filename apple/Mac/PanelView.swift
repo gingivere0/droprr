@@ -99,21 +99,21 @@ struct PanelView: View {
 
     private var footer: some View {
         HStack(spacing: Space.xs) {
-            FooterButton(symbol: "square.and.arrow.up", help: "Open the Send window to drop files or type text") {
+            FooterButton(symbol: "square.and.arrow.up", help: "Open the Send window (⌘N)", key: "n") {
                 openWindow(id: "send")
                 bringToFront()
             }
-            FooterButton(symbol: "folder", help: "Open the Droprr folder in Downloads") {
+            FooterButton(symbol: "folder", help: "Open the Droprr folder in Downloads (⌘D)", key: "d") {
                 try? FileManager.default.createDirectory(at: MacModel.inbox, withIntermediateDirectories: true)
                 NSWorkspace.shared.open(MacModel.inbox)
             }
-            FooterButton(symbol: "qrcode", help: "Pair a phone by scanning a QR code") {
+            FooterButton(symbol: "qrcode", help: "Pair a phone with a QR code (⌘P)", key: "p") {
                 openWindow(id: "pair")
                 bringToFront()
             }
-            FooterButton(symbol: "gearshape", help: "Settings: devices, pairing token, launch at login", action: showSettings)
+            FooterButton(symbol: "gearshape", help: "Settings (⌘,)", key: ",", action: showSettings)
             Spacer()
-            FooterButton(symbol: "power", help: "Quit Droprr") { NSApp.terminate(nil) }
+            FooterButton(symbol: "power", help: "Quit Droprr (⌘Q)", key: "q") { NSApp.terminate(nil) }
         }
     }
 
@@ -242,6 +242,7 @@ private struct RecentRow: View {
 private struct FooterButton: View {
     var symbol: String
     var help: String
+    var key: KeyEquivalent
     var action: () -> Void
     @State private var hovering = false
 
@@ -254,6 +255,7 @@ private struct FooterButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(help)
+        .keyboardShortcut(key)
         .hoverHint(help)
         .onHover { hovering = $0 }
     }

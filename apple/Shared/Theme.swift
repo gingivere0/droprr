@@ -163,25 +163,61 @@ struct GlyphCircle: View {
     }
 }
 
-/// The send result line, with a thin gradient progress bar while uploading.
+/// A native-style status banner for sends: spinner and progress while sending,
+/// a green check when sent, an orange warning on failure, and plain info otherwise.
 struct SendStatusView: View {
     var message: String?
     var progress: Double?
 
+    enum Kind { case working, success, failure, info }
+
+    static func kind(of message: String) -> Kind {
+        if message.hasPrefix("Sending") || message.hasPrefix("Preparing") || message.hasPrefix("Queueing") { return .working }
+        if message.hasPrefix("Sent") || message.hasPrefix("Paired") || message.hasPrefix("Cleared") || message.hasSuffix("paired.") { return .success }
+        if message.hasPrefix("Couldn't") || message.hasPrefix("Open the") || message.contains("empty") { return .failure }
+        return .info
+    }
+
     var body: some View {
-        if message != nil || progress != nil {
+        if let message {
+            let kind = Self.kind(of: message)
             VStack(alignment: .leading, spacing: Space.sm) {
-                if let progress {
-                    ProgressView(value: progress).tint(Theme.end)
-                }
-                if let message {
+                HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
+                    icon(kind)
                     Text(message)
                         .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .foregroundStyle(.primary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                if let progress, kind == .working {
+                    ProgressView(value: progress).tint(Theme.end)
+                        .accessibilityLabel("Upload progress")
                 }
             }
+            .padding(Space.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint(kind), in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+            .accessibilityElement(children: .combine)
             .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder private func icon(_ kind: Kind) -> some View {
+        switch kind {
+        case .working: ProgressView().controlSize(.small)
+        case .success: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case .failure: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        case .info: Image(systemName: "info.circle.fill").foregroundStyle(Theme.accentText)
+        }
+    }
+
+    private func tint(_ kind: Kind) -> Color {
+        switch kind {
+        case .success: return Color.green.opacity(0.12)
+        case .failure: return Color.orange.opacity(0.14)
+        case .working, .info: return Theme.accentTint
         }
     }
 }

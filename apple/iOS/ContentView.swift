@@ -110,14 +110,22 @@ private struct SendTab: View {
                     devicePicker
                     actionGrid
                     composer
-                    sendButton
                     SendStatusView(message: model.lastSendResult, progress: model.progress)
-                        .padding(.horizontal, Space.xs)
                 }
             }
             .padding(Space.lg)
         }
         .scrollDismissesKeyboard(.interactively)
+        // The Send button stays pinned above the tab bar so it's always in reach.
+        .safeAreaInset(edge: .bottom) {
+            if !desktops.isEmpty {
+                sendButton
+                    .padding(.horizontal, Space.lg)
+                    .padding(.vertical, Space.sm)
+                    .background(.bar)
+            }
+        }
+        .sensoryFeedback(.selection, trigger: peerID)
         .background(backdrop)
         .navigationTitle("Droprr")
         .toolbar {

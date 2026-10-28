@@ -77,7 +77,12 @@ final class ShareModel {
 struct ShareView: View {
     @Bindable var model: ShareModel
 
+    @State private var selectedID: UUID?
+
     private var desktops: [Peer] { model.settings.peers.filter { !$0.isPhone } }
+    private var selected: Peer? {
+        desktops.first { $0.id == selectedID } ?? desktops.first { $0.id == model.settings.lastPeerID } ?? desktops.first
+    }
 
     var body: some View {
         NavigationStack {
@@ -102,23 +107,23 @@ struct ShareView: View {
                     }
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: Space.md), GridItem(.flexible(), spacing: Space.md)], spacing: Space.md) {
                         ForEach(desktops) { peer in
-                            Button {
-                                Task { await model.send(to: peer) }
-                            } label: {
-                                VStack(spacing: Space.md) {
+                            let isSelected = peer.id == selected?.id
+                            Button { selectedID = peer.id } label: {
+                                VStack(spacing: Space.sm) {
                                     GlyphCircle(symbol: model.sentTo == peer.id ? "checkmark" : Theme.symbol(for: peer),
-                                                size: 50, filled: true)
+                                                size: 48, filled: isSelected)
                                     Text(peer.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                                    if peer.id == model.settings.lastPeerID {
-                                        Text("Last used").font(.caption2).foregroundStyle(.secondary)
-                                    }
+                                    Text(Theme.platformName(peer.platform)).font(.caption).foregroundStyle(.secondary)
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, Space.lg)
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                                .background(isSelected ? AnyShapeStyle(Theme.accentTint) : AnyShapeStyle(.regularMaterial),
+                                            in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                                    .strokeBorder(isSelected ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(.clear), lineWidth: 2))
                             }
                             .buttonStyle(.plain)
-                            .disabled(model.loading || model.sending || model.payloads.isEmpty)
+                            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
                         }
                     }
 
@@ -127,6 +132,28 @@ struct ShareView: View {
                 .padding(Space.lg)
             }
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .safeAreaInset(edge: .bottom) {
+                Button {
+                    guard let peer = selected else { return }
+                    Task { await model.send(to: peer) }
+                } label: {
+                    HStack(spacing: Space.sm) {
+                        if model.sending { ProgressView().tint(.white) } else { Image(systemName: "paperplane.fill") }
+                        Text(selected.map { "Send to \($0.name)" } ?? "Send")
+                    }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                    .foregroundStyle(.white)
+                    .background(Theme.gradient, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(selected == nil || model.loading || model.sending || model.payloads.isEmpty)
+                .opacity(selected == nil || model.payloads.isEmpty ? 0.45 : 1)
+                .padding(.horizontal, Space.lg)
+                .padding(.vertical, Space.sm)
+                .background(.bar)
+            }
+            .sensoryFeedback(.selection, trigger: selectedID)
             .navigationTitle("Droprr")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
