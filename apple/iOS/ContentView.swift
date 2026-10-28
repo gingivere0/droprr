@@ -62,6 +62,11 @@ private struct SendTab: View {
         .navigationTitle("Droprr")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { LogoBadge(size: 28) }
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { typing = false }
+                    .fontWeight(.semibold)
+            }
         }
         .animation(.default, value: model.lastSendResult)
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
