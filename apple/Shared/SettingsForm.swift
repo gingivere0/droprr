@@ -106,7 +106,12 @@ struct SettingsForm<Extra: View>: View {
 
             Section {
                 TextField("Device name", text: $settings.deviceName)
+                #if os(macOS)
                 Toggle("Auto-copy received items to clipboard", isOn: $settings.autoCopy)
+                    .hoverHint("Text and links are always copied. This also copies received files and images.")
+                #else
+                Toggle("Auto-copy received items to clipboard", isOn: $settings.autoCopy)
+                #endif
                 TextField("Port", value: $settings.port, format: .number.grouping(.never))
                 #if os(iOS)
                     .keyboardType(.numberPad)

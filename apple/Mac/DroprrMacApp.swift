@@ -118,7 +118,11 @@ final class MacModel {
     }
 
     private func received(_ item: ReceivedItem) {
-        if settings.autoCopy { Clipboard.copy(item) }
+        // Like Windows: text and links are always copied; the auto-copy setting adds files and images.
+        switch item.kind {
+        case .text, .url: Clipboard.copy(item)
+        case .file: if settings.autoCopy { Clipboard.copy(item) }
+        }
         withAnimation { recent.insert(item, at: 0) }
         recent = Array(recent.prefix(8))
         Notifier.shared.notify(item)
