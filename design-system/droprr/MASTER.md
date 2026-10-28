@@ -49,6 +49,40 @@ Use the platform's own values. Don't hard-code grays.
 | Error | `SystemFillColorCriticalBrush` | `.red` |
 | QR code plate | White in both themes | White in both themes |
 
+## Bento themes
+
+Droprr's look is the **Bento Grid**: the window or screen is a light-gray (or charcoal) surface, and everything sits on rounded tiles of mixed sizes with a 12-pt gap. There are six color themes. The user picks one in Settings (Appearance); **Graphite & Lime** (`graphiteLime`) is the default. Every theme has a light and a dark variant that follows the OS appearance. Exact values for every role are in [`tokens.json`](tokens.json) under `themes`.
+
+| ID | Name | Light accent / secondary | Dark accent / secondary |
+| --- | --- | --- | --- |
+| `graphiteLime` | Graphite & Lime | `#1F2024` / `#A3E635` | `#E9EAEE` / `#A3E635` |
+| `sunset` | Sunset | `#E8590C` / `#7048E8` | `#FF7A30` / `#9B7BFF` |
+| `cherry` | Cherry | `#D6293E` / `#0F9D8F` | `#F0475A` / `#2DD4BF` |
+| `roseGold` | Rose Gold | `#C2577A` / `#C9973A` | `#E07A9C` / `#E0B25A` |
+| `sage` | Sage | `#6B8F71` / `#C8704A` | `#8FB596` / `#E08A63` |
+| `oliveMustard` | Olive & Mustard | `#5E6B2B` / `#D9A520` | `#A3B25A` / `#E8B93A` |
+
+### Roles
+
+| Role | Use |
+| --- | --- |
+| `surface` | Window or screen background behind the tiles. |
+| `tile` | Every tile: device cards, the drop area, settings sections, list rows. |
+| `border` | Hairline tile outline and dividers. |
+| `accent` / `onAccent` | The **selected** tile (selected device, selected action), toggles, the app glyph tile. Text and icons on it use `onAccent`. |
+| `accentTint` / `accentText` | Unselected icon wells (rounded squares behind glyphs), links, small accent text. |
+| `secondary`, `secondaryTint`, `secondaryText` | One contrasting tile per screen: the message/text tile and "N waiting" badges. Icon well filled with `secondary`. |
+| `primaryButton` / `onPrimaryButton` | The main action (Send, Pair a Phone): near-black in light mode, the accent in dark mode. |
+| `textPrimary`, `textSecondary` | Text on `surface` and `tile`. Platforms may use their native label colors if they match. |
+| `successFill`, `successText` (under `bento`) | The "Sent" status tile. |
+
+### Layout
+
+- **Send screen:** title row; "Send to" device tiles in a row (selected one filled with `accent`); below, a large drop tile on the left and the `secondary` message tile on the right; status tile; bottom bar with a secondary button on the left and the primary Send button on the right.
+- **Settings:** a "This device" hero tile (name, status chips, Pair a Phone), then Devices, Receiving, Token and **Appearance** tiles. Appearance shows six swatches (accent + secondary dots) with the current one ringed.
+- **Phone Send:** device chips; an action grid with Photos as a tall tile and Clipboard and Files stacked beside it; text tile; status tile; full-width primary Send button above the tab bar.
+- Tiles have no drop shadow beyond a 1-px `border` (light) and no gradients. The brand violet/coral gradient remains only in the app icon and logo.
+
 ## Typography
 
 System fonts only: **Segoe UI Variable** on Windows (WPF UI's default) and **SF Pro** on Apple. No bundled or web fonts.
