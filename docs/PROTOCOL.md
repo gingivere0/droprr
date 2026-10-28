@@ -6,7 +6,7 @@ Devices talk over plain HTTP inside a Tailscale network. Tailscale's WireGuard t
 
 ## Transport
 
-- **Addresses:** a receiver listens only on its Tailscale IPv4 address (in `100.64.0.0/10`) and on localhost. It never binds to LAN or public interfaces.
+- **Addresses:** a receiver accepts connections only from its Tailscale network and from localhost. The simplest way is to listen only on its Tailscale IPv4 address (in `100.64.0.0/10`) and on localhost. See [Implementation notes](#implementation-notes) for the alternative.
 - **Port:** configurable. The default is **`53318`**.
 - **Host names:** senders address peers by their Tailscale MagicDNS name, for example `http://my-pc:53318`.
 - **Auth:** every request, including `/ping`, must send `Authorization: Bearer <token>`. A missing or wrong token gets `401`.
@@ -88,6 +88,75 @@ Response `200` when everything in the request was saved:
 
 - **Files** are saved to a `Droprr` folder in the user's Downloads (configurable). File names lose any path parts and invalid characters, and an existing file is never overwritten: the receiver adds ` (1)`, ` (2)`, and so on instead.
 - **Text** is saved as `Text <date time>.txt` and copied to the clipboard.
-- **Links** are saved as an internet shortcut (`Link <date time>.url` on Windows) and copied to the clipboard.
+- **Links** are saved as an internet shortcut and copied to the clipboard.
 - A notification appears for each item.
 - There's no size limit, so receivers should stream files to disk rather than hold them in memory.
+
+## Inbox (phone pull)
+
+A phone can't listen for incoming connections, so it pulls items from desktops instead.
+
+- **Outbox:** each desktop keeps an outbox per peer. A send to a peer whose `/ping` reports `"platform": "ios"` is always queued in that peer's outbox and never pushed directly.
+- **Polling:** the phone polls each desktop peer when its app opens, or when the "Get from PC" shortcut runs.
+- **Expiry:** items expire 7 days after they're queued, whether or not they were fetched.
+
+All inbox endpoints need the same `Authorization: Bearer <token>` header and use the [error shape](#errors) above.
+
+### `GET /inbox?for=<device name>`
+
+Lists the items queued for the named device, oldest first. `<device name>` is the phone's `name`, URL-encoded.
+
+Response `200`:
+
+```json
+{
+  "ok": true,
+  "items": [
+    {
+      "id": "3f1c2a9e-8d4b-4e0a-9c7f-2b6d5e1a0c34",
+      "type": "file",
+      "name": "photo.jpg",
+      "size": 482113,
+      "created": "2026-10-28T09:00:00Z"
+    },
+    {
+      "id": "a7e0b5d2-1c3f-4a8e-b6d9-0f2e4c1b7a95",
+      "type": "url",
+      "name": "Link",
+      "size": 24,
+      "content": "https://example.com/page",
+      "created": "2026-10-28T09:01:00Z"
+    }
+  ]
+}
+```
+
+- `id` (string): a UUID.
+- `type` (string): `"file"`, `"text"`, or `"url"`.
+- `name` (string): the file name for files; a short label for text and links.
+- `size` (integer): bytes. For text and links, the UTF-8 length of `content`.
+- `content` (string): present only for `text` and `url` items.
+- `created` (string): when the item was queued, in ISO 8601 UTC.
+
+An empty outbox returns `"items": []`.
+
+### `GET /inbox/<id>`
+
+Downloads a `file` item's bytes, with `Content-Type` set to the file's media type (`application/octet-stream` if unknown) and `Content-Disposition: attachment; filename="..."` (plus `filename*=UTF-8''...` for non-ASCII names). An unknown or expired `id` returns `404`.
+
+### `DELETE /inbox/<id>`
+
+Acknowledges an item and removes it from the outbox. The phone calls this after it has saved the item.
+
+Response `200`:
+
+```json
+{ "ok": true }
+```
+
+An unknown or expired `id` returns `404`.
+
+## Implementation notes
+
+- **Binding:** a listener may bind to all interfaces (`0.0.0.0` or `::`) instead of specific addresses, as long as it immediately drops any connection whose source address isn't loopback, in `100.64.0.0/10` (Tailscale IPv4), or in `fd7a:115c:a1e0::/48` (Tailscale IPv6). This helps on platforms where the Tailscale address is hard to find or changes often.
+- **Link files:** platforms may save links in their native shortcut format. Windows saves `Link <date time>.url`, and macOS saves `Link <date time>.webloc`.
