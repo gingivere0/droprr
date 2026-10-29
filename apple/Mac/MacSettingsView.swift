@@ -45,6 +45,8 @@ struct MacSettingsView: View {
     var body: some View {
         ScrollView { content }
         .frame(width: 580, height: 680)
+        // macOS focuses the first text field (the name) when the window opens; don't.
+        .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { endEditing() } }
         .seamlessWindow()
         .lookRoot()
         .onChange(of: settings.style) {
@@ -96,6 +98,7 @@ struct MacSettingsView: View {
                     .textFieldStyle(.plain)
                     .font(Look.isAtelier ? Look.display(26) : Look.display(18, weight: Look.style == .clay ? .heavy : .semibold))
                     .accessibilityLabel("Device name")
+                    .onSubmit(endEditing)
                 HStack(spacing: 7) {
                     StatusDot(on: model.isListening)
                     Text(model.isListening ? "Ready to receive" : "Not receiving")
@@ -151,6 +154,11 @@ struct MacSettingsView: View {
         }
         .buttonStyle(.plain)
         .hoverHint("Style and colors")
+    }
+
+    /// Return (or opening the window) leaves no field focused, so no cursor lingers.
+    private func endEditing() {
+        NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
     private var style: some View {
@@ -225,7 +233,7 @@ struct MacSettingsView: View {
                     .font(.system(size: 13).monospacedDigit())
                     .multilineTextAlignment(.trailing)
                     .frame(width: 72)
-                    .onSubmit { model.restartIfNeeded() }
+                    .onSubmit { model.restartIfNeeded(); endEditing() }
                     .accessibilityLabel("Port")
             }
             Hairline()
@@ -250,6 +258,7 @@ struct MacSettingsView: View {
                 .padding(.vertical, 6)
                 .overlay(alignment: .bottom) { Hairline() }
                 .accessibilityLabel("Token")
+                .onSubmit(endEditing)
                 Button { showToken.toggle() } label: { Image(systemName: showToken ? "eye.slash" : "eye") }
                     .buttonStyle(HoverButtonStyle(.plain))
                     .foregroundStyle(Look.muted)
