@@ -99,6 +99,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let id = NSUserInterfaceItemIdentifier("droprr.glass")
         guard let content = window.contentView, let frame = content.superview else { return }
         let existing = frame.subviews.first { $0.identifier == id }
+        // A see-through window still draws the title bar's own (light) material, even with a
+        // transparent title bar; hide it so the glass shows through.
+        func titlebarMaterials(in view: NSView) -> [NSVisualEffectView] {
+            view.subviews.flatMap { sub -> [NSVisualEffectView] in
+                (sub as? NSVisualEffectView).map { [$0] } ?? titlebarMaterials(in: sub)
+            }
+        }
+        for container in frame.subviews where String(describing: type(of: container)).contains("Titlebar") {
+            for material in titlebarMaterials(in: container) { material.isHidden = Look.forcesDark }
+        }
         if Look.forcesDark {
             guard existing == nil else { return }
             let glass = NSVisualEffectView(frame: frame.bounds)

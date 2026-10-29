@@ -6,6 +6,7 @@ import SwiftUI
 @MainActor
 enum SnapshotSupport {
     static func runIfRequested(model: MacModel) {
+        dumpWindowsIfRequested()
         guard let dir = ProcessInfo.processInfo.environment["DROPRR_SNAPSHOT"] else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             for scheme in [ColorScheme.light, .dark] {
@@ -26,6 +27,31 @@ enum SnapshotSupport {
         guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
               let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return }
         try? png.write(to: URL(fileURLWithPath: path))
+    }
+}
+extension SnapshotSupport {
+    /// `DROPRR_WINDOW_DUMP=<file>` opens Settings, then writes each window's view tree
+    /// (class, frame, opacity, layer color) so window chrome can be checked without a screen.
+    static func dumpWindowsIfRequested() {
+        guard let file = ProcessInfo.processInfo.environment["DROPRR_WINDOW_DUMP"] else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            var out = ""
+            func walk(_ view: NSView, _ depth: Int) {
+                let fx = (view as? NSVisualEffectView).map { " material=\($0.material.rawValue) blend=\($0.blendingMode.rawValue)" } ?? ""
+                out += String(repeating: "  ", count: depth) + "\(type(of: view)) \(view.frame) hidden=\(view.isHidden) opaque=\(view.isOpaque) alpha=\(view.alphaValue) layerBg=\(String(describing: view.layer?.backgroundColor))\(fx)\n"
+                for sub in view.subviews { walk(sub, depth + 1) }
+            }
+            for window in NSApp.windows where window.isVisible {
+                out += "WINDOW \(type(of: window)) '\(window.title)' opaque=\(window.isOpaque) bg=\(window.backgroundColor) transparentTitle=\(window.titlebarAppearsTransparent) style=\(window.styleMask.rawValue) toolbar=\(String(describing: window.toolbar)) appearance=\(String(describing: window.appearance?.name))\n"
+                if let frame = window.contentView?.superview { walk(frame, 1) }
+            }
+            try? out.write(toFile: file, atomically: true, encoding: .utf8)
+            NSApp.terminate(nil)
+        }
     }
 }
 #endif
