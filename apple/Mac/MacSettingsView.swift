@@ -64,19 +64,11 @@ struct MacSettingsView: View {
         .sheet(item: $editing) { peer in
             PeerEditor(peer: peer, isNew: !settings.peers.contains { $0.id == peer.id }, focusToken: editingToken,
                        onRemove: { editing = nil; removing = peer }) { saved in
-                if let saved {
-                    let tokenChanged = settings.peers.first { $0.id == saved.id }?.token != saved.token
-                    if let i = settings.peers.firstIndex(where: { $0.id == saved.id }) {
-                        settings.peers[i] = saved
-                    } else {
-                        settings.peers.append(saved)
-                    }
-                    if tokenChanged {
-                        // Switch both sides to per-device tokens, then check the connection.
-                        Task {
-                            await settings.exchangeTokens(with: saved)
-                            if let current = settings.peers.first(where: { $0.id == saved.id }) { await ping(current) }
-                        }
+                if let saved, settings.save(saved) {
+                    // Switch both sides to per-device tokens, then check the connection.
+                    Task {
+                        await settings.exchangeTokens(with: saved)
+                        if let current = settings.peers.first(where: { $0.id == saved.id }) { await ping(current) }
                     }
                 }
                 editing = nil
@@ -295,16 +287,7 @@ struct MacSettingsView: View {
 
     private func ping(_ peer: Peer) async {
         pingResults[peer.id] = .checking
-        do {
-            let info = try await DroprrClient(peer: peer).ping()
-            pingResults[peer.id] = .ok("\(Theme.platformName(info.platform)) · v\(info.version)")
-            if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) {
-                settings.peers[i].platform = info.platform
-                settings.peers[i].remoteName = info.name
-            }
-        } catch {
-            pingResults[peer.id] = .failed(error.localizedDescription)
-        }
+        pingResults[peer.id] = await settings.ping(peer)
     }
 }
 

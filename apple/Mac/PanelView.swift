@@ -88,7 +88,7 @@ struct PanelView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .hoverHint("Open or close the Send window", edge: .bottom)
+        .hoverHint("Open or close the Send window")
     }
 
     private var sendWindow: NSWindow? {

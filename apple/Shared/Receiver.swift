@@ -97,7 +97,9 @@ final class DroprrReceiver {
         case ("POST", "outbox") where route.segments.count == 2:
             // Loopback-only hand-off from the Mac share extension: queue for a phone peer.
             return outbox != nil && Self.isLoopback(request.remoteHost) ? nil : .json(404, ["ok": false, "error": "not found"])
-        case ("GET", "inbox"), ("DELETE", "inbox") where route.segments.count == 2:
+        case ("GET", "inbox"):
+            return outbox == nil ? .json(404, ["ok": false, "error": "not found"]) : nil
+        case ("DELETE", "inbox") where route.segments.count == 2:
             return outbox == nil ? .json(404, ["ok": false, "error": "not found"]) : nil
         default:
             return .json(404, ["ok": false, "error": "not found"])

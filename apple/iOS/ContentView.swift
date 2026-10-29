@@ -628,7 +628,7 @@ private struct ReceivedTab: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, Space.lg)
                     .padding(.vertical, Space.md)
-                    .background(Theme.gradient, in: Capsule())
+                    .background(Theme.start, in: Capsule())
                     .padding(.bottom, Space.lg)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }

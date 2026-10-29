@@ -40,11 +40,12 @@ enum SharedItems {
         // Everything else (photos, videos, documents) as a file.
         guard let type = types.first(where: { $0.conforms(to: .data) || $0.conforms(to: .package) })?.identifier
                 ?? provider.registeredTypeIdentifiers.first else { return nil }
+        let suggestedName = provider.suggestedName
         return await withCheckedContinuation { continuation in
             _ = provider.loadFileRepresentation(forTypeIdentifier: type) { temp, _ in
                 // The system deletes `temp` when this returns, so copy it out first.
                 var name = temp?.lastPathComponent ?? "Shared item"
-                if let suggested = provider.suggestedName, !suggested.isEmpty {
+                if let suggested = suggestedName, !suggested.isEmpty {
                     let ext = temp?.pathExtension ?? ""
                     name = ext.isEmpty || suggested.hasSuffix(".\(ext)") ? suggested : "\(suggested).\(ext)"
                 }

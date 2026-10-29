@@ -46,7 +46,7 @@ extension SnapshotSupport {
                 for sub in view.subviews { walk(sub, depth + 1) }
             }
             for window in NSApp.windows where window.isVisible {
-                out += "WINDOW \(type(of: window)) '\(window.title)' opaque=\(window.isOpaque) bg=\(window.backgroundColor) transparentTitle=\(window.titlebarAppearsTransparent) style=\(window.styleMask.rawValue) toolbar=\(String(describing: window.toolbar)) appearance=\(String(describing: window.appearance?.name))\n"
+                out += "WINDOW \(type(of: window)) '\(window.title)' opaque=\(window.isOpaque) bg=\(String(describing: window.backgroundColor)) transparentTitle=\(window.titlebarAppearsTransparent) style=\(window.styleMask.rawValue) toolbar=\(String(describing: window.toolbar)) appearance=\(String(describing: window.appearance?.name))\n"
                 if let frame = window.contentView?.superview { walk(frame, 1) }
             }
             try? out.write(toFile: file, atomically: true, encoding: .utf8)
