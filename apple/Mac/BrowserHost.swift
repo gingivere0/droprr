@@ -254,6 +254,18 @@ final class BrowserHost: NSObject, WKNavigationDelegate {
                 onChange()
             }
             return .json(200, ["ok": true])
+        case ("POST", "/api/invite"):
+            // A connected browser's Show QR code (host.js only asks for an accepted browser). Opens the join secret
+            // (10 minutes) unless one is already open, e.g. from Pair a phone.
+            return await MainActor.run {
+                if access.secret == nil {
+                    access.openJoin()
+                    configChanged()
+                    onChange()
+                }
+                guard let link = joinLink else { return .json(503, ["ok": false, "error": "not ready"]) }
+                return .json(200, ["ok": true, "link": link])
+            }
         case ("POST", "/api/hello"):
             let body = json(request)
             return await MainActor.run { hello(id: body["id"] as? String ?? "", name: body["name"] as? String ?? "",
