@@ -536,15 +536,15 @@ struct Stripes: View {
     }
 }
 
-/// System / Light / Dark. Spatial is always dark, so the choice waits until another style is picked.
+/// Light / Dark / System. Spatial is always dark, so the choice waits until another style is picked.
 struct ColorModePicker: View {
     @Bindable var settings: DroprrSettings
 
     var body: some View {
         Picker("Mode", selection: $settings.colorMode) {
-            Text("System").tag("system")
             Text("Light").tag("light")
             Text("Dark").tag("dark")
+            Text("System").tag("system")
         }
         .pickerStyle(.segmented)
         .labelsHidden()
