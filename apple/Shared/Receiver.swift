@@ -1,4 +1,6 @@
+import CryptoKit
 import Foundation
+import Network
 
 /// What a desktop's outbox exposes to the receiver for the /inbox endpoints.
 protocol OutboxServing: AnyObject {
@@ -22,6 +24,21 @@ struct PairRequest {
     var token: String?
     /// The device token this desktop minted for the caller, to accept from it.
     var acceptToken: String
+    // Protocol 2, when the caller sends them.
+    var deviceID: String?
+    var fingerprint: String?
+    var tlsPort: Int?
+    var lan: [String]?
+    /// Set when the caller authenticated with a device token: update that peer rather than adding one.
+    var existingPeerID: UUID?
+}
+
+/// A device asking to pair over the LAN (POST /pair/request), waiting for the person to confirm.
+struct LANPairRequest {
+    var name: String
+    var platform: String
+    /// The six digits both screens show.
+    var code: String
 }
 
 struct ReceivedItem: Identifiable {
@@ -47,6 +64,8 @@ struct ReceivedItem: Identifiable {
 /// Implements the receiving half of docs/PROTOCOL.md on top of HTTPServer.
 final class DroprrReceiver {
     private let server = HTTPServer()
+    /// Protocol 2: HTTPS on the HTTP port + 1, for the LAN (and optionally Tailscale).
+    private var secureServer: HTTPServer?
     private let settings: DroprrSettings
     private let inbox: URL
 
@@ -57,6 +76,9 @@ final class DroprrReceiver {
     var outbox: OutboxServing?
     /// Desktops handle POST /pair with this. Called on the main queue.
     var onPair: ((PairRequest) -> Void)?
+    /// Asks the person to confirm a LAN pairing; true to accept. Called on the main queue.
+    /// The receiver answers 408 itself if this hasn't returned after 60 seconds.
+    var onPairRequest: ((LANPairRequest) async -> Bool)?
 
     init(settings: DroprrSettings, inbox: URL) {
         self.settings = settings
@@ -74,13 +96,57 @@ final class DroprrReceiver {
         } catch {
             onStateChange("Couldn't listen on port \(settings.port): \(error.localizedDescription)")
         }
+        startSecure()
     }
 
-    func stop() { server.stop() }
+    func stop() {
+        server.stop()
+        secureServer?.stop()
+        secureServer = nil
+    }
+
+    /// Starts or stops the HTTPS listener and its Bonjour advertisement to match the Local network setting.
+    func startSecure() {
+        secureServer?.stop()
+        secureServer = nil
+        guard settings.localNetwork, let identity = settings.identity?.tlsIdentity else { return }
+        let secure = HTTPServer(policy: .lan, identity: identity)
+        secure.precheck = server.precheck
+        secure.handler = server.handler
+        do {
+            try secure.start(port: settings.tlsPort, service: bonjourService)
+            secureServer = secure
+        } catch {
+            NSLog("Droprr: HTTPS listener failed: %@", String(describing: error))
+        }
+    }
+
+    /// Re-advertises after the device name changes.
+    func refreshAdvertisement() {
+        secureServer?.advertise(bonjourService)
+    }
+
+    /// `_droprr._tcp`, named after this device, with the protocol 2 TXT record.
+    private var bonjourService: NWListener.Service? {
+        guard let fp = settings.identity?.fingerprint else { return nil }
+        var txt = NWTXTRecord()
+        txt["v"] = "2"
+        txt["id"] = settings.deviceID
+        txt["name"] = settings.deviceName
+        txt["platform"] = DroprrSettings.platform
+        txt["port"] = String(settings.tlsPort)
+        txt["fp"] = fp
+        return NWListener.Service(name: settings.deviceName, type: Bonjour.serviceType, txtRecord: txt)
+    }
+
 
     // MARK: - Routing
 
     private func precheck(_ request: HTTPServer.Request) -> HTTPServer.Response? {
+        // LAN pairing is the one request without a token, and only over HTTPS.
+        if request.method == "POST", Route(request).segments == ["pair", "request"] {
+            return request.secure && onPairRequest != nil ? nil : .json(404, ["ok": false, "error": "not found"])
+        }
         guard authorization(request) != nil else {
             if !settings.hasMainToken && settings.peers.allSatisfy({ ($0.acceptToken ?? "").isEmpty }) {
                 return .json(503, ["ok": false, "error": "no pairing token set on this device"])
@@ -163,6 +229,9 @@ final class DroprrReceiver {
         if route.segments.first == "inbox", let outbox {
             return handleInbox(request, route, outbox)
         }
+        if route.segments == ["pair", "request"] {
+            return await handlePairRequest(request)
+        }
         if route.segments.first == "pair", let onPair {
             guard let body = request.bodyFile, let data = try? Data(contentsOf: body),
                   let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
@@ -188,11 +257,15 @@ final class DroprrReceiver {
             let callerToken = (json["token"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             let minted = DroprrSettings.generateToken()
             // Store before answering, so the caller's very next request with the new token is accepted.
-            DispatchQueue.main.sync {
-                onPair(PairRequest(name: name, platform: platform, host: host, port: port,
-                                   token: platform == "ios" ? nil : callerToken, acceptToken: minted))
-            }
-            return .json(200, ["ok": true, "name": settings.deviceName, "token": minted])
+            // Protocol 2 phones also mint a token, for direct sends while Droprr is open on them.
+            var existing: UUID?
+            if case .device(let id) = authorization(request) { existing = id }
+            let pair = PairRequest(name: name, platform: platform, host: host, port: port,
+                                   token: callerToken, acceptToken: minted,
+                                   deviceID: json["id"] as? String, fingerprint: Self.fingerprint(json["fp"]),
+                                   tlsPort: json["tlsPort"] as? Int, lan: json["lan"] as? [String], existingPeerID: existing)
+            DispatchQueue.main.sync { onPair(pair) }
+            return .json(200, responseFields(token: minted))
         }
         if route.segments.first == "outbox", let outbox {
             let temp = FileManager.default.temporaryDirectory.appendingPathComponent("droprr-fwd-\(UUID().uuidString)")
@@ -211,7 +284,7 @@ final class DroprrReceiver {
         }
         if route.segments.first == "ping" {
             return .json(200, ["name": settings.deviceName, "version": DroprrDefaults.version,
-                               "platform": DroprrSettings.platform, "protocol": 1])
+                               "platform": DroprrSettings.platform, "protocol": 2].merging(settings.ownIdentityFields) { a, _ in a })
         }
         do {
             let items = try receive(request, into: inbox)
@@ -226,6 +299,83 @@ final class DroprrReceiver {
             NSLog("Droprr receiver error: %@", String(describing: error))
             return .json(500, ["ok": false, "error": "receiver error"])
         }
+    }
+
+    /// The /pair and /pair/request answer: this device's name, the minted token, its protocol 2 identity,
+    /// and its Tailscale host so a device paired over the LAN still has a fallback.
+    private func responseFields(token: String) -> [String: Any] {
+        var fields: [String: Any] = ["ok": true, "name": settings.deviceName, "token": token]
+        fields.merge(settings.ownIdentityFields) { a, _ in a }
+        if let host = PairingInfo.tailscaleAddress() { fields["host"] = host }
+        return fields
+    }
+
+    // MARK: - LAN pairing (POST /pair/request)
+
+    private let pairLock = NSLock()
+    private var pairPending = false
+    private var pairStrikes: [String: [Date]] = [:]
+
+    private static func fingerprint(_ value: Any?) -> String? {
+        guard let text = (value as? String)?.lowercased(), text.count == 64, text.allSatisfy(\.isHexDigit) else { return nil }
+        return text
+    }
+
+    /// The six digits both devices show: SHA-256 of the two fingerprints, sorted and joined with ":",
+    /// first 4 bytes as a big-endian integer, modulo 1,000,000.
+    static func pairingCode(_ a: String, _ b: String) -> String {
+        let digest = Array(SHA256.hash(data: Data([a, b].sorted().joined(separator: ":").utf8)))
+        let value = UInt32(digest[0]) << 24 | UInt32(digest[1]) << 16 | UInt32(digest[2]) << 8 | UInt32(digest[3])
+        return String(format: "%06u", value % 1_000_000)
+    }
+
+    private func handlePairRequest(_ request: HTTPServer.Request) async -> HTTPServer.Response {
+        guard let ask = onPairRequest, let onPair, let ownFP = settings.identity?.fingerprint else {
+            return .json(404, ["ok": false, "error": "not found"])
+        }
+        let address = request.remoteHost ?? ""
+        let now = Date()
+        let busy: Bool = pairLock.withLock {
+            pairStrikes[address] = pairStrikes[address]?.filter { now.timeIntervalSince($0) < 600 }
+            if pairPending || (pairStrikes[address]?.count ?? 0) >= 3 { return true }
+            pairPending = true
+            return false
+        }
+        guard !busy else { return .json(429, ["ok": false, "error": "try again later"]) }
+        defer { pairLock.withLock { pairPending = false } }
+
+        guard let body = request.bodyFile, let data = try? Data(contentsOf: body),
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let name = (json["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
+              let platform = json["platform"] as? String, ["ios", "macos", "windows"].contains(platform),
+              let fp = Self.fingerprint(json["fp"]) else {
+            return .json(400, ["ok": false, "error": "expected id, name, platform and fp"])
+        }
+        let code = Self.pairingCode(ownFP, fp)
+        let answer: Bool? = await withTaskGroup(of: Bool?.self) { group in
+            group.addTask { @MainActor in await ask(LANPairRequest(name: name, platform: platform, code: code)) }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(60))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+        guard answer == true else {
+            pairLock.withLock { pairStrikes[address, default: []].append(Date()) }
+            return answer == nil ? .json(408, ["ok": false, "error": "timed out"]) : .json(403, ["ok": false, "error": "declined"])
+        }
+        let minted = DroprrSettings.generateToken()
+        var port = DroprrDefaults.port
+        if let value = json["port"] as? Int, (1...65535).contains(value) { port = value }
+        let pair = PairRequest(name: name, platform: platform,
+                               host: (json["host"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                               port: port, token: (json["token"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                               acceptToken: minted, deviceID: json["id"] as? String, fingerprint: fp,
+                               tlsPort: json["tlsPort"] as? Int, lan: json["lan"] as? [String])
+        await MainActor.run { onPair(pair) }
+        return .json(200, responseFields(token: minted))
     }
 
     private struct Failure: Error {

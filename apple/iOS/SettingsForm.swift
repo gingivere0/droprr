@@ -83,13 +83,14 @@ struct SettingsForm: View {
 
             Section {
                 TextField("Device name", text: $settings.deviceName)
+                Toggle("Local network", isOn: $settings.localNetwork)
                 Toggle("Auto-copy received items to clipboard", isOn: $settings.autoCopy)
                 TextField("Port", value: $settings.port, format: .number.grouping(.never))
                     .keyboardType(.numberPad)
             } header: {
                 Text("This device")
             } footer: {
-                Text("Other devices see this name. Port \(String(DroprrDefaults.port)) is the default.")
+                Text("Other devices see this name. Local network sends over this Wi-Fi without Tailscale, encrypted, while Droprr is open. Port \(String(DroprrDefaults.port)) is the default.")
             }
         }
         .formStyle(.grouped)

@@ -11,5 +11,11 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_droprr._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Droprr finds your other devices on this Wi-Fi network and sends to them directly, encrypted.</string>
 </dict>
 </plist>

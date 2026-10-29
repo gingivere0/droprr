@@ -9,13 +9,21 @@ struct PairingQRCode: View {
     var size: CGFloat = 240
     @State private var revealed = false
     @State private var address = PairingInfo.tailscaleAddress()
+    @State private var lan = LocalAddresses.lan(port: DroprrSettings.shared.tlsPort)
+
+    /// Tailscale when it's connected; otherwise this Mac's first LAN address (HTTPS only, pinned by fp).
+    private var host: String? {
+        address ?? (settings.localNetwork ? lan.first.map(PairingInfo.hostPart) : nil)
+    }
 
     var body: some View {
         if settings.token.isEmpty {
             Text("Set this Mac's token in Settings to show a pairing code.")
                 .font(.callout).foregroundStyle(.secondary)
-        } else if let address, let url = PairingInfo(name: settings.deviceName, host: address, port: settings.port,
-                                                     token: settings.token, platform: DroprrSettings.platform).url {
+        } else if let host, let url = PairingInfo(name: settings.deviceName, host: host, port: settings.port,
+                                                  token: settings.token, platform: DroprrSettings.platform,
+                                                  id: settings.deviceID, fp: settings.localNetwork ? settings.identity?.fingerprint : nil,
+                                                  lan: settings.localNetwork ? lan : []).url {
             VStack(spacing: Space.sm) {
                 ZStack {
                     QRCodeImage(text: url.absoluteString)
@@ -30,13 +38,17 @@ struct PairingQRCode: View {
                 .padding(size * 0.06)
                 .background(.white, in: RoundedRectangle(cornerRadius: Radius.feature, style: .continuous))
                 .shadow(color: .black.opacity(0.1), radius: 8, y: 3)
-                Text("\(address):\(String(settings.port))").font(.caption.monospaced()).foregroundStyle(.secondary)
+                Text(address.map { "\($0):\(String(settings.port))" } ?? "Wi-Fi only: \(host)")
+                    .font(.caption.monospaced()).foregroundStyle(.secondary)
             }
         } else {
             VStack(spacing: Space.sm) {
-                Text("Tailscale isn't connected on this Mac, so a phone couldn't reach it.")
+                Text("This Mac isn't on Tailscale or a private Wi-Fi network, so a phone couldn't reach it.")
                     .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                Button("Check Again") { address = PairingInfo.tailscaleAddress() }
+                Button("Check Again") {
+                    address = PairingInfo.tailscaleAddress()
+                    lan = LocalAddresses.lan(port: settings.tlsPort)
+                }
                     .buttonStyle(HoverButtonStyle(.bordered, compact: true))
             }
         }

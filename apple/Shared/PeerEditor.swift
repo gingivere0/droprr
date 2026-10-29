@@ -23,6 +23,8 @@ extension DroprrSettings {
                 peers[i].platform = info.platform
                 peers[i].remoteName = info.name
             }
+            // Answered over Tailscale, which already authenticates the device: pin it if it's new (protocol 2).
+            learn(peer.id, deviceID: info.id, fingerprint: info.fp, tlsPort: info.tlsPort, lan: nil)
             return .ok("\(Theme.platformName(info.platform)) · v\(info.version)")
         } catch {
             return .failed(peer.isPhone ? "Not reachable now (normal for an iPhone)" : error.localizedDescription)
@@ -95,6 +97,7 @@ struct PeerEditor: View {
                     }
                 }
                 #endif
+                if isNew { NearbySection { done(nil) } }
                 Section {
                     TextField("Name", text: $peer.name)
                         .focused($focused, equals: .name)
@@ -174,5 +177,80 @@ struct PeerEditor: View {
         #if os(macOS)
         .frame(minWidth: 380, minHeight: 280)
         #endif
+    }
+}
+
+/// Add Device › Nearby: Droprr devices on this Wi-Fi that aren't paired yet. Picking one asks it to
+/// pair; both screens show the same six digits and the other device's person confirms.
+private struct NearbySection: View {
+    var onPaired: () -> Void
+    @State private var discovery = LANDiscovery.shared
+    @State private var pairing: String?
+    @State private var code: String?
+    @State private var failure: String?
+    private var settings: DroprrSettings { .shared }
+
+    private var unpaired: [NearbyDevice] {
+        discovery.nearby.filter { device in
+            !settings.peers.contains { $0.deviceID == device.id && $0.fingerprint == device.fingerprint && $0.isPaired }
+        }
+    }
+
+    var body: some View {
+        if settings.localNetwork {
+            Section {
+                if unpaired.isEmpty {
+                    Label("Looking for devices on this Wi-Fi…", systemImage: "wifi")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(unpaired) { device in
+                    Button { start(device) } label: {
+                        HStack {
+                            Image(systemName: device.platform == "ios" ? "iphone" : device.platform == "windows" ? "pc" : "laptopcomputer")
+                                .frame(width: 24)
+                            Text(device.name)
+                            Spacer()
+                            if pairing == device.id {
+                                if let code {
+                                    Text(code).font(.body.monospacedDigit().weight(.semibold))
+                                } else {
+                                    ProgressView().controlSize(.small)
+                                }
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(pairing != nil)
+                }
+            } header: {
+                Text("Nearby")
+            } footer: {
+                if let failure {
+                    Text(failure).foregroundStyle(.orange)
+                } else if let code, let name = discovery.nearby.first(where: { $0.id == pairing })?.name {
+                    Text("Make sure \(name) shows \(code), then confirm there.")
+                } else {
+                    Text("Devices with Droprr open on this Wi-Fi. Pick one to pair; you'll confirm a code on it.")
+                }
+            }
+            .onAppear { discovery.start() }
+        }
+    }
+
+    private func start(_ device: NearbyDevice) {
+        pairing = device.id
+        code = nil
+        failure = nil
+        Task {
+            do {
+                _ = try await LANPairing.pair(with: device) { code = $0 }
+                onPaired()
+            } catch {
+                failure = "Couldn't pair with \(device.name): \(error.localizedDescription)"
+            }
+            pairing = nil
+            code = nil
+        }
     }
 }

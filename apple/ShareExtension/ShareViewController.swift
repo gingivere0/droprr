@@ -50,14 +50,14 @@ final class ShareModel {
         sending = true
         defer { sending = false }
         status = "Sending to \(peer.name)…"
-        let client = DroprrClient(peer: peer)
         do {
+            let client = try await DroprrClient.connect(peer).client   // Wi-Fi first, then Tailscale
             for payload in payloads {
                 try await payload.send(with: client) { [weak self] in self?.progress = $0 }
             }
             progress = nil
             sentTo = peer.id
-            status = "Sent to \(peer.name)"
+            status = "Sent to \(peer.name) (\(client.path.label))"
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             try? await Task.sleep(for: .milliseconds(600))
             context?.completeRequest(returningItems: nil)

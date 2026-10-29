@@ -47,19 +47,21 @@ final class MacShareModel {
         sending = true
         defer { sending = false }
         status = peer.isPhone ? "Queueing for \(peer.name)…" : "Sending to \(peer.name)…"
-        var client = DroprrClient(peer: peer)
-        if peer.isPhone {
-            // Phones collect from the Mac app's outbox, so hand the items to it on this Mac.
-            client = DroprrClient(peer: Peer(name: "This Mac", host: "127.0.0.1", port: settings.port, token: settings.token),
-                                  sendPath: "/outbox/\(peer.id.uuidString)")
-        }
         do {
+            var client: DroprrClient
+            if peer.isPhone {
+                // Phones collect from the Mac app's outbox, so hand the items to it on this Mac.
+                client = DroprrClient(peer: Peer(name: "This Mac", host: "127.0.0.1", port: settings.port, token: settings.token),
+                                      sendPath: "/outbox/\(peer.id.uuidString)")
+            } else {
+                client = try await DroprrClient.connect(peer).client   // Wi-Fi first, then Tailscale
+            }
             for payload in payloads {
                 try await payload.send(with: client) { [weak self] in self?.progress = $0 }
             }
             progress = nil
             sentTo = peer.id
-            status = peer.isPhone ? "Waiting for \(peer.name). It arrives when Droprr opens there." : "Sent to \(peer.name)"
+            status = peer.isPhone ? "Waiting for \(peer.name). It arrives when Droprr opens there." : "Sent to \(peer.name) (\(client.path.label))"
             try? await Task.sleep(for: .milliseconds(peer.isPhone ? 1400 : 700))
             context?.completeRequest(returningItems: nil)
         } catch {

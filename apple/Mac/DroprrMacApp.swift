@@ -161,6 +161,7 @@ final class MacModel {
         receiver = DroprrReceiver(settings: settings, inbox: Self.inbox)
         receiver.outbox = outbox
         receiver.onPair = { [weak self] in self?.paired($0) }
+        receiver.onPairRequest = { [weak self] in await self?.confirmPairing($0) ?? false }
         receiver.onStateChange = { [weak self] state in
             self?.status = state
             self?.isListening = state.hasPrefix("Listening")
@@ -172,9 +173,26 @@ final class MacModel {
         }
         Notifier.shared.requestPermission()
         restartIfNeeded()
+        LANDiscovery.shared.start()
+        // Computers paired before protocol 2: a /ping over Tailscale gives their id and certificate to pin.
+        Task { [settings] in
+            for peer in settings.peers where !peer.isPhone && peer.fingerprint == nil && peer.isPaired {
+                _ = await settings.ping(peer)
+            }
+        }
         #if DEBUG
         SnapshotSupport.runIfRequested(model: self)
         #endif
+    }
+
+    /// The Local network setting or the device name changed: restart HTTPS, Bonjour and browsing.
+    func localNetworkChanged() {
+        receiver.startSecure()
+        if settings.localNetwork { LANDiscovery.shared.start() } else { LANDiscovery.shared.stop() }
+    }
+
+    func deviceNameChanged() {
+        receiver.refreshAdvertisement()
     }
 
     /// Starts the receiver, or restarts it when the port setting changed.
@@ -200,7 +218,12 @@ final class MacModel {
 
     /// A device paired with this Mac (POST /pair): add it, or update the peer with that name.
     private func paired(_ request: PairRequest) {
-        if let i = settings.peers.firstIndex(where: { $0.matches(deviceName: request.name) }) {
+        // The same device: the one whose token made the request, then its id, then its name.
+        let match = request.existingPeerID.flatMap { id in settings.peers.firstIndex { $0.id == id } }
+            ?? request.deviceID.flatMap { id in settings.peers.firstIndex { $0.deviceID == id } }
+            ?? settings.peers.firstIndex { $0.matches(deviceName: request.name) }
+        let peerID: UUID
+        if let i = match {
             settings.peers[i].platform = request.platform
             settings.peers[i].remoteName = request.name
             // Keep a host we already have for a known computer.
@@ -208,21 +231,46 @@ final class MacModel {
             if request.platform != "ios" && settings.peers[i].host == request.host { settings.peers[i].port = request.port }
             // Re-pairing replaces the device token, so the old one stops working.
             settings.peers[i].acceptToken = request.acceptToken
-            if request.platform == "ios" { settings.peers[i].token = nil }
-            else if let token = request.token { settings.peers[i].token = token }
+            if let token = request.token { settings.peers[i].token = token }
+            else if request.platform == "ios" { settings.peers[i].token = nil }
+            peerID = settings.peers[i].id
         } else {
-            settings.peers.append(Peer(name: request.name, host: request.host, port: request.port,
-                                       platform: request.platform, remoteName: request.name,
-                                       token: request.token, acceptToken: request.acceptToken))
+            let peer = Peer(name: request.name, host: request.host, port: request.port,
+                            platform: request.platform, remoteName: request.name,
+                            token: request.token, acceptToken: request.acceptToken)
+            settings.peers.append(peer)
+            peerID = peer.id
         }
+        // Pairing is where a fingerprint gets pinned (or replaced).
+        settings.learn(peerID, deviceID: request.deviceID, fingerprint: request.fingerprint, tlsPort: request.tlsPort,
+                       lan: request.lan, replacePin: request.fingerprint != nil)
+        // A phone upgrading an existing pairing to protocol 2 isn't news.
+        guard request.existingPeerID == nil else { return }
         lastPaired = request.name
         lastSendResult = "\(request.name) paired."
         let content = UNMutableNotificationContent()
         content.title = "\(request.name) paired"
-        content.body = request.platform == "ios"
-            ? "Items you send to it wait here until Droprr opens on the phone."
-            : "You can send to it now."
+        if request.platform == "ios" { content.body = "Items you send to it wait here until Droprr opens on the phone." }
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+    }
+
+    /// LAN pairing (POST /pair/request): ask before pairing, showing the code both screens share.
+    private func confirmPairing(_ request: LANPairRequest) async -> Bool {
+        #if DEBUG
+        // Tests: DROPRR_AUTO_PAIR=accept|decline answers without a dialog.
+        if let auto = ProcessInfo.processInfo.environment["DROPRR_AUTO_PAIR"] { return auto == "accept" }
+        #endif
+        bringToFront()
+        let alert = NSAlert()
+        alert.messageText = "Pair with \(request.name)?"
+        alert.informativeText = "Make sure \(request.name) shows \(request.code)."
+        alert.addButton(withTitle: "Pair")
+        alert.addButton(withTitle: "Decline")
+        // The receiver answers "timed out" after 60 seconds; close the question then too.
+        let timeout = DispatchWorkItem { NSApp.abortModal() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60, execute: timeout)
+        defer { timeout.cancel() }
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     func open(_ item: ReceivedItem) {
@@ -320,8 +368,9 @@ final class MacModel {
 
     func send(_ payload: SendPayload, to peer: Peer) async {
         settings.lastPeerID = peer.id
-        // Phones can't receive in the background, so their items wait in the outbox.
-        if peer.isPhone {
+        // Phones can't receive in the background, so their items wait in the outbox, unless the phone
+        // is open on this network right now and has given this Mac a token (protocol 2).
+        if peer.isPhone && !(LANDiscovery.shared.isAdvertising(peer) && !(peer.token ?? "").isEmpty) {
             do {
                 try outbox.enqueue(payload, for: peer)
                 lastSendResult = nil   // the tile's "waiting" badge already shows it
@@ -335,9 +384,12 @@ final class MacModel {
         lastSendResult = "Sending \(payload.label) to \(peer.name)…"
         defer { isSending = false; progress = nil }
         do {
-            let client = DroprrClient(peer: peer)
+            let (client, identityChanged) = try await DroprrClient.connect(peer)
             try await payload.send(with: client) { [weak self] in self?.progress = $0 }
-            lastSendResult = "Sent \(payload.label) to \(peer.name)."
+            if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) { settings.peers[i].lastPath = client.path.rawValue }
+            lastSendResult = identityChanged
+                ? "Sent \(payload.label) to \(peer.name) (Tailscale). \(peer.name)'s identity changed. Pair again."
+                : "Sent \(payload.label) to \(peer.name) (\(client.path.label))."
         } catch {
             lastSendResult = "Couldn't send to \(peer.name): \(error.localizedDescription)"
         }

@@ -15,8 +15,14 @@ struct DroprrPhoneApp: App {
                 .onOpenURL { url in model.pair(with: url.absoluteString, confirm: true) }
         }
         .onChange(of: scenePhase) { _, phase in
-            // Desktops always queue items for a phone, so collect them each time the app comes forward.
-            if phase == .active { Task { await model.collectInbox() } }
+            // Desktops queue items for a phone, so collect them each time the app comes forward. While the
+            // app is open it also listens and advertises on the Wi-Fi, so computers can send directly.
+            if phase == .active {
+                model.startLocalNetwork()
+                Task { await model.collectInbox() }
+            } else if phase == .background {
+                model.stopLocalNetwork()
+            }
         }
     }
 }
@@ -43,11 +49,110 @@ final class PhoneModel {
 
     static let historyLimit = 30
 
+    /// HTTPS only, and only while the app is open (protocol 2): iOS doesn't let apps listen in the background.
+    @ObservationIgnored private var receiver: DroprrReceiver?
+    /// A computer asking to pair over the Wi-Fi, waiting for the person to confirm.
+    var pairQuestion: LANPairRequest?
+    @ObservationIgnored private var pairAnswer: CheckedContinuation<Bool, Never>?
+
     init() {
         if let data = try? Data(contentsOf: Self.historyURL),
            let saved = try? JSONDecoder().decode([HistoryEntry].self, from: data) {
             history = saved.filter(\.isAvailable)
         }
+    }
+
+    // MARK: Local network (protocol 2)
+
+    func startLocalNetwork() {
+        guard settings.localNetwork else { return stopLocalNetwork() }
+        LANDiscovery.shared.start()
+        if receiver == nil {
+            let receiver = DroprrReceiver(settings: settings, inbox: Self.inbox)
+            receiver.onItem = { [weak self] item in self?.record(item, from: nil) }
+            receiver.onPair = { [weak self] in self?.paired($0) }
+            receiver.onPairRequest = { [weak self] request in await self?.ask(request) ?? false }
+            self.receiver = receiver
+        }
+        receiver?.startSecure()
+        #if DEBUG
+        // Tests: DROPRR_AUTO_LAN_PAIR=<name> pairs with that nearby device once it's found.
+        if let name = ProcessInfo.processInfo.environment["DROPRR_AUTO_LAN_PAIR"] {
+            Task {
+                try? await Task.sleep(for: .seconds(4))
+                guard let device = LANDiscovery.shared.nearby.first(where: { $0.name == name }) else { return NSLog("Droprr test: %@ not found", name) }
+                do {
+                    let peer = try await LANPairing.pair(with: device) { NSLog("Droprr test: code %@", $0) }
+                    NSLog("Droprr test: paired %@ lan=%@", peer.name, peer.lan?.joined(separator: ",") ?? "")
+                    await collectInbox()
+                    NSLog("Droprr test: collect %@", lastCollect ?? "")
+                } catch {
+                    NSLog("Droprr test: pairing failed %@", error.localizedDescription)
+                }
+            }
+        }
+        #endif
+    }
+
+    func stopLocalNetwork() {
+        receiver?.stop()
+        LANDiscovery.shared.stop()
+    }
+
+    /// Shows the "Pair with …?" question and waits for Pair or Decline.
+    private func ask(_ request: LANPairRequest) async -> Bool {
+        pairAnswer?.resume(returning: false)
+        pairQuestion = request
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        // The computer gives up after 60 seconds; so does the question.
+        Task {
+            try? await Task.sleep(for: .seconds(60))
+            if pairQuestion?.code == request.code { answerPairQuestion(false) }
+        }
+        return await withCheckedContinuation { pairAnswer = $0 }
+    }
+
+    func answerPairQuestion(_ accept: Bool) {
+        pairQuestion = nil
+        pairAnswer?.resume(returning: accept)
+        pairAnswer = nil
+    }
+
+    /// A computer paired with this phone over the Wi-Fi: add or update it with both tokens and its pin.
+    private func paired(_ request: PairRequest) {
+        let match = request.deviceID.flatMap { id in settings.peers.firstIndex { $0.deviceID == id } }
+            ?? settings.peers.firstIndex { $0.matches(deviceName: request.name) }
+        let peerID: UUID
+        if let i = match {
+            settings.peers[i].platform = request.platform
+            settings.peers[i].remoteName = request.name
+            if settings.peers[i].host.isEmpty { settings.peers[i].host = request.host }
+            if let token = request.token { settings.peers[i].token = token }
+            settings.peers[i].acceptToken = request.acceptToken
+            peerID = settings.peers[i].id
+        } else {
+            let peer = Peer(name: request.name, host: request.host, port: request.port, platform: request.platform,
+                            remoteName: request.name, token: request.token, acceptToken: request.acceptToken)
+            settings.peers.append(peer)
+            peerID = peer.id
+        }
+        settings.learn(peerID, deviceID: request.deviceID, fingerprint: request.fingerprint, tlsPort: request.tlsPort,
+                       lan: request.lan, replacePin: request.fingerprint != nil)
+        pairingStatus = .success("Paired with \(request.name)")
+    }
+
+    /// A computer paired before protocol 2 doesn't have a token for this phone yet. Once it answers /ping
+    /// with protocol 2, give it one (POST /pair with this phone's current token), so it can send directly.
+    private func upgradePairing(_ peer: Peer, client: DroprrClient) async {
+        guard (peer.acceptToken ?? "").isEmpty, let ping = try? await client.ping(), (ping.proto ?? 1) >= 2 else { return }
+        let minted = DroprrSettings.generateToken()
+        guard let result = try? await client.pair(name: settings.deviceName, platform: DroprrSettings.platform, token: minted),
+              let i = settings.peers.firstIndex(where: { $0.id == peer.id }) else { return }
+        settings.peers[i].acceptToken = minted
+        if let token = result.token { settings.peers[i].token = token }
+        settings.learn(peer.id, deviceID: result.deviceID ?? ping.id, fingerprint: result.fingerprint ?? ping.fp,
+                       tlsPort: result.tlsPort ?? ping.tlsPort, lan: result.lan, host: result.host,
+                       replacePin: client.path == .tailscale)
     }
 
     var newItems: [HistoryEntry] { history.filter(\.isNew) }
@@ -146,7 +251,7 @@ final class PhoneModel {
             return
         }
         guard info.pointsInsideTailnet else {
-            pairingStatus = .failure("This code points outside your Tailscale network, so Droprr won't use it.")
+            pairingStatus = .failure("This code points outside your Tailscale or home network, so Droprr won't use it.")
             return
         }
         if confirm {
@@ -164,12 +269,19 @@ final class PhoneModel {
             do {
                 // Pair both ways with the QR code's token; the desktop answers with a device token
                 // just for this phone, which replaces the QR token from now on.
-                let result = try await DroprrClient(peer: peer).pair(name: settings.deviceName, platform: DroprrSettings.platform)
-                if let token = result.token, let i = settings.peers.firstIndex(where: { $0.id == peer.id }) {
-                    settings.peers[i].token = token
+                // Protocol 2: this phone also mints a token for the desktop, for direct sends while it's open.
+                let minted = DroprrSettings.generateToken()
+                let client = try await DroprrClient.connect(peer).client
+                let result = try await client.pair(name: settings.deviceName, platform: DroprrSettings.platform, token: minted)
+                if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) {
+                    if let token = result.token { settings.peers[i].token = token }
+                    settings.peers[i].acceptToken = minted
                     peer = settings.peers[i]
                 }
-                let ping = try await DroprrClient(peer: peer).ping()
+                settings.learn(peer.id, deviceID: result.deviceID, fingerprint: result.fingerprint, tlsPort: result.tlsPort,
+                               lan: result.lan, host: result.host, replacePin: result.fingerprint != nil)
+                peer = settings.peers.first { $0.id == peer.id } ?? peer
+                let ping = try await DroprrClient.connect(peer).client.ping()
                 if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) {
                     settings.peers[i].platform = ping.platform
                     settings.peers[i].remoteName = ping.name
@@ -182,7 +294,7 @@ final class PhoneModel {
                 }
                 await collectInbox()
             } catch {
-                pairingStatus = .failure("Added \(peer.name), but it didn't answer: \(error.localizedDescription) Check that Tailscale is on for both devices.")
+                pairingStatus = .failure("Added \(peer.name), but it didn't answer: \(error.localizedDescription) Check that both devices are on the same Wi-Fi or on Tailscale.")
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
         }
@@ -199,9 +311,10 @@ final class PhoneModel {
         var count = 0
         var reached = 0
         for peer in desktops {
-            let client = DroprrClient(peer: peer)
-            guard let items = try? await client.inbox(for: settings.deviceName) else { continue }
+            guard let client = try? await DroprrClient.connect(peer).client,
+                  let items = try? await client.inbox(for: settings.deviceName) else { continue }
             reached += 1
+            await upgradePairing(peer, client: client)
             for entry in items {
                 do {
                     let item: ReceivedItem
@@ -230,7 +343,7 @@ final class PhoneModel {
             }
         }
         if reached == 0 {
-            lastCollect = "Couldn't reach your computers. Are you on Tailscale?"
+            lastCollect = "Couldn't reach your computers. Are you on the same Wi-Fi, or on Tailscale?"
         } else {
             lastCollect = count == 0 ? "Up to date" : "Collected \(count) item\(count == 1 ? "" : "s")"
         }
@@ -263,11 +376,14 @@ final class PhoneModel {
         let label = payloads.map(\.label).joined(separator: ", ")
         lastSendResult = "Sending \(label) to \(peer.name)…"
         do {
-            let client = DroprrClient(peer: peer)
+            let (client, identityChanged) = try await DroprrClient.connect(peer)
             for payload in payloads {
                 try await payload.send(with: client) { [weak self] in self?.progress = $0 }
             }
-            lastSendResult = "Sent \(label) to \(peer.name)."
+            if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) { settings.peers[i].lastPath = client.path.rawValue }
+            lastSendResult = identityChanged
+                ? "Sent \(label) to \(peer.name) (Tailscale). \(peer.name)'s identity changed. Pair again."
+                : "Sent \(label) to \(peer.name) (\(client.path.label))."
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             return true
         } catch {

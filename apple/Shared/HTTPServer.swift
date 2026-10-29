@@ -3,14 +3,32 @@ import Network
 
 /// A deliberately small HTTP/1.1 server: one request per connection, request bodies
 /// streamed to a temp file (Content-Length or chunked), `Expect: 100-continue` honoured.
-/// Only loopback and Tailscale (100.64.0.0/10, fd7a:115c:a1e0::/48) clients are accepted.
+/// The plain HTTP server accepts only loopback and Tailscale (100.64.0.0/10, fd7a:115c:a1e0::/48)
+/// clients; the HTTPS one (protocol 2) also accepts private LAN addresses.
 final class HTTPServer {
+    enum Policy {
+        /// Plain HTTP: loopback and Tailscale only.
+        case tailnet
+        /// HTTPS: loopback, Tailscale and private LAN ranges (never link-local IPv4).
+        case lan
+    }
+
+    let policy: Policy
+    private let identity: sec_identity_t?
+
+    init(policy: Policy = .tailnet, identity: sec_identity_t? = nil) {
+        self.policy = policy
+        self.identity = identity
+    }
+
     struct Request {
         var method: String
         var path: String
         var headers: [String: String]   // lowercased names
         var bodyFile: URL?
         var remoteHost: String?
+        /// True when it arrived on the HTTPS (protocol 2) listener.
+        var secure = false
 
         func header(_ name: String) -> String? { headers[name.lowercased()] }
     }
@@ -36,12 +54,22 @@ final class HTTPServer {
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "droprr.http")
 
-    func start(port: Int) throws {
+    /// Starts listening. `service` advertises the listener with Bonjour (HTTPS only).
+    func start(port: Int, service: NWListener.Service? = nil) throws {
         stop()
         guard let nwPort = NWEndpoint.Port(rawValue: UInt16(clamping: port)) else { return }
-        let params = NWParameters.tcp
+        let params: NWParameters
+        if let identity {
+            let tls = NWProtocolTLS.Options()
+            sec_protocol_options_set_local_identity(tls.securityProtocolOptions, identity)
+            sec_protocol_options_set_min_tls_protocol_version(tls.securityProtocolOptions, .TLSv12)
+            params = NWParameters(tls: tls, tcp: .init())
+        } else {
+            params = .tcp
+        }
         params.allowLocalEndpointReuse = true
         let listener = try NWListener(using: params, on: nwPort)
+        listener.service = service
         listener.stateUpdateHandler = { [weak self] state in
             switch state {
             case .ready: self?.onStateChange("Listening on port \(port)")
@@ -51,11 +79,16 @@ final class HTTPServer {
         }
         listener.newConnectionHandler = { [weak self] connection in
             guard let self else { connection.cancel(); return }
-            guard Self.isAllowed(connection.endpoint) else { connection.cancel(); return }
+            guard Self.isAllowed(connection.endpoint, policy: self.policy) else { connection.cancel(); return }
             HTTPConnection(connection: connection, server: self).start(on: self.queue)
         }
         listener.start(queue: queue)
         self.listener = listener
+    }
+
+    /// Updates the Bonjour advertisement (for example after a rename) without restarting.
+    func advertise(_ service: NWListener.Service?) {
+        listener?.service = service
     }
 
     func stop() {
@@ -63,26 +96,30 @@ final class HTTPServer {
         listener = nil
     }
 
-    static func isAllowed(_ endpoint: NWEndpoint) -> Bool {
+    static func isAllowed(_ endpoint: NWEndpoint, policy: Policy = .tailnet) -> Bool {
         guard case .hostPort(let host, _) = endpoint else { return false }
         switch host {
         case .ipv4(let addr):
-            return isAllowedV4(Array(addr.rawValue))
+            return isAllowedV4(Array(addr.rawValue), policy: policy)
         case .ipv6(let addr):
             let b = Array(addr.rawValue)
             if addr == .loopback { return true }
             if b[0..<10].allSatisfy({ $0 == 0 }) && b[10] == 0xff && b[11] == 0xff {
-                return isAllowedV4(Array(b[12..<16]))   // IPv4-mapped
+                return isAllowedV4(Array(b[12..<16]), policy: policy)   // IPv4-mapped
             }
-            return b[0] == 0xfd && b[1] == 0x7a && b[2] == 0x11 && b[3] == 0x5c && b[4] == 0xa1 && b[5] == 0xe0
+            if b[0] == 0xfd && b[1] == 0x7a && b[2] == 0x11 && b[3] == 0x5c && b[4] == 0xa1 && b[5] == 0xe0 { return true }
+            guard policy == .lan else { return false }
+            return b[0] == 0xfd || (b[0] == 0xfe && (b[1] & 0xc0) == 0x80)   // fd00::/8, fe80::/10
         default:
             return false
         }
     }
 
-    private static func isAllowedV4(_ b: [UInt8]) -> Bool {
+    private static func isAllowedV4(_ b: [UInt8], policy: Policy) -> Bool {
         guard b.count == 4 else { return false }
-        return b[0] == 127 || (b[0] == 100 && (b[1] & 0xc0) == 64)
+        if b[0] == 127 || (b[0] == 100 && (b[1] & 0xc0) == 64) { return true }
+        guard policy == .lan else { return false }
+        return b[0] == 10 || (b[0] == 172 && (b[1] & 0xf0) == 16) || (b[0] == 192 && b[1] == 168)
     }
 }
 
@@ -110,9 +147,10 @@ private final class HTTPConnection {
             guard let self else { return }
             switch state {
             case .ready:
-                // Also require the *local* address to be loopback or Tailscale, so a LAN client that
-                // gives itself a 100.64.x.x address can't reach the listener through Wi-Fi or Ethernet.
-                guard let local = self.connection.currentPath?.localEndpoint, HTTPServer.isAllowed(local) else {
+                // Also require the *local* address to fit the policy, so a LAN client that gives itself
+                // a 100.64.x.x address can't reach the plain HTTP listener through Wi-Fi or Ethernet.
+                guard let local = self.connection.currentPath?.localEndpoint,
+                      HTTPServer.isAllowed(local, policy: self.server.policy) else {
                     self.connection.cancel()
                     return
                 }
@@ -257,7 +295,8 @@ private final class HTTPConnection {
         let path = rawPath
         var remoteHost: String?
         if case .hostPort(let host, _) = connection.endpoint { remoteHost = "\(host)".components(separatedBy: "%").first }
-        return .init(method: String(parts[0]).uppercased(), path: path, headers: headers, bodyFile: nil, remoteHost: remoteHost)
+        return .init(method: String(parts[0]).uppercased(), path: path, headers: headers, bodyFile: nil, remoteHost: remoteHost,
+                     secure: server.policy == .lan)
     }
 
     private func dispatch() {

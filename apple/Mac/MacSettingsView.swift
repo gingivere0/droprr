@@ -57,6 +57,8 @@ struct MacSettingsView: View {
         .onAppear(perform: takeTokenRequest)
         .onChange(of: settings.tokenRequest) { takeTokenRequest() }
         .onChange(of: settings.colorMode) { Look.applyAppAppearance() }
+        .onChange(of: settings.localNetwork) { model.localNetworkChanged() }
+        .onChange(of: settings.deviceName) { model.deviceNameChanged() }
         .onChange(of: settings.style) {
             // Window chrome (background, opacity, dark glass) follows the style too.
             for window in NSApp.windows { AppDelegate.hideTitleBar(window) }
@@ -230,6 +232,10 @@ struct MacSettingsView: View {
             SettingRow(title: "Copy everything received",
                        detail: "Includes files and images, as they arrive.") {
                 Toggle("Copy everything received", isOn: Binding(get: { settings.autoCopy }, set: { settings.autoCopy = $0 }))
+                    .labelsHidden()
+            }
+            SettingRow(title: "Local network", detail: "Send and receive over Wi-Fi without Tailscale (encrypted).") {
+                Toggle("Local network", isOn: Binding(get: { settings.localNetwork }, set: { settings.localNetwork = $0 }))
                     .labelsHidden()
             }
             SettingRow(title: "Open at login", detail: "Keep receiving without opening the app.") {

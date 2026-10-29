@@ -11,6 +11,11 @@ struct PairingInfo: Equatable {
     var platform: String?
     /// The desktop's MagicDNS name, preferred for connecting because the IP can change.
     var dns: String?
+    // Protocol 2 (optional; older apps ignore them): the desktop's id, certificate fingerprint and
+    // LAN "host:port" addresses for HTTPS.
+    var id: String?
+    var fp: String?
+    var lan: [String] = []
 
     static let version = 1
 
@@ -21,16 +26,23 @@ struct PairingInfo: Equatable {
         var fields = [("v", String(Self.version)), ("name", name), ("host", host), ("port", String(port)), ("token", token)]
         if let platform { fields.append(("platform", platform)) }
         if let dns { fields.append(("dns", dns)) }
+        if let id { fields.append(("id", id)) }
+        if let fp { fields.append(("fp", fp)) }
+        if !lan.isEmpty { fields.append(("lan", lan.joined(separator: ","))) }
         return URL(string: "droprr://pair?" + fields.map { "\($0)=\(encode($1))" }.joined(separator: "&"))
     }
 
-    init(name: String, host: String, port: Int, token: String, platform: String?, dns: String? = nil) {
+    init(name: String, host: String, port: Int, token: String, platform: String?, dns: String? = nil,
+         id: String? = nil, fp: String? = nil, lan: [String] = []) {
         self.name = name
         self.host = host
         self.port = port
         self.token = token
         self.platform = platform
         self.dns = dns
+        self.id = id
+        self.fp = fp
+        self.lan = lan
     }
 
     enum ParseError: Error { case notDroprr, newerVersion }
@@ -56,16 +68,42 @@ struct PairingInfo: Equatable {
                                     port: query["port"].flatMap(Int.init) ?? DroprrDefaults.port,
                                     token: token,
                                     platform: query["platform"].flatMap { $0.isEmpty ? nil : $0 },
-                                    dns: dns))
+                                    dns: dns,
+                                    id: query["id"].flatMap { $0.isEmpty ? nil : $0 },
+                                    fp: query["fp"].flatMap { $0.count == 64 ? $0.lowercased() : nil },
+                                    lan: (query["lan"] ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty }))
     }
 
     /// Where to connect: the MagicDNS name when known, since the IP can change.
     var connectHost: String { dns ?? host }
 
-    /// Codes may only point inside the tailnet: 100.64.0.0/10, fd7a:115c:a1e0::/48,
-    /// a *.ts.net name, or a single-label MagicDNS name.
+    /// Codes may only point inside the tailnet (100.64.0.0/10, fd7a:115c:a1e0::/48, a *.ts.net name or
+    /// a single-label MagicDNS name) or, when they carry a fingerprint to pin, a private LAN address.
     var pointsInsideTailnet: Bool {
-        [host, dns ?? ""].filter { !$0.isEmpty }.allSatisfy(Self.isTailscaleHost)
+        [host, dns ?? ""].filter { !$0.isEmpty }.allSatisfy { Self.isTailscaleHost($0) || (fp != nil && Self.isPrivateLAN($0)) }
+            && lan.allSatisfy { Self.isPrivateLAN(Self.hostPart($0)) }
+    }
+
+    /// 10/8, 172.16/12, 192.168/16, fd00::/8 or fe80::/10.
+    static func isPrivateLAN(_ raw: String) -> Bool {
+        let host = raw.trimmingCharacters(in: CharacterSet(charactersIn: "[]")).lowercased()
+        var v4 = in_addr()
+        if inet_pton(AF_INET, host, &v4) == 1 {
+            let b = withUnsafeBytes(of: v4.s_addr) { Array($0) }
+            return b[0] == 10 || (b[0] == 172 && (b[1] & 0xf0) == 16) || (b[0] == 192 && b[1] == 168)
+        }
+        var v6 = in6_addr()
+        if inet_pton(AF_INET6, host, &v6) == 1 {
+            let b = withUnsafeBytes(of: v6) { Array($0) }
+            return b[0] == 0xfd || (b[0] == 0xfe && (b[1] & 0xc0) == 0x80)
+        }
+        return false
+    }
+
+    /// "host" from "host:port" or "[v6]:port".
+    static func hostPart(_ address: String) -> String {
+        if address.hasPrefix("["), let end = address.firstIndex(of: "]") { return String(address[address.index(after: address.startIndex)..<end]) }
+        return address.split(separator: ":").first.map(String.init) ?? address
     }
 
     static func isTailscaleHost(_ raw: String) -> Bool {
@@ -86,8 +124,19 @@ struct PairingInfo: Equatable {
         return name.hasSuffix(".ts.net") || !name.contains(".")
     }
 
+    /// The Tailscale host to fall back on; empty when the code only reaches the desktop over the LAN.
+    var tailnetHost: String { Self.isTailscaleHost(connectHost) ? connectHost : "" }
+
     var peer: Peer {
-        Peer(name: name, host: connectHost, port: port, platform: platform, remoteName: name, token: token)
+        var peer = Peer(name: name, host: tailnetHost, port: port, platform: platform, remoteName: name, token: token)
+        peer.deviceID = id
+        peer.fingerprint = fp
+        peer.tlsPort = port + 1
+        if fp != nil {
+            peer.lan = lan.isEmpty && Self.isPrivateLAN(connectHost) ? ["\(connectHost):\(port + 1)"] : lan
+            peer.lanSeen = Date()
+        }
+        return peer
     }
 
     /// This device's Tailscale IPv4 address (100.64.0.0/10), if Tailscale is connected.
@@ -114,10 +163,16 @@ extension DroprrSettings {
     func apply(_ pairing: PairingInfo) -> Peer {
         let addresses = [pairing.host, pairing.dns].compactMap { $0 }.filter { !$0.isEmpty }
         if let i = peers.firstIndex(where: { peer in
-            addresses.contains { peer.host.caseInsensitiveCompare($0) == .orderedSame } || peer.matches(deviceName: pairing.name)
+            (pairing.id != nil && peer.deviceID == pairing.id)
+                || addresses.contains { peer.host.caseInsensitiveCompare($0) == .orderedSame } || peer.matches(deviceName: pairing.name)
         }) {
+            let fresh = pairing.peer
             peers[i].name = pairing.name
-            peers[i].host = pairing.connectHost
+            if !fresh.host.isEmpty { peers[i].host = fresh.host }
+            // Pairing again is what replaces a pinned fingerprint.
+            peers[i].deviceID = fresh.deviceID ?? peers[i].deviceID
+            if let fp = fresh.fingerprint { peers[i].fingerprint = fp }
+            if fresh.lan != nil { peers[i].lan = fresh.lan; peers[i].lanSeen = fresh.lanSeen; peers[i].tlsPort = fresh.tlsPort }
             peers[i].port = pairing.port
             peers[i].platform = pairing.platform ?? peers[i].platform
             peers[i].remoteName = pairing.name
@@ -134,16 +189,16 @@ extension DroprrSettings {
 
 extension DroprrSettings {
     /// After a computer is added (or its token changed) by hand: introduce this device with POST /pair
-    /// so both sides switch to per-device tokens. Computers also mint a token for the other side to use
-    /// when calling back; phones don't, since nothing can call a phone. If the other device is too old
-    /// for /pair, the hand-entered token simply keeps being used.
+    /// so both sides switch to per-device tokens. This device also mints a token for the other side to use
+    /// when calling back (a phone only accepts it while Droprr is open on it). If the other device is too
+    /// old for /pair, the hand-entered token simply keeps being used.
     @MainActor
     func exchangeTokens(with peer: Peer) async {
         guard !peer.isPhone, let token = peer.token, !token.isEmpty else { return }
         let isComputer = DroprrSettings.platform != "ios"
-        let minted = isComputer ? DroprrSettings.generateToken() : nil
+        let minted: String? = DroprrSettings.generateToken()
         do {
-            let result = try await DroprrClient(peer: peer).pair(
+            let result = try await DroprrClient.connect(peer).client.pair(
                 name: deviceName, platform: DroprrSettings.platform,
                 host: isComputer ? PairingInfo.tailscaleAddress() : nil,
                 port: isComputer ? port : nil, token: minted)
@@ -151,6 +206,8 @@ extension DroprrSettings {
             if let newToken = result.token { peers[i].token = newToken }
             if let minted { peers[i].acceptToken = minted }
             peers[i].remoteName = result.name
+            learn(peer.id, deviceID: result.deviceID, fingerprint: result.fingerprint, tlsPort: result.tlsPort,
+                  lan: result.lan, host: result.host, replacePin: true)
         } catch {
             // Keep the hand-entered token; the next Test shows whether it works.
         }

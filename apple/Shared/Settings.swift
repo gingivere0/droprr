@@ -22,6 +22,19 @@ struct Peer: Codable, Identifiable, Hashable {
     /// The device token this device minted for that peer in POST /pair and accepts from it. Keychain too.
     var acceptToken: String?
 
+    // Protocol 2 (local network). All optional so older saved peers still decode.
+    /// The peer's stable device id (from pairing, /ping or discovery).
+    var deviceID: String?
+    /// The pinned SHA-256 fingerprint of the peer's certificate; required for any LAN connection.
+    var fingerprint: String?
+    /// The peer's HTTPS port (its HTTP port + 1 unless it says otherwise).
+    var tlsPort: Int?
+    /// Its last known LAN addresses ("host:port" for HTTPS) and when discovery last saw them.
+    var lan: [String]?
+    var lanSeen: Date?
+    /// "lan" or "tailscale": how the last send reached it.
+    var lastPath: String?
+
     var isPaired: Bool { isPhone || !(token ?? "").isEmpty }
 
     var isPhone: Bool {
@@ -38,6 +51,12 @@ struct Peer: Codable, Identifiable, Hashable {
         guard !h.isEmpty else { return nil }
         let bracketed = h.contains(":") && !h.hasPrefix("[") ? "[\(h)]" : h
         return URL(string: "http://\(bracketed):\(port)")
+    }
+
+    /// HTTPS addresses to try first: only with a pin and an address seen in the last 2 minutes.
+    var lanURLs: [URL] {
+        guard fingerprint != nil, let lan, let lanSeen, Date().timeIntervalSince(lanSeen) < 120 else { return [] }
+        return lan.compactMap { URL(string: "https://\($0)") }
     }
 }
 
@@ -70,6 +89,35 @@ final class DroprrSettings {
     var colorMode: String { didSet { defaults.set(colorMode, forKey: "colorMode") } }
     /// Not saved: a device whose token Settings should open for editing ("Missing Token").
     var tokenRequest: UUID?
+    /// Protocol 2: listen on the HTTPS port, advertise and browse with Bonjour, and send over Wi-Fi. On by default.
+    var localNetwork: Bool { didSet { defaults.set(localNetwork, forKey: "localNetwork") } }
+    /// This device's stable id: 16 random bytes, lowercase base32 without padding. Made once.
+    @ObservationIgnored private(set) var deviceID = ""
+    /// This device's certificate and key for HTTPS, made on first use.
+    @ObservationIgnored private(set) lazy var identity: DeviceIdentity? = DeviceIdentity.load(from: tokens, name: "Droprr \(deviceID)")
+    var tlsPort: Int { port + 1 }
+
+    /// This device's protocol 2 fields for /pair requests (id, fp, tlsPort, lan).
+    var ownIdentityFields: [String: Any] {
+        var fields: [String: Any] = ["id": deviceID, "tlsPort": tlsPort]
+        if let fp = identity?.fingerprint { fields["fp"] = fp }
+        if localNetwork { fields["lan"] = LocalAddresses.lan(port: tlsPort) }
+        return fields
+    }
+
+    /// Records what a peer said about itself in pairing or a Tailscale /ping. A pin is only set when
+    /// there's none yet; replacing one takes pairing again (`replacePin`).
+    func learn(_ peerID: UUID, deviceID: String?, fingerprint: String?, tlsPort: Int?, lan: [String]?,
+               host: String? = nil, replacePin: Bool = false) {
+        guard let i = peers.firstIndex(where: { $0.id == peerID }) else { return }
+        var peer = peers[i]
+        if let host, peer.host.isEmpty, PairingInfo.isTailscaleHost(host) { peer.host = host }
+        if let deviceID, !deviceID.isEmpty { peer.deviceID = deviceID }
+        if let fingerprint, fingerprint.count == 64, replacePin || peer.fingerprint == nil { peer.fingerprint = fingerprint.lowercased() }
+        if let tlsPort { peer.tlsPort = tlsPort }
+        if let lan, !lan.isEmpty { peer.lan = lan; peer.lanSeen = Date() }
+        if peer != peers[i] { peers[i] = peer }
+    }
 
     init() {
         let group = Bundle.main.object(forInfoDictionaryKey: "DroprrAppGroup") as? String
@@ -127,6 +175,13 @@ final class DroprrSettings {
         theme = defaults.string(forKey: "theme") ?? ThemePalette.defaultID
         style = defaults.string(forKey: "style") ?? "atelier"
         colorMode = defaults.string(forKey: "colorMode") ?? "light"
+        localNetwork = defaults.object(forKey: "localNetwork") as? Bool ?? true
+        if let id = defaults.string(forKey: "deviceID"), !id.isEmpty {
+            deviceID = id
+        } else {
+            deviceID = Self.generateDeviceID()
+            defaults.set(deviceID, forKey: "deviceID")
+        }
 
         if legacyMain != nil { defaults.removeObject(forKey: "token") }
         savePeers(old: [])   // rewrites the peer list without tokens
@@ -144,10 +199,12 @@ final class DroprrSettings {
             stripped[i].acceptToken = nil
         }
         if let data = try? JSONEncoder().encode(stripped) { defaults.set(data, forKey: "peers") }
+        // Only touch the Keychain for tokens that changed (discovery updates peers often).
         for peer in peers {
             let id = peer.id.uuidString
-            tokens.set(peer.token, for: "send." + id)
-            tokens.set(peer.acceptToken, for: "accept." + id)
+            let before = old.first { $0.id == peer.id }
+            if before?.token != peer.token || before == nil { tokens.set(peer.token, for: "send." + id) }
+            if before?.acceptToken != peer.acceptToken || before == nil { tokens.set(peer.acceptToken, for: "accept." + id) }
         }
         // A removed device's tokens are deleted, so its requests get 401.
         for gone in old where !peers.contains(where: { $0.id == gone.id }) {
@@ -202,6 +259,24 @@ final class DroprrSettings {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+    }
+
+    /// 16 random bytes as lowercase RFC 4648 base32 without padding (26 characters).
+    static func generateDeviceID() -> String {
+        var bytes = [UInt8](repeating: 0, count: 16)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        let alphabet = Array("abcdefghijklmnopqrstuvwxyz234567")
+        var out = "", buffer = 0, bits = 0
+        for byte in bytes {
+            buffer = buffer << 8 | Int(byte)
+            bits += 8
+            while bits >= 5 {
+                out.append(alphabet[(buffer >> (bits - 5)) & 31])
+                bits -= 5
+            }
+        }
+        if bits > 0 { out.append(alphabet[(buffer << (5 - bits)) & 31]) }
+        return out
     }
 
     private static var defaultDeviceName: String {

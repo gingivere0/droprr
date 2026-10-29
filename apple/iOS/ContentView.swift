@@ -46,11 +46,20 @@ struct ContentView: View {
         .onAppear { AppIconSwitcher.apply(model.settings.theme) }
         .onChange(of: model.settings.theme) { _, theme in AppIconSwitcher.apply(theme) }
         // "Missing Token" on the Send tab opens that device in Settings.
+        .onChange(of: model.settings.localNetwork) { _, on in if on { model.startLocalNetwork() } else { model.stopLocalNetwork() } }
         .onChange(of: model.settings.tokenRequest) { _, id in if id != nil { tab = 2 } }
         .environment(\.startPairing, { scanning = true })
         .environment(\.pairWithCode, { model.pair(with: $0) })
         .sheet(isPresented: $scanning) {
             PairingScannerSheet { model.pair(with: $0) }
+        }
+        // A computer on this Wi-Fi asking to pair (POST /pair/request): confirm with the shared code.
+        .alert("Pair with \(model.pairQuestion?.name ?? "this device")?",
+               isPresented: Binding(get: { model.pairQuestion != nil }, set: { if !$0 && model.pairQuestion != nil { model.answerPairQuestion(false) } })) {
+            Button("Pair") { model.answerPairQuestion(true) }
+            Button("Decline", role: .cancel) { model.answerPairQuestion(false) }
+        } message: {
+            Text("Make sure \(model.pairQuestion?.name ?? "it") shows \(model.pairQuestion?.code ?? "").")
         }
         .sheet(isPresented: Binding(get: { model.pendingPairing != nil }, set: { if !$0 { model.pendingPairing = nil } })) {
             if let info = model.pendingPairing {
