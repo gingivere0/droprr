@@ -81,6 +81,14 @@ struct DroprrClient {
             }
             mismatch = mismatch || trust.mismatch
         }
+        // None answered: forget the LAN addresses until discovery sees the peer again, so the next
+        // send away from home goes straight to Tailscale.
+        if !peer.lanURLs.isEmpty {
+            await MainActor.run {
+                let settings = DroprrSettings.shared
+                if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) { settings.peers[i].lanSeen = nil }
+            }
+        }
         if mismatch && peer.baseURL == nil { throw DroprrError.identityChanged(peer.name) }
         return (client, mismatch)
     }

@@ -164,13 +164,14 @@ final class LANDiscovery {
 /// Both screens show the same six digits; the other device's person confirms.
 enum LANPairing {
     enum Failure: LocalizedError {
-        case unreachable, declined, timedOut, busy, other(String)
+        case unreachable, declined, timedOut, busy, identityMismatch, other(String)
         var errorDescription: String? {
             switch self {
             case .unreachable: return "Couldn't reach it on this Wi-Fi."
             case .declined: return "It declined."
             case .timedOut: return "Nobody answered on the other device."
             case .busy: return "It's busy with another pairing. Try again in a few minutes."
+            case .identityMismatch: return "Identity mismatch: the device that answered isn't the one advertised on this Wi-Fi."
             case .other(let message): return message
             }
         }
@@ -187,7 +188,8 @@ enum LANPairing {
         guard let url = URL(string: "https://\(address)/pair/request") else { throw Failure.unreachable }
 
         // No pin yet: accept the certificate, but remember it. The six-digit code is what proves it.
-        let capture = CapturedTrust()
+        // It must at least present the certificate it advertises; the code then confirms it end to end.
+        let capture = CapturedTrust(expected: device.fingerprint)
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 75   // the other side waits up to 60 s for the person
         let session = URLSession(configuration: config, delegate: capture, delegateQueue: nil)
@@ -213,7 +215,7 @@ enum LANPairing {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            throw Failure.unreachable
+            throw capture.mismatch ? Failure.identityMismatch : Failure.unreachable
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
@@ -256,7 +258,13 @@ enum LANPairing {
 /// Trusts any server certificate once, recording its fingerprint (LAN pairing only).
 private final class CapturedTrust: NSObject, URLSessionDelegate {
     private(set) var fingerprint: String?
+    private(set) var mismatch = false
+    let expected: String
     var onCertificate: ((String) -> Void)?
+
+    init(expected: String) {
+        self.expected = expected.lowercased()
+    }
 
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
@@ -266,6 +274,10 @@ private final class CapturedTrust: NSObject, URLSessionDelegate {
             return completionHandler(.performDefaultHandling, nil)
         }
         let fp = DeviceIdentity.fingerprint(of: SecCertificateCopyData(leaf) as Data)
+        guard fp == expected else {
+            mismatch = true
+            return completionHandler(.cancelAuthenticationChallenge, nil)
+        }
         fingerprint = fp
         onCertificate?(fp)
         completionHandler(.useCredential, URLCredential(trust: trust))

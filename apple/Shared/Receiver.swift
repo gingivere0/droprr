@@ -346,6 +346,7 @@ final class DroprrReceiver {
 
         guard let body = request.bodyFile, let data = try? Data(contentsOf: body),
               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let id = (json["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty,
               let name = (json["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
               let platform = json["platform"] as? String, ["ios", "macos", "windows"].contains(platform),
               let fp = Self.fingerprint(json["fp"]) else {
@@ -372,7 +373,7 @@ final class DroprrReceiver {
         let pair = PairRequest(name: name, platform: platform,
                                host: (json["host"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
                                port: port, token: (json["token"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-                               acceptToken: minted, deviceID: json["id"] as? String, fingerprint: fp,
+                               acceptToken: minted, deviceID: id, fingerprint: fp,
                                tlsPort: json["tlsPort"] as? Int, lan: json["lan"] as? [String])
         await MainActor.run { onPair(pair) }
         return .json(200, responseFields(token: minted))
