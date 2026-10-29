@@ -176,7 +176,7 @@ final class MacModel {
         LANDiscovery.shared.start()
         // Computers paired before protocol 2: a /ping over Tailscale gives their id and certificate to pin.
         Task { [settings] in
-            for peer in settings.peers where !peer.isPhone && peer.fingerprint == nil && peer.isPaired {
+            for peer in settings.peers where !peer.isPhone && (peer.fingerprint == nil || peer.deviceID == nil) && peer.isPaired {
                 _ = await settings.ping(peer)
             }
         }

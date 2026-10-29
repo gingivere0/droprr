@@ -195,20 +195,27 @@ private struct NearbySection: View {
     @State private var failure: String?
     private var settings: DroprrSettings { .shared }
 
-    private var unpaired: [NearbyDevice] {
-        discovery.nearby.filter { device in
-            !settings.peers.contains { $0.deviceID == device.id && $0.fingerprint == device.fingerprint && $0.isPaired }
-        }
+    /// The peer a nearby device already is, matched by id or certificate.
+    private func pairedPeer(_ device: NearbyDevice) -> Peer? {
+        settings.peers.first { ($0.deviceID == device.id || $0.fingerprint == device.fingerprint) && $0.isPaired }
     }
 
     var body: some View {
         if settings.localNetwork {
             Section {
-                if unpaired.isEmpty {
+                if discovery.nearby.isEmpty {
                     Label("Looking for devices on this Wi-Fi…", systemImage: "wifi")
                         .foregroundStyle(.secondary)
                 }
-                ForEach(unpaired) { device in
+                ForEach(discovery.nearby) { device in
+                    if let peer = pairedPeer(device) {
+                        HStack {
+                            Image(systemName: Theme.symbol(for: peer)).frame(width: 24)
+                            Text(device.name)
+                            Spacer()
+                            Text("Paired as \(peer.name)").foregroundStyle(.secondary)
+                        }
+                    } else {
                     Button { start(device) } label: {
                         HStack {
                             Image(systemName: device.platform == "ios" ? "iphone" : device.platform == "windows" ? "pc" : "laptopcomputer")
@@ -227,6 +234,7 @@ private struct NearbySection: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(pairing != nil)
+                    }
                 }
             } header: {
                 Text("Nearby")

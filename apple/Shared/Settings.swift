@@ -127,18 +127,28 @@ final class DroprrSettings {
         mergeDuplicates()
     }
 
-    /// One device, one entry: peers that turn out to share a device id (say, one added over Tailscale and
-    /// one paired over Wi-Fi) become a single peer keeping both paths. The newer pairing's tokens win.
+    /// One device, one entry: peers that turn out to be the same device (same device id, same pinned
+    /// fingerprint, or same Tailscale host), say one added over Tailscale and one paired over Wi-Fi, become a
+    /// single peer keeping both paths. The older entry's name and host stay; the newer pairing's tokens win,
+    /// since that's the token the other device now accepts. Matches the Windows app.
     func mergeDuplicates() {
+        func same(_ a: Peer, _ b: Peer) -> Bool {
+            if let x = a.deviceID, x == b.deviceID { return true }
+            if let x = a.fingerprint, x == b.fingerprint { return true }
+            let h = a.host.trimmingCharacters(in: .whitespaces)
+            return !h.isEmpty && PairingInfo.isTailscaleHost(h) && h.caseInsensitiveCompare(b.host) == .orderedSame
+                && a.isPhone == b.isPhone && a.port == b.port
+        }
         var merged: [Peer] = []
         var changed = false
         for peer in peers {
-            guard let id = peer.deviceID, let k = merged.firstIndex(where: { $0.deviceID == id }) else {
+            guard let k = merged.firstIndex(where: { same($0, peer) }) else {
                 merged.append(peer)
                 continue
             }
             changed = true
             var keep = merged[k]
+            keep.deviceID = keep.deviceID ?? peer.deviceID
             if keep.host.trimmingCharacters(in: .whitespaces).isEmpty { keep.host = peer.host; keep.port = peer.port }
             if let token = peer.token, !token.isEmpty { keep.token = token }
             if let accept = peer.acceptToken, !accept.isEmpty { keep.acceptToken = accept }

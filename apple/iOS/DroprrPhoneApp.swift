@@ -314,6 +314,9 @@ final class PhoneModel {
             guard let client = try? await DroprrClient.connect(peer).client,
                   let items = try? await client.inbox(for: settings.deviceName) else { continue }
             reached += 1
+            // Pairings from before protocol 2: learn the computer's id (and pin it over Tailscale), which
+            // also merges a computer paired both ways into one entry.
+            if peer.deviceID == nil || peer.fingerprint == nil { _ = await settings.ping(peer) }
             await upgradePairing(peer, client: client)
             for entry in items {
                 do {
