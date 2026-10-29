@@ -1,5 +1,6 @@
 import AppKit
 import CryptoKit
+import OSLog
 import WebKit
 
 /// Browser access over the internet (docs/PROTOCOL.md): runs the shared host page (host/host.html, host/host.js and
@@ -68,6 +69,7 @@ final class BrowserHost: NSObject, WKNavigationDelegate {
     private var origin: String { "http://localhost:\(settings.port)" }
 
     func start() {
+        hostLog.log("starting the host page on port \(self.settings.port, privacy: .public)")
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()   // keeps the page's IndexedDB, and so its DTLS certificate
         // host.js listens for app messages on chrome.webview (WebView2's API); give it the same shape here.
@@ -83,15 +85,21 @@ final class BrowserHost: NSObject, WKNavigationDelegate {
         })();
         """
         config.userContentController.addUserScript(WKUserScript(source: shim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        #if DEBUG
-        // Debug builds: the page's console goes to the app's log.
+        // The page's console and errors go to the system log (host.js logs states, never secrets), so a page that
+        // doesn't come up can be diagnosed with: log show --predicate 'subsystem == "droprr" AND category == "host"'
         config.userContentController.add(ConsoleLog(), name: "droprrConsole")
         config.userContentController.addUserScript(WKUserScript(source: """
         (() => {
-          const post = (t) => window.webkit.messageHandlers.droprrConsole.postMessage(String(t));
+          const post = (t) => window.webkit.messageHandlers.droprrConsole.postMessage(String(t).slice(0, 300));
           const log = console.log; console.log = (...a) => { log(...a); post(a.join(" ")); };
           window.addEventListener("error", (e) => post("error: " + e.message));
           window.addEventListener("unhandledrejection", (e) => post("rejection: " + (e.reason && (e.reason.stack || e.reason.message) || e.reason)));
+        })();
+        """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        #if DEBUG
+        config.userContentController.addUserScript(WKUserScript(source: """
+        (() => {
+          const post = (t) => window.webkit.messageHandlers.droprrConsole.postMessage(String(t));
           const PC = window.RTCPeerConnection;
           window.RTCPeerConnection = function (...args) {
             const pc = new PC(...args);
@@ -125,11 +133,24 @@ final class BrowserHost: NSObject, WKNavigationDelegate {
         let load = { [weak self] in
             guard let self, let url = URL(string: "\(self.origin)/host/host.html") else { return }
             webView.load(URLRequest(url: url))
+            self.checkReady(webView)
         }
         if let cookie {
             config.websiteDataStore.httpCookieStore.setCookie(cookie) { load() }
         } else {
             load()
+        }
+    }
+
+    /// The page reports ready within seconds. When it doesn't (the listener wasn't up yet at launch, or the page
+    /// failed to start), load it again, so Pair a phone never stays on the fallback code.
+    private func checkReady(_ webView: WKWebView, delay: TimeInterval = 10) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak webView] in
+            guard let self, let webView, webView === self.webView, self.fingerprint == nil else { return }
+            hostLog.error("host page not ready; loading it again")
+            webView.reload()
+            if webView.url == nil, let url = URL(string: "\(self.origin)/host/host.html") { webView.load(URLRequest(url: url)) }
+            self.checkReady(webView, delay: min(delay * 2, 120))
         }
     }
 
@@ -155,8 +176,17 @@ final class BrowserHost: NSObject, WKNavigationDelegate {
         decisionHandler(action.request.url?.absoluteString.hasPrefix("\(origin)/host/") == true ? .allow : .cancel)
     }
 
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        hostLog.error("page didn't load: \(error.localizedDescription, privacy: .public)")
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        hostLog.error("page failed: \(error.localizedDescription, privacy: .public)")
+    }
+
     /// The page crashed or was killed: load it again.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        hostLog.error("page process ended; loading it again")
         start()
     }
 
@@ -207,6 +237,7 @@ final class BrowserHost: NSObject, WKNavigationDelegate {
             if let fp = json(request)["fp"] as? String, fp.count == 43 {
                 await MainActor.run {
                     fingerprint = fp
+                    hostLog.log("host page ready")
                     onChange()
                 }
                 #if DEBUG
@@ -311,10 +342,14 @@ final class BrowserHost: NSObject, WKNavigationDelegate {
     }
 }
 
-#if DEBUG
+private let hostLog = Logger(subsystem: "droprr", category: "host")
+
 private final class ConsoleLog: NSObject, WKScriptMessageHandler {
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        NSLog("Droprr host page: %@", String(describing: message.body))
+        let text = String(describing: message.body)
+        hostLog.log("page: \(text, privacy: .public)")
+        #if DEBUG
+        NSLog("Droprr host page: %@", text)
+        #endif
     }
 }
-#endif
