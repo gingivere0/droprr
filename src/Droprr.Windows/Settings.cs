@@ -92,6 +92,14 @@ public sealed class Peer
         : Lan[0];
 }
 
+// The Send window's last device tile, which opens the one code (Pair a phone).
+public sealed class AddDeviceTile
+{
+    public static readonly AddDeviceTile Instance = new();
+
+    public string Name => "Add a device";
+}
+
 public sealed class AppSettings
 {
     public const int DefaultPort = 53318;

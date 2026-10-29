@@ -53,6 +53,7 @@
                         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
                         <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
                         <EventSetter Event="PreviewMouseLeftButtonUp" Handler="OnPeerTileClick" />
+                        <EventSetter Event="PreviewMouseLeftButtonDown" Handler="OnTileMouseDown" />
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
@@ -79,7 +80,18 @@
                         </Setter>
                     </Style>
                 </ListBox.ItemContainerStyle>
-                <ListBox.ItemTemplate>
+                <ListBox.Resources>
+                    <!-- The last tile: pair a phone or connect a browser (the one code). -->
+                    <DataTemplate DataType="{x:Type local:AddDeviceTile}">
+                        <StackPanel>
+                            <Border Width="32" Height="32" CornerRadius="{StaticResource RadiusTile}" HorizontalAlignment="Left"
+                                    Background="{DynamicResource AccentTintBrush}" Margin="0,0,0,12">
+                                <ui:SymbolIcon Symbol="Add24" FontSize="16" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                            </Border>
+                            <TextBlock Text="Add a device" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="Phone or browser" FontSize="{StaticResource FontSizeCaption}" TextTrimming="CharacterEllipsis" Opacity="0.8" />
+                        </StackPanel>
+                    </DataTemplate>
                     <DataTemplate DataType="{x:Type local:Peer}">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,12">
@@ -125,7 +137,7 @@
                                        Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
                         </StackPanel>
                     </DataTemplate>
-                </ListBox.ItemTemplate>
+                </ListBox.Resources>
             </ListBox>
             <Border x:Name="EmptyState" Style="{StaticResource Tile}" Visibility="Collapsed" Margin="0,0,0,12">
                 <TextBlock TextWrapping="Wrap">

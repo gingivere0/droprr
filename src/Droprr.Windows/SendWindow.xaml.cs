@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Input;
 using Microsoft.Win32;
 using Wpf.Ui.Controls;
@@ -20,6 +21,18 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
     AppSettings _settings;
     readonly ObservableCollection<FileEntry> _files = new();
     readonly ObservableCollection<Peer> _peers = new();
+
+    // Keyboard: Enter or Space on the Add a device tile opens the one code too.
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        if (e.Key is Key.Enter or Key.Space && Keyboard.FocusedElement is FrameworkElement { DataContext: AddDeviceTile })
+        {
+            e.Handled = true;
+            ((App)Application.Current).ShowPairWindow();
+            return;
+        }
+        base.OnPreviewKeyDown(e);
+    }
 
     static readonly RoutedUICommand SendCommand = new("Send", nameof(SendCommand), typeof(SendWindow));
     static readonly RoutedUICommand PasteCommand = new("Paste", nameof(PasteCommand), typeof(SendWindow));
@@ -39,7 +52,14 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         InputBindings.Add(new KeyBinding(PasteCommand, Key.V, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(ApplicationCommands.Close, Key.Escape, ModifierKeys.None));
 
-        PeerBox.ItemsSource = _peers;
+        // The devices, then the Add a device tile.
+        PeerBox.ItemsSource = new CompositeCollection { new CollectionContainer { Collection = _peers }, AddDeviceTile.Instance };
+        PeerBox.SelectionChanged += (_, e) =>
+        {
+            // The Add tile is a button, never a send target.
+            if (PeerBox.SelectedItem is AddDeviceTile)
+                PeerBox.SelectedItem = e.RemovedItems.OfType<Peer>().FirstOrDefault() ?? _peers.FirstOrDefault();
+        };
         var clipboardCheck = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         clipboardCheck.Tick += (_, _) => UpdateSendClipboard();
         Activated += (_, _) => UpdateSendClipboard();
@@ -139,8 +159,8 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             _peers.Add(peer);
         }
         PeerBox.SelectedItem = _peers.FirstOrDefault(p => p.Name == selected) ?? _peers.FirstOrDefault();
-        PeerBox.Visibility = _peers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        EmptyState.Visibility = _peers.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        // The Add a device tile is always there, so there's no separate empty state.
+        EmptyState.Visibility = Visibility.Collapsed;
     }
 
     // The "N waiting x" badge on a phone's card clears that phone's queue right away.
@@ -219,6 +239,16 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     void OnSettings(object sender, RoutedEventArgs e) => ((App)Application.Current).ShowSettings();
+
+    // The Add a device tile opens the one code instead of being selected.
+    void OnTileMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: AddDeviceTile })
+        {
+            e.Handled = true;
+            ((App)Application.Current).ShowPairWindow();
+        }
+    }
 
     // A "Missing Token" tile opens Settings at that device's token.
     void OnPeerTileClick(object sender, MouseButtonEventArgs e)

@@ -46,6 +46,12 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
 
     void OnHostReady() => Dispatcher.BeginInvoke(ShowCode);
 
+    void OnReveal(object sender, RoutedEventArgs e)
+    {
+        Code.Effect = null;
+        RevealButton.Visibility = Visibility.Collapsed;
+    }
+
     // The one code (docs/PROTOCOL.md, "One code"): a link to the Droprr website that browsers connect with, and that
     // the iPhone app pairs with, carrying the join secret and this PC's addresses but never its token. Without
     // WebView2 (so no website), the app-only pairing code instead.

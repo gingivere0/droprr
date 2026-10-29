@@ -13,7 +13,16 @@
 
             <Border x:Name="CodePanel" CornerRadius="{StaticResource RadiusFeature}" Background="{StaticResource QrPlateBrush}"
                     Padding="{StaticResource FeaturePadding}" HorizontalAlignment="Center">
-                <Image x:Name="Code" Width="280" Height="280" AutomationProperties.Name="Pairing QR code" RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                <!-- Blurred until clicked, so the code isn't readable by anyone glancing at the screen. -->
+                <Grid>
+                    <Image x:Name="Code" Width="280" Height="280" AutomationProperties.Name="Pairing QR code" RenderOptions.BitmapScalingMode="NearestNeighbor">
+                        <Image.Effect>
+                            <BlurEffect x:Name="CodeBlur" Radius="28" />
+                        </Image.Effect>
+                    </Image>
+                    <ui:Button x:Name="RevealButton" Content="Click to show the code" Icon="{ui:SymbolIcon Eye24}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource PrimaryActionButton}" Click="OnReveal" />
+                </Grid>
             </Border>
             <Grid x:Name="PairedPanel" Visibility="Collapsed" Height="312">
                 <StackPanel VerticalAlignment="Center">
