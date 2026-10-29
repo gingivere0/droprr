@@ -443,7 +443,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.mac";
 				PRODUCT_NAME = Droprr;
 				SDKROOT = macosx;
@@ -468,7 +468,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.mac";
 				PRODUCT_NAME = Droprr;
 				SDKROOT = macosx;
@@ -494,7 +494,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr";
 				PRODUCT_NAME = Droprr;
 				SDKROOT = iphoneos;
@@ -521,7 +521,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr";
 				PRODUCT_NAME = Droprr;
 				SDKROOT = iphoneos;
@@ -544,7 +544,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks @executable_path/../../Frameworks";
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.share";
 				PRODUCT_NAME = DroprrShare;
 				SDKROOT = iphoneos;
@@ -568,7 +568,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks @executable_path/../../Frameworks";
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.share";
 				PRODUCT_NAME = DroprrShare;
 				SDKROOT = iphoneos;
@@ -593,7 +593,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks @executable_path/../../../../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.mac.share";
 				PRODUCT_NAME = DroprrMacShare;
 				SDKROOT = macosx;
@@ -617,7 +617,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks @executable_path/../../../../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.mac.share";
 				PRODUCT_NAME = DroprrMacShare;
 				SDKROOT = macosx;
