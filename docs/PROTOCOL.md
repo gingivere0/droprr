@@ -358,7 +358,7 @@ DNS-SD (Bonjour, mDNS) only, with no custom UDP multicast, because raw multicast
 
 - **`GET /ping`** adds `"id"`, `"fp"`, and `"tlsPort"`, and reports `"protocol": 2`. A protocol 1 client ignores the extra fields.
 - **Pairing QR:** still payload version `v=1`, with three optional keys that older apps ignore: `id`, `fp`, and `lan`, a comma-separated list of the desktop's current LAN `host:port` pairs for HTTPS (IPv6 in brackets). A scanner that gets `fp` pins it right away.
-- **`POST /pair`:** the request may add `"id"`, `"fp"`, `"tlsPort"`, and `"lan"` (an array of `host:port` strings) for the caller, and the response adds the desktop's `"id"`, `"fp"`, `"tlsPort"`, and `"lan"`. Each side stores the other's values.
+- **`POST /pair`:** the request may add `"id"`, `"fp"`, `"tlsPort"`, and `"lan"` (an array of `host:port` strings) for the caller, and the response adds the desktop's `"id"`, `"fp"`, `"tlsPort"`, `"lan"`, and `"host"` (its Tailscale name, if it has one). Each side stores the other's values. A protocol 2 iPhone also sends `"token"`, a device token it minted for this computer, as computers already do; see [Phones](#phones). When `/pair` is authenticated with a device token, the desktop updates the peer that token belongs to (matched by that, not by name), so a device can repeat `/pair` to add new fields without creating a duplicate.
 
 ### LAN pairing (`POST /pair/request`)
 
@@ -371,10 +371,10 @@ Pairing by picking a device that discovery found, without a QR code and without 
    { "id": "<requester id>", "name": "iPhone", "platform": "ios", "fp": "<requester fp>" }
    ```
 
-   A computer also sends `"tlsPort"`, `"lan"`, `"host"` (its Tailscale name, if any), and `"token"` (a device token it minted for the receiver), as in [`POST /pair`](#post-pair).
+   A computer also sends `"tlsPort"`, `"lan"`, `"host"` (its Tailscale name, if any), and `"token"` (a device token it minted for the receiver), as in [`POST /pair`](#post-pair). A protocol 2 iPhone sends `"token"` too.
 3. Both screens show the same **six-digit code**: the SHA-256 of the two fingerprints in sorted order, joined with `:`, with its first 4 bytes read as a big-endian unsigned integer, modulo 1,000,000, and zero-padded to six digits. The requester computes it from `fpServer` and its own `fp`, and the receiver from its own `fp` and the request's `fp`. Someone in the middle would have to present a different certificate, which changes the code, so the person can see the mismatch.
 4. The receiver asks: "Pair with `<name>`? Make sure `<name>` shows `<code>`." The request stays open until the person answers, for up to 60 seconds.
-5. **Accept:** the receiver adds or updates the peer (matched by `id`), pins the request's `fp`, mints a device token, and answers `200` with the same body as [`POST /pair`](#post-pair), plus its `id`, `fp`, `tlsPort`, and `lan`. The requester pins `fpServer` and stores the token. **Decline:** `403` with `"declined"`. **No answer:** `408` with `"timed out"`.
+5. **Accept:** the receiver adds or updates the peer (matched by `id`), pins the request's `fp`, mints a device token, and answers `200` with the same body as [`POST /pair`](#post-pair), plus its `id`, `fp`, `tlsPort`, `lan`, and `host`. When the receiver is an iPhone, the response's `token` is one the phone minted for the requester. The requester pins `fpServer` and stores the token. **Decline:** `403` with `"declined"`. **No answer:** `408` with `"timed out"`.
 
 **Limits:** only over HTTPS on `53319`, never on plain HTTP. One request at a time: a second one while a prompt is open gets `429`. After three declines or timeouts from the same address within 10 minutes, the receiver answers `429` to that address for 10 minutes. A request is never accepted without a person confirming it.
 
@@ -387,7 +387,9 @@ Pairing by picking a device that discovery found, without a QR code and without 
 
 ### Phones
 
-- **Sending to an iPhone:** if the phone is advertising right now (Droprr is open) and has a pin, the computer sends to it directly over HTTPS with `POST /send`. Otherwise it queues the item in the phone's [inbox](#inbox-phone-pull), as today.
+- **A token for the computer:** a protocol 2 iPhone mints a [device token](#tokens) for each computer it pairs with and sends it as `"token"` in `POST /pair` and `POST /pair/request`, or returns it in the `/pair/request` response when the phone is the one being asked. The computer stores it as the token it sends to that phone. A protocol 1 phone sends none, so computers keep only queuing for it.
+- **Upgrading an existing pairing:** when a protocol 2 iPhone sees from `/ping` that a computer it's already paired with speaks protocol 2, and it hasn't given that computer a token yet, it calls `POST /pair` on that computer once, authenticated with the token it already has, carrying `token`, `id`, `fp`, `tlsPort`, and `lan`. The computer updates that phone's existing peer (matched by the bearer token's device), so nobody has to pair again.
+- **Sending to an iPhone:** if the computer has a token for the phone, has its pin, and the phone is advertising right now (Droprr is open), the computer sends to it directly over HTTPS with `POST /send`. Otherwise it queues the item in the phone's [inbox](#inbox-phone-pull), as today.
 - **Inbox polling:** the phone polls whichever path to the computer answers first: LAN HTTPS if the computer is discovered, otherwise Tailscale. The inbox endpoints and their scoping are unchanged.
 
 ### Platform notes
