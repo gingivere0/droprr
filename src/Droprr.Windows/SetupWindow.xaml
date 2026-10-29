@@ -1,0 +1,40 @@
+<ui:FluentWindow x:Class="Droprr.SetupWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 Title="Install Droprr" Width="460" SizeToContent="Height" ResizeMode="NoResize"
+                 WindowStartupLocation="CenterScreen"
+                 ExtendsContentIntoTitleBar="True" WindowBackdropType="None" WindowCornerPreference="Round">
+    <StackPanel>
+        <ui:TitleBar x:Name="AppTitleBar" Title="Install Droprr" ShowMaximize="False" ShowMinimize="False" />
+
+        <StackPanel Margin="{StaticResource WindowPadding}">
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                <Image x:Name="Logo" Width="48" Height="48" Margin="0,0,16,0" VerticalAlignment="Center" />
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock x:Name="Heading" Text="Install Droprr" Style="{StaticResource TitleText}" />
+                    <TextBlock x:Name="Version" Style="{StaticResource Caption}" />
+                </StackPanel>
+            </StackPanel>
+
+            <Border Style="{StaticResource Tile}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock x:Name="Summary" Style="{StaticResource Caption}" Margin="0,0,0,12" />
+                    <CheckBox x:Name="SignInBox" Content="Start Droprr when I sign in" IsChecked="True" Margin="0,0,0,8" />
+                    <CheckBox x:Name="FirewallBox" Content="Let my devices reach this PC through Windows Firewall" IsChecked="True" />
+                    <TextBlock x:Name="FirewallHint" Style="{StaticResource Caption}" Margin="28,2,0,0"
+                               Text="Windows asks for permission once. Only Tailscale and private networks are allowed." />
+                </StackPanel>
+            </Border>
+
+            <ui:InfoBar x:Name="Status" IsOpen="False" IsClosable="False" Margin="0,0,0,12" />
+            <ProgressBar x:Name="Busy" IsIndeterminate="True" Visibility="Collapsed" Margin="0,0,0,12" Style="{StaticResource BrandProgressBar}" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <ui:Button x:Name="CancelButton" Content="Cancel" Margin="0,0,8,0" Click="OnCancel" />
+                <ui:Button x:Name="InstallButton" Content="Install" Icon="{ui:SymbolIcon ArrowDownload24}"
+                           Style="{StaticResource PrimaryActionButton}" IsDefault="True" Click="OnInstall" />
+            </StackPanel>
+        </StackPanel>
+    </StackPanel>
+</ui:FluentWindow>

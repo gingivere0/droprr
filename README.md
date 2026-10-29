@@ -33,6 +33,18 @@ Install Tailscale on every device and sign in to the same tailnet first.
 
 ### Windows
 
+**Install:** run `DroprrSetup-<version>.exe`. It installs Droprr just for you, in `%LOCALAPPDATA%\Programs\Droprr`, without administrator rights or a separate .NET install. It adds Droprr to the Start menu (so Windows Search finds it), to Explorer's **Send to** menu, and to **Settings › Apps**, and offers **Start Droprr when I sign in** and the Windows Firewall rules for Tailscale and private Wi-Fi (one permission prompt). Running a newer `DroprrSetup` updates Droprr in place, keeping your devices, settings, and received files. Uninstall it from **Settings › Apps**; it asks whether to keep your settings and paired devices, and received files always stay in Downloads.
+
+The installer isn't code-signed yet, so the first time it runs, SmartScreen says "Windows protected your PC". Choose **More info**, then **Run anyway**.
+
+To build the installer, run this. It creates `dist\DroprrSetup-<version>.exe`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
+```
+
+**For development**, build and run from the repo instead:
+
 1. Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
 2. Publish a build. This creates `deploy\<yyyyMMdd-HHmmss>\Droprr.exe`:
 
@@ -50,7 +62,7 @@ Install Tailscale on every device and sign in to the same tailnet first.
 
 **Using it:** left-click the tray icon to open the Send window. Pick a device, drop or paste files, type text or a link, and choose **Send**. Right-click the tray icon for the menu: Recent items, the Droprr folder, Settings, and how many items are waiting for your phone. Starting Droprr again while it's running brings up the Send window. In Settings (the gear in the Send window) you can rename the PC, change the port or save folder, add and remove devices, manage the token, choose the style, theme, and mode, and turn on **Start Droprr when I sign in** and **Auto-copy received items to clipboard**.
 
-**Updates install themselves.** After changing the code, run `scripts\deploy.ps1` again. Within a few seconds, the running Droprr starts the new build and exits (it waits if something is arriving), reopening any window you had open. The newest two builds are kept, and the Start menu, **Send to**, and sign-in entries follow the new build.
+**Updates install themselves** (development builds). After changing the code, run `scripts\deploy.ps1` again. Within a few seconds, the running Droprr starts the new build and exits (it waits if something is arriving), reopening any window you had open. The newest two builds are kept, and the Start menu, **Send to**, and sign-in entries follow the new build. Once Droprr is installed with `DroprrSetup`, only the installed copy manages those entries, and deploy builds don't hand over to or from it.
 
 To build without deploying, run `dotnet build` in the repo root.
 
@@ -96,7 +108,7 @@ Without the iPhone app, you can still send to a computer from the share sheet, a
 | `design-system/droprr/` | The shared design system: colors, themes, type, spacing, and contrast rules |
 | `docs/PROTOCOL.md` | The HTTP protocol every Droprr app speaks |
 | `docs/ios-shortcut.md` | Optional iPhone Shortcuts |
-| `scripts/` | `deploy.ps1` (publishes a Windows build for the self-updating app) and `make-app-icon.ps1` |
+| `scripts/` | `build-installer.ps1` (the Windows installer), `deploy.ps1` (publishes a Windows build for the self-updating app), and `make-app-icon.ps1` |
 | `file-swap-icon-pack/` | App, tray, and per-theme icons for every platform |
 
-`deploy/`, `bin/`, and `obj/` are build output and ignored by git, as are personal files such as `settings.json` and `apple/Config/Local.xcconfig`. Never commit tokens, host names, or IP addresses.
+`deploy/`, `dist/`, `bin/`, and `obj/` are build output and ignored by git, as are personal files such as `settings.json` and `apple/Config/Local.xcconfig`. Never commit tokens, host names, or IP addresses.

@@ -28,6 +28,53 @@ static class Shortcuts
             Write(SendToPath, exe, "--send", "Send to another device with Droprr", appId: null);
     }
 
+    // The installer's shortcuts, for the installed exe.
+    public static void Install(string exe)
+    {
+        Write(StartMenuPath, exe, "", "Send files, text, and links between your devices", AppUserModelId);
+        Write(SendToPath, exe, "--send", "Send to another device with Droprr", appId: null);
+        SHChangeNotify(ShcneAssocChanged, ShcnfIdList, null, null);
+    }
+
+    // Removes Droprr's shortcuts (Start menu, Send To, and anything pinned) that open an exe in `folder` or one that's
+    // gone, and the theme icons they used.
+    public static void Uninstall(string folder)
+    {
+        var links = new List<string> { StartMenuPath, SendToPath };
+        foreach (var pinned in new[] { PinnedFolder("TaskBar"), PinnedFolder("StartMenu") })
+            if (Directory.Exists(pinned))
+                links.AddRange(Directory.EnumerateFiles(pinned, "*.lnk"));
+        foreach (var linkPath in links.Where(File.Exists))
+        {
+            try
+            {
+                if (TargetOf(linkPath) is { } target && Path.GetFileName(target).Equals("Droprr.exe", StringComparison.OrdinalIgnoreCase)
+                    && (target.StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(target)))
+                    File.Delete(linkPath);
+            }
+            catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+        SHChangeNotify(ShcneAssocChanged, ShcnfIdList, null, null);
+    }
+
+    static string? TargetOf(string linkPath)
+    {
+        var link = (IShellLinkW)new CShellLink();
+        try
+        {
+            ((IPersistFile)link).Load(linkPath, 0);
+            var target = new StringBuilder(1024);
+            link.GetPath(target, target.Capacity, IntPtr.Zero, 0x4 /* SLGP_RAWPATH */);
+            return target.ToString();
+        }
+        finally
+        {
+            Marshal.FinalReleaseComObject(link);
+        }
+    }
+
     public static void SyncStartMenu(bool enabled)
     {
         if (!enabled)
@@ -102,10 +149,12 @@ static class Shortcuts
                 return null;
 
             var changes = new List<string>();
-            // An older build in the same deploy folder (deploy\<build>\Droprr.exe): follow this one.
+            // An older build in the same deploy folder (deploy\<build>\Droprr.exe): follow this one. The installed
+            // copy takes over every Droprr shortcut (for example, ones pinned while a deploy build was running).
             var deployRoot = Path.GetDirectoryName(Path.GetDirectoryName(exe));
             if (!string.Equals(target, exe, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(Path.GetDirectoryName(Path.GetDirectoryName(target)), deployRoot, StringComparison.OrdinalIgnoreCase))
+                && (Installer.IsInstalledCopy
+                    || string.Equals(Path.GetDirectoryName(Path.GetDirectoryName(target)), deployRoot, StringComparison.OrdinalIgnoreCase)))
             {
                 link.SetPath(exe);
                 link.SetWorkingDirectory(Path.GetDirectoryName(exe)!);

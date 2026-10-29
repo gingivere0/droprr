@@ -133,11 +133,12 @@ static class StartWithWindows
         }
     }
 
-    public static void Set(bool enabled)
+    // Points the sign-in entry at `exe` (this one by default).
+    public static void Set(bool enabled, string? exe = null)
     {
         using var key = Registry.CurrentUser.CreateSubKey(RunKey);
-        if (enabled && Environment.ProcessPath is { } exe)
-            key.SetValue(ValueName, $"\"{exe}\" --background");
+        if (enabled && (exe ?? Environment.ProcessPath) is { } path)
+            key.SetValue(ValueName, $"\"{path}\" --background");
         else
             key.DeleteValue(ValueName, throwOnMissingValue: false);
     }

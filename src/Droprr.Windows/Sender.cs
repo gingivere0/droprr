@@ -254,7 +254,12 @@ static class Sender
                 fingerprint = certificate is null ? null : DeviceIdentity.Fingerprint(certificate);
                 return certificate is not null;
             });
-            await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = "droprr" }, timeout.Token);
+            // With this PC's certificate too: a Mac requires one on every HTTPS connection.
+            await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+            {
+                TargetHost = "droprr",
+                LocalCertificateSelectionCallback = (_, _, _, _, _) => ClientCertificate!,
+            }, timeout.Token);
             return fingerprint;
         }
         catch (Exception ex) when (ex is SocketException or IOException or AuthenticationException or OperationCanceledException)

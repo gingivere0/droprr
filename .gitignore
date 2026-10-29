@@ -32,3 +32,6 @@ demo-production/
 # OS
 Thumbs.db
 .DS_Store
+
+# Installer builds (scripts/build-installer.ps1)
+dist/

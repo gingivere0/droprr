@@ -64,6 +64,23 @@ public partial class App : Application
     {
         base.OnStartup(e);
         CrashLog.Install(this);
+        // Installing or uninstalling instead of running (see Installer), in the default look.
+        if (Installer.IsSetupLaunch(e.Args) || Installer.IsUninstallLaunch(e.Args))
+        {
+            AppTheme.Initialize(ThemeCatalog.DefaultId, AppTheme.LightMode, LookCatalog.DefaultId);
+            int code;
+            try
+            {
+                code = await Installer.RunAsync(e.Args);
+            }
+            catch (Exception ex)
+            {
+                await AppTheme.ShowMessageAsync("Droprr setup failed", ex.Message);
+                code = 1;
+            }
+            Shutdown(code);
+            return;
+        }
         try { Shortcuts.SetProcessAppId(); } catch { /* only affects taskbar grouping and notification branding */ }
         try
         {
@@ -103,14 +120,18 @@ public partial class App : Application
         }
         SingleInstance.Listen(args => Dispatcher.BeginInvoke(() => HandleLaunch(args)), _stopListening.Token);
 
-        // Conveniences: Droprr keeps running without them.
-        try { Shortcuts.RegisterSendTo(); } catch { }
-        try { Shortcuts.SyncStartMenu(Settings.AddToStartMenu); } catch { }
-        // Shortcuts show the saved theme's logo: at startup and after each save (not during Settings' live preview).
-        SyncShortcutIcons();
-        SettingsSaved += SyncShortcutIcons;
-        // Keep the sign-in entry pointing at this exe if Droprr was moved or rebuilt elsewhere.
-        try { if (StartWithWindows.IsEnabled) StartWithWindows.Set(true); } catch { /* not fatal */ }
+        // Conveniences: Droprr keeps running without them. Once Droprr is installed, only the installed copy
+        // manages them, so running a development build doesn't point them at it.
+        if (!Installer.IsInstalled || Installer.IsInstalledCopy)
+        {
+            try { Shortcuts.RegisterSendTo(); } catch { }
+            try { Shortcuts.SyncStartMenu(Settings.AddToStartMenu); } catch { }
+            // Shortcuts show the saved theme's logo: at startup and after each save (not during Settings' live preview).
+            SyncShortcutIcons();
+            SettingsSaved += SyncShortcutIcons;
+            // Keep the sign-in entry pointing at this exe if Droprr was moved or rebuilt elsewhere.
+            try { if (StartWithWindows.IsEnabled) StartWithWindows.Set(true); } catch { /* not fatal */ }
+        }
 
         _tray = new TrayIcon(this);
         // Keeps "2 min ago" current and notices files moved or deleted since they arrived.
@@ -143,6 +164,12 @@ public partial class App : Application
     {
         if (args.Contains("--background"))
             return;
+        // The installer replacing this copy. Anything arriving finishes first.
+        if (args.Contains("--quit"))
+        {
+            QuitWhenIdle();
+            return;
+        }
         if (args.Contains("--settings"))
         {
             ShowSettings();
@@ -179,6 +206,13 @@ public partial class App : Application
         }, Dispatcher);
         Outbox.PurgeExpired();
         _tray?.SetPending(Outbox.PendingByPeer());
+    }
+
+    async void QuitWhenIdle()
+    {
+        for (var waited = 0; (_receiving.Count > 0 || ActiveSends > 0) && waited < 15; waited++)
+            await Task.Delay(1000);
+        ExitApp();
     }
 
     // Hands over to a newer deployed build (see LiveUpdate), waiting until nothing is being received.
