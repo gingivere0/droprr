@@ -20,6 +20,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
     readonly ObservableCollection<Peer> _peers;
     readonly Dictionary<string, string> _originalTokens;
     readonly string _originalTheme;
+    readonly string _originalMode;
     bool _tokenVisible;
     bool _saved;
 
@@ -48,12 +49,20 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
 
         // Appearance: picking a swatch restyles every window at once; Cancel (or closing) puts it back.
         _originalTheme = AppTheme.Current.Id;
-        ThemeList.ItemsSource = ThemeCatalog.All.Select(t => new ThemeSwatch(t, AppTheme.IsDark)).ToList();
-        ThemeList.SelectedItem = ((IEnumerable<ThemeSwatch>)ThemeList.ItemsSource).First(t => t.Id == _originalTheme);
+        _originalMode = AppTheme.Mode;
+        ShowSwatches(_originalTheme);
+        ModeBox.SelectedItem = ModeBox.Items.Cast<ComboBoxItem>().First(i => (string)i.Tag == _originalMode);
+        // The swatches preview each theme in the current mode.
+        Action rebuild = () => ShowSwatches(AppTheme.Current.Id);
+        AppTheme.ModeChanged += rebuild;
         Closed += (_, _) =>
         {
+            AppTheme.ModeChanged -= rebuild;
             if (!_saved)
+            {
                 AppTheme.SetTheme(_originalTheme);
+                AppTheme.SetMode(_originalMode);
+            }
         };
 
         // Esc closes without saving, unless something inside used it first (like cancelling a cell edit).
@@ -85,6 +94,19 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
     {
         if (ThemeList.SelectedItem is ThemeSwatch swatch)
             AppTheme.SetTheme(swatch.Id);
+    }
+
+    void ShowSwatches(string selectedId)
+    {
+        var swatches = ThemeCatalog.All.Select(t => new ThemeSwatch(t, AppTheme.IsDark)).ToList();
+        ThemeList.ItemsSource = swatches;
+        ThemeList.SelectedItem = swatches.First(t => t.Id == selectedId);
+    }
+
+    void OnModeChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (ModeBox.SelectedItem is ComboBoxItem { Tag: string mode })
+            AppTheme.SetMode(mode);
     }
 
     void OnShowToken(object sender, RoutedEventArgs e)
@@ -251,6 +273,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         _settings.CopyFilesToClipboard = CopyFilesBox.IsChecked == true;
         _settings.CopyTextToClipboard = CopyTextBox.IsChecked == true;
         _settings.Theme = AppTheme.Current.Id;
+        _settings.Mode = AppTheme.Mode;
         try
         {
             SettingsStore.Save(_settings);

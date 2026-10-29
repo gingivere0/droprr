@@ -1,3 +1,4 @@
+using System;
 using System.Windows;
 using System.Windows.Media;
 using Microsoft.Win32;
@@ -6,27 +7,84 @@ using Wpf.Ui.Controls;
 
 namespace Droprr;
 
-// Light or dark to match Windows, plus the color theme chosen in Settings (ThemeCatalog). Everything themed is
-// a DynamicResource, so switching either one restyles open windows immediately, with no restart.
+// Light or dark (following Windows unless Settings picks one), plus the color theme chosen in Settings
+// (ThemeCatalog). Everything themed is a DynamicResource, so switching either one restyles open windows
+// immediately, with no restart.
 static class AppTheme
 {
+    public const string SystemMode = "system", LightMode = "light", DarkMode = "dark";
+
     static ThemeDef _theme = ThemeCatalog.Find(null);
+    static string _modeSetting = SystemMode;
     static ApplicationTheme _mode = ApplicationTheme.Light;
 
     public static ThemeDef Current => _theme;
 
-    public static void Initialize(string? themeId)
+    // "system", "light", or "dark", as chosen in Settings.
+    public static string Mode => _modeSetting;
+
+    // Raised after a light or dark switch, so views built for one mode can rebuild.
+    public static event Action? ModeChanged;
+
+    public static void Initialize(string? themeId, string? mode = null)
     {
         _theme = ThemeCatalog.Find(themeId);
-        _mode = SystemUsesLightTheme() ? ApplicationTheme.Light : ApplicationTheme.Dark;
+        _modeSetting = Normalize(mode);
+        _mode = Resolve();
         ApplicationThemeManager.Apply(_mode, WindowBackdropType.None, updateAccent: false);
         ApplyColors();
-        // A light or dark switch recomputes the theme's shades for the new background.
-        ApplicationThemeManager.Changed += (newMode, _) =>
+        // Following Windows: switch when it does. A Light or Dark choice ignores it.
+        SystemEvents.UserPreferenceChanged += (_, e) =>
         {
-            _mode = newMode;
-            ApplyColors();
+            if (e.Category == UserPreferenceCategory.General && _modeSetting == SystemMode)
+                Application.Current?.Dispatcher.BeginInvoke(ApplyMode);
         };
+    }
+
+    // Live: called from the Settings mode picker as the selection changes.
+    public static void SetMode(string? mode)
+    {
+        _modeSetting = Normalize(mode);
+        ApplyMode();
+    }
+
+    static string Normalize(string? mode) => mode?.ToLowerInvariant() switch
+    {
+        LightMode => LightMode,
+        DarkMode => DarkMode,
+        _ => SystemMode,
+    };
+
+    static ApplicationTheme Resolve() => _modeSetting switch
+    {
+        LightMode => ApplicationTheme.Light,
+        DarkMode => ApplicationTheme.Dark,
+        _ => SystemUsesLightTheme() ? ApplicationTheme.Light : ApplicationTheme.Dark,
+    };
+
+    // Restyles every open window, title bars included, when the resolved mode changes.
+    static void ApplyMode()
+    {
+        var mode = Resolve();
+        if (mode == _mode)
+            return;
+        _mode = mode;
+        // The new mode's accent goes in first: WPF UI's theme dictionary copies some accent colors (the "on"
+        // toggle fill) when it loads, and would otherwise keep the old mode's accent.
+        ApplyColors();
+        ApplicationThemeManager.Apply(_mode, WindowBackdropType.None, updateAccent: false);
+        ApplyColors();
+        foreach (Window window in Application.Current.Windows)
+            UpdateTitleBar(window);
+        ModeChanged?.Invoke();
+    }
+
+    static void UpdateTitleBar(Window window)
+    {
+        if (IsDark)
+            WindowBackgroundManager.ApplyDarkThemeToWindow(window);
+        else
+            WindowBackgroundManager.RemoveDarkThemeFromWindow(window);
     }
 
     // Live: called from the Settings theme picker as the selection changes.
@@ -111,8 +169,8 @@ static class AppTheme
         await box.ShowDialogAsync();
     }
 
-    // Gives a window the app icon (taskbar and title bar) and makes it follow Windows' light and dark setting
-    // while it's open, keeping the theme's colors.
+    // Gives a window the app icon (taskbar and title bar) and the current light or dark mode, keeping the theme's
+    // colors. ApplyMode keeps it current while it's open.
     public static void Setup(Window window, TitleBar? titleBar = null)
     {
         void ShowIcon()
@@ -127,7 +185,7 @@ static class AppTheme
         window.Closed += (_, _) => AppIcon.Changed -= ShowIcon;
         // Bento: a solid themed surface behind the tiles rather than Mica.
         window.SetResourceReference(Window.BackgroundProperty, "ThemeSurfaceBrush");
-        window.Loaded += (_, _) => SystemThemeWatcher.Watch(window, WindowBackdropType.None, updateAccents: false);
+        window.Loaded += (_, _) => UpdateTitleBar(window);
     }
 
     static bool SystemUsesLightTheme()

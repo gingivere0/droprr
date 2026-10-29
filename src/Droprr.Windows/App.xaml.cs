@@ -64,7 +64,7 @@ public partial class App : Application
         try
         {
             Settings = SettingsStore.Load();
-            AppTheme.Initialize(Settings.Theme);
+            AppTheme.Initialize(Settings.Theme, Settings.Mode);
         }
         catch (Exception ex)
         {
