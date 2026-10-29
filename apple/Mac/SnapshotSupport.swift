@@ -45,14 +45,21 @@ extension SnapshotSupport {
                 if let frame = window.contentView?.superview ?? window.contentView { buttons(frame).first?.performClick(nil) }
             }
         }
+        if ProcessInfo.processInfo.environment["DROPRR_WINDOW_DUMP_CLOSE"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { closeMenuBarPanel() }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            var out = ""
+            var out = "key window: \(String(describing: NSApp.keyWindow.map { type(of: $0) }))\n"
             func walk(_ view: NSView, _ depth: Int) {
                 let fx = (view as? NSVisualEffectView).map { " material=\($0.material.rawValue) blend=\($0.blendingMode.rawValue)" } ?? ""
                 out += String(repeating: "  ", count: depth) + "\(type(of: view)) \(view.frame) hidden=\(view.isHidden) opaque=\(view.isOpaque) alpha=\(view.alphaValue) layerBg=\(String(describing: view.layer?.backgroundColor))\(fx)\n"
                 for sub in view.subviews { walk(sub, depth + 1) }
             }
             for window in NSApp.windows where window.isVisible {
+                if let button = (window.contentView?.superview).flatMap({ view -> NSStatusBarButton? in
+                    func find(_ v: NSView) -> NSStatusBarButton? { (v as? NSStatusBarButton) ?? v.subviews.lazy.compactMap(find).first }
+                    return find(view)
+                }) { out += "status button highlighted=\(button.isHighlighted) state=\(button.state.rawValue)\n" }
                 out += "WINDOW \(type(of: window)) '\(window.title)' opaque=\(window.isOpaque) bg=\(String(describing: window.backgroundColor)) transparentTitle=\(window.titlebarAppearsTransparent) style=\(window.styleMask.rawValue) toolbar=\(String(describing: window.toolbar)) appearance=\(String(describing: window.appearance?.name))\n"
                 if let frame = window.contentView?.superview { walk(frame, 1) }
             }

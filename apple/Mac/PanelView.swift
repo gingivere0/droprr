@@ -330,8 +330,21 @@ private func isMenuBarPanel(_ window: NSWindow) -> Bool {
     String(describing: type(of: window)).contains("MenuBarExtra")
 }
 
-/// Hides the menu bar popup, for buttons in it that open another window.
+/// Hides the menu bar popup, for buttons in it that open another window. Clicking the status item
+/// again is what SwiftUI expects, so the icon stops looking pressed and the popup gives up focus.
 @MainActor
 func closeMenuBarPanel() {
-    for window in NSApp.windows where isMenuBarPanel(window) && window.isVisible { window.close() }
+    guard let panel = NSApp.windows.first(where: { isMenuBarPanel($0) && $0.isVisible }) else { return }
+    func statusButton(_ view: NSView) -> NSStatusBarButton? {
+        (view as? NSStatusBarButton) ?? view.subviews.lazy.compactMap(statusButton).first
+    }
+    let button = NSApp.windows.lazy.compactMap { window in
+        String(describing: type(of: window)).contains("NSStatusBarWindow") ? (window.contentView?.superview).flatMap(statusButton) : nil
+    }.first
+    if let button {
+        button.performClick(nil)
+        button.highlight(false)
+    }
+    if panel.isVisible { panel.close() }
+    panel.resignKey()
 }
