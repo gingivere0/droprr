@@ -29,6 +29,8 @@ final class HTTPServer {
         var remoteHost: String?
         /// True when it arrived on the HTTPS (protocol 2) listener.
         var secure = false
+        /// The SHA-256 fingerprint of the client's TLS certificate, when it presented one (protocol 2 clients do).
+        var clientFingerprint: String?
 
         func header(_ name: String) -> String? { headers[name.lowercased()] }
     }
@@ -71,6 +73,12 @@ final class HTTPServer {
             let tls = NWProtocolTLS.Options()
             sec_protocol_options_set_local_identity(tls.securityProtocolOptions, identity)
             sec_protocol_options_set_min_tls_protocol_version(tls.securityProtocolOptions, .TLSv12)
+            // Ask for the client's certificate (every protocol 2 client presents its device certificate);
+            // pairing reads its fingerprint. Any certificate is accepted here; the fingerprint is what counts.
+            // Network.framework has no "optional" mode on Apple platforms, so a certificate is required on the
+            // HTTPS port (the spec allows that; clients without one use plain HTTP over Tailscale).
+            sec_protocol_options_set_peer_authentication_required(tls.securityProtocolOptions, true)
+            sec_protocol_options_set_verify_block(tls.securityProtocolOptions, { _, _, complete in complete(true) }, queue)
             params = NWParameters(tls: tls, tcp: .init())
         } else {
             params = .tcp
@@ -174,6 +182,16 @@ private final class HTTPConnection {
     private var limit = Int.max
     private var bytesSinceSpaceCheck = 0
     private var retainSelf: HTTPConnection?
+
+    /// The client certificate's fingerprint, read from the TLS handshake.
+    private var clientFingerprint: String? {
+        guard let metadata = connection.metadata(definition: NWProtocolTLS.definition) as? NWProtocolTLS.Metadata else { return nil }
+        var leaf: SecCertificate?
+        sec_protocol_metadata_access_peer_certificate_chain(metadata.securityProtocolMetadata) { certificate in
+            if leaf == nil { leaf = sec_certificate_copy_ref(certificate).takeRetainedValue() }
+        }
+        return leaf.map { DeviceIdentity.fingerprint(of: SecCertificateCopyData($0) as Data) }
+    }
 
     private static let maxHeaderBytes = 64 * 1024
 
@@ -402,7 +420,7 @@ private final class HTTPConnection {
         var remoteHost: String?
         if case .hostPort(let host, _) = connection.endpoint { remoteHost = "\(host)".components(separatedBy: "%").first }
         return .init(method: String(parts[0]).uppercased(), path: path, headers: headers, bodyFile: nil, remoteHost: remoteHost,
-                     secure: server.policy == .lan)
+                     secure: server.policy == .lan, clientFingerprint: clientFingerprint)
     }
 
     private func dispatch() {

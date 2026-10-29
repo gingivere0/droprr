@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Network
 import Observation
@@ -196,7 +197,6 @@ enum LANPairing {
         let host: String? = await withCheckedContinuation { done in LANDiscovery.resolve(device.endpoint) { done.resume(returning: $0) } }
         guard let host else { throw Failure.unreachable }
         let address = host.contains(":") ? "[\(host)]:\(device.port)" : "\(host):\(device.port)"
-        guard let url = URL(string: "https://\(address)/pair/request") else { throw Failure.unreachable }
 
         // No pin yet: accept the certificate, but remember it. The six-digit code is what proves it.
         // It must at least present the certificate it advertises; the code then confirms it end to end.
@@ -206,30 +206,52 @@ enum LANPairing {
         let session = URLSession(configuration: config, delegate: capture, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
 
+        capture.identity = settings.identity?.secIdentity
+
+        func post(_ path: String, _ body: [String: Any]) async throws -> (Int, [String: Any]) {
+            guard let url = URL(string: "https://\(address)\(path)") else { throw Failure.unreachable }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            do {
+                let (data, response) = try await session.data(for: request)
+                return ((response as? HTTPURLResponse)?.statusCode ?? 0,
+                        (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:])
+            } catch {
+                throw capture.mismatch ? Failure.identityMismatch : Failure.unreachable
+            }
+        }
+
+        // Step 1: commit to a random nonce before seeing the other device's (pairing v2).
+        var nonceR = Data(count: 32)
+        _ = nonceR.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
+        let commit = Data(SHA256.hash(data: nonceR)).hexString
+        let (first, opened) = try await post("/pair/request", ["id": settings.deviceID, "name": settings.deviceName,
+                                                               "platform": DroprrSettings.platform, "commit": commit, "fp": ownFP])
+        switch first {
+        case 200: break
+        case 409: throw Failure.alreadyPaired(PairRequest.displayName(device.name))
+        case 429: throw Failure.busy
+        default: throw Failure.other(opened["error"] as? String ?? "It answered \(first).")
+        }
+        guard let sessionID = opened["session"] as? String, let nonceS = (opened["nonce"] as? String).flatMap(Data.init(hex:)),
+              nonceS.count == 32, let fpServer = capture.fingerprint else {
+            throw Failure.other("It didn't start the pairing.")
+        }
+        onCode(DroprrReceiver.pairingCode(fpA: ownFP, fpB: fpServer, nonceR: nonceR, nonceS: nonceS))
+
+        // Step 2: reveal the nonce with what this device offers, and wait for the person to answer there.
         let isComputer = DroprrSettings.platform != "ios"
         let minted = DroprrSettings.generateToken()
-        var body: [String: Any] = ["name": settings.deviceName, "platform": DroprrSettings.platform, "token": minted]
-        body.merge(settings.ownIdentityFields) { a, _ in a }
+        var body: [String: Any] = ["session": sessionID, "nonce": nonceR.hexString, "token": minted,
+                                   "tlsPort": settings.tlsPort, "lan": LocalAddresses.lan(port: settings.tlsPort)]
         if isComputer {
             if let tailscale = PairingInfo.tailscaleAddress() { body["host"] = tailscale }
             body["port"] = settings.port
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        capture.onCertificate = { fp in
-            Task { @MainActor in onCode(DroprrReceiver.pairingCode(ownFP, fp)) }
-        }
+        let (status, json) = try await post("/pair/confirm", body)
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            throw capture.mismatch ? Failure.identityMismatch : Failure.unreachable
-        }
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         switch status {
         case 200: break
         case 403: throw Failure.declined
@@ -238,7 +260,7 @@ enum LANPairing {
         case 409: throw Failure.alreadyPaired(PairRequest.displayName(device.name))
         default: throw Failure.other(json["error"] as? String ?? "It answered \(status).")
         }
-        guard let fpServer = capture.fingerprint, let token = (json["token"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) else {
+        guard let token = (json["token"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) else {
             throw Failure.other("It answered without a token.")
         }
 
@@ -276,7 +298,7 @@ private final class CapturedTrust: NSObject, URLSessionDelegate {
     private(set) var fingerprint: String?
     private(set) var mismatch = false
     let expected: String
-    var onCertificate: ((String) -> Void)?
+    var identity: SecIdentity?
 
     init(expected: String) {
         self.expected = expected.lowercased()
@@ -284,6 +306,11 @@ private final class CapturedTrust: NSObject, URLSessionDelegate {
 
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodClientCertificate {
+            // Present this device's certificate: the receiver takes the requester's identity from it.
+            return completionHandler(identity == nil ? .performDefaultHandling : .useCredential,
+                                     identity.map { URLCredential(identity: $0, certificates: nil, persistence: .forSession) })
+        }
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let trust = challenge.protectionSpace.serverTrust,
               let leaf = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first else {
@@ -295,7 +322,6 @@ private final class CapturedTrust: NSObject, URLSessionDelegate {
             return completionHandler(.cancelAuthenticationChallenge, nil)
         }
         fingerprint = fp
-        onCertificate?(fp)
         completionHandler(.useCredential, URLCredential(trust: trust))
     }
 }

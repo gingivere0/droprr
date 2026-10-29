@@ -138,6 +138,12 @@ final class PinnedTrust: NSObject, URLSessionDelegate {
 
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        // Every protocol 2 client presents its device certificate (the Mac's listener requires one).
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodClientCertificate {
+            let identity = DroprrSettings.shared.identity?.secIdentity
+            return completionHandler(identity == nil ? .performDefaultHandling : .useCredential,
+                                     identity.map { URLCredential(identity: $0, certificates: nil, persistence: .forSession) })
+        }
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let trust = challenge.protectionSpace.serverTrust,
               let leaf = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first,

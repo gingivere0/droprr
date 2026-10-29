@@ -181,7 +181,8 @@ final class DroprrReceiver {
 
     private func precheck(_ request: HTTPServer.Request) -> HTTPServer.Response? {
         // LAN pairing is the one request without a token, and only over HTTPS.
-        if request.method == "POST", Route(request).segments == ["pair", "request"] {
+        if request.method == "POST", ["request", "confirm"].contains(Route(request).segments.dropFirst().first ?? ""),
+           Route(request).segments.count == 2, Route(request).segments.first == "pair" {
             return request.secure && onPairRequest != nil ? nil : .json(404, ["ok": false, "error": "not found"])
         }
         guard authorization(request) != nil else {
@@ -266,6 +267,9 @@ final class DroprrReceiver {
         if route.segments == ["pair", "request"] {
             return await handlePairRequest(request)
         }
+        if route.segments == ["pair", "confirm"] {
+            return await handlePairConfirm(request)
+        }
         if route.segments.first == "pair", let onPair {
             guard let body = request.bodyFile, let data = try? Data(contentsOf: body),
                   let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
@@ -346,10 +350,23 @@ final class DroprrReceiver {
         return fields
     }
 
-    // MARK: - LAN pairing (POST /pair/request)
+    // MARK: - LAN pairing v2 (POST /pair/request, POST /pair/confirm)
+
+    /// An open pairing: the requester's commitment and certificate, and this device's nonce.
+    private struct PairSession {
+        var id: String
+        var requesterID: String
+        var name: String
+        var platform: String
+        var commit: Data
+        var clientFingerprint: String
+        var nonceS: Data
+        var created: Date
+        var prompting = false
+    }
 
     private let pairLock = NSLock()
-    private var pairPending = false
+    private var pairSession: PairSession?
     private var pairStrikes: [String: [Date]] = [:]
 
     /// A protocol device id: 26 lowercase base32 characters.
@@ -364,46 +381,100 @@ final class DroprrReceiver {
         return text
     }
 
-    /// The six digits both devices show: SHA-256 of the two fingerprints, sorted and joined with ":",
+    /// The six digits both devices show: SHA-256 of "fpLow:fpHigh:nonceR:nonceS" (lowercase hex),
     /// first 4 bytes as a big-endian integer, modulo 1,000,000.
-    static func pairingCode(_ a: String, _ b: String) -> String {
-        let digest = Array(SHA256.hash(data: Data([a, b].sorted().joined(separator: ":").utf8)))
+    static func pairingCode(fpA: String, fpB: String, nonceR: Data, nonceS: Data) -> String {
+        let fps = [fpA.lowercased(), fpB.lowercased()].sorted()
+        let text = "\(fps[0]):\(fps[1]):\(nonceR.hexString):\(nonceS.hexString)"
+        let digest = Array(SHA256.hash(data: Data(text.utf8)))
         let value = UInt32(digest[0]) << 24 | UInt32(digest[1]) << 16 | UInt32(digest[2]) << 8 | UInt32(digest[3])
         return String(format: "%06u", value % 1_000_000)
     }
 
+    private func readJSON(_ request: HTTPServer.Request) -> [String: Any]? {
+        guard let body = request.bodyFile, let data = try? Data(contentsOf: body) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    /// Three declines, timeouts or wrong reveals from one address within 10 minutes: 429 for 10 minutes.
+    private func isBlocked(_ address: String) -> Bool {
+        pairLock.withLock {
+            let now = Date()
+            pairStrikes[address] = pairStrikes[address]?.filter { now.timeIntervalSince($0) < 600 }
+            return (pairStrikes[address]?.count ?? 0) >= 3
+        }
+    }
+
+    private func strike(_ address: String) {
+        pairLock.withLock { pairStrikes[address, default: []].append(Date()) }
+    }
+
+    /// Step 1: the requester commits to its nonce; this device answers with its own right away.
     private func handlePairRequest(_ request: HTTPServer.Request) async -> HTTPServer.Response {
+        guard onPairRequest != nil, onPair != nil, settings.identity != nil else { return .json(404, ["ok": false, "error": "not found"]) }
+        let address = request.remoteHost ?? ""
+        guard let clientFP = request.clientFingerprint else {
+            return .json(400, ["ok": false, "error": "a client certificate is required"])
+        }
+        guard let json = readJSON(request),
+              let id = Self.deviceID(json["id"]),
+              let name = (json["name"] as? String).map(PairRequest.displayName), !name.isEmpty,
+              let platform = (json["platform"] as? String)?.lowercased(), ["ios", "macos", "windows"].contains(platform),
+              let commitHex = (json["commit"] as? String)?.lowercased(), let commit = Data(hex: commitHex), commit.count == 32 else {
+            return .json(400, ["ok": false, "error": "expected id, name, platform and commit"])
+        }
+        if let bodyFP = json["fp"] { guard Self.fingerprint(bodyFP) == clientFP else {
+            return .json(400, ["ok": false, "error": "fp doesn't match the client certificate"])
+        } }
+        if isBlocked(address) { return .json(429, ["ok": false, "error": "try again later"]) }
+        // Already paired (same id or certificate): LAN pairing never touches an existing peer.
+        let known = await MainActor.run { [settings] in
+            settings.peers.contains { $0.deviceID == id || $0.fingerprint == clientFP }
+        }
+        if known { return .json(409, ["ok": false, "error": "already paired; remove it on this device to pair again"]) }
+
+        var nonceS = Data(count: 32)
+        _ = nonceS.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
+        let session = PairSession(id: UUID().uuidString.lowercased(), requesterID: id, name: name, platform: platform,
+                                  commit: commit, clientFingerprint: clientFP, nonceS: nonceS, created: Date())
+        let opened: Bool = pairLock.withLock {
+            if let open = pairSession, open.prompting || Date().timeIntervalSince(open.created) < 30 { return false }
+            pairSession = session
+            return true
+        }
+        guard opened else { return .json(429, ["ok": false, "error": "another pairing is in progress"]) }
+        return .json(200, ["ok": true, "session": session.id, "nonce": nonceS.hexString])
+    }
+
+    /// Step 2: the requester reveals its nonce; check it, ask the person, and pair on Pair.
+    private func handlePairConfirm(_ request: HTTPServer.Request) async -> HTTPServer.Response {
         guard let ask = onPairRequest, let onPair, let ownFP = settings.identity?.fingerprint else {
             return .json(404, ["ok": false, "error": "not found"])
         }
         let address = request.remoteHost ?? ""
-        let now = Date()
-        let busy: Bool = pairLock.withLock {
-            pairStrikes[address] = pairStrikes[address]?.filter { now.timeIntervalSince($0) < 600 }
-            if pairPending || (pairStrikes[address]?.count ?? 0) >= 3 { return true }
-            pairPending = true
-            return false
+        let notFound = HTTPServer.Response.json(404, ["ok": false, "error": "no such pairing"])
+        guard let clientFP = request.clientFingerprint, let json = readJSON(request),
+              let sessionID = json["session"] as? String else { return notFound }
+        // The open session, from the same certificate, not expired and not already being asked about.
+        let session: PairSession? = pairLock.withLock {
+            guard var open = pairSession, open.id == sessionID, open.clientFingerprint == clientFP,
+                  !open.prompting, Date().timeIntervalSince(open.created) < 30 else { return nil }
+            open.prompting = true
+            pairSession = open
+            return open
         }
-        guard !busy else { return .json(429, ["ok": false, "error": "try again later"]) }
-        defer { pairLock.withLock { pairPending = false } }
+        guard let session else { return notFound }
+        defer { pairLock.withLock { if pairSession?.id == session.id { pairSession = nil } } }
 
-        guard let body = request.bodyFile, let data = try? Data(contentsOf: body),
-              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let id = Self.deviceID(json["id"]),
-              let name = (json["name"] as? String).map(PairRequest.displayName), !name.isEmpty,
-              let platform = (json["platform"] as? String)?.lowercased(), ["ios", "macos", "windows"].contains(platform),
-              let fp = Self.fingerprint(json["fp"]) else {
-            return .json(400, ["ok": false, "error": "expected id, name, platform and fp"])
+        guard let nonceHex = (json["nonce"] as? String)?.lowercased(), let nonceR = Data(hex: nonceHex), nonceR.count == 32,
+              Data(SHA256.hash(data: nonceR)) == session.commit else {
+            strike(address)
+            return .json(400, ["ok": false, "error": "the nonce doesn't match the commitment"])
         }
-        // Already paired (same id or certificate): never re-pair over the LAN, which could hand an existing
-        // device's tokens and pin to someone else. Remove it on this device to pair again.
-        let known = await MainActor.run { [settings] in
-            settings.peers.contains { $0.deviceID == id || $0.fingerprint == fp }
-        }
-        if known { return .json(409, ["ok": false, "error": "already paired"]) }
-        let code = Self.pairingCode(ownFP, fp)
+        let code = Self.pairingCode(fpA: ownFP, fpB: session.clientFingerprint, nonceR: nonceR, nonceS: session.nonceS)
+        let question = LANPairRequest(name: session.name, platform: session.platform, code: code)
         let answer: Bool? = await withTaskGroup(of: Bool?.self) { group in
-            group.addTask { @MainActor in await ask(LANPairRequest(name: name, platform: platform, code: code)) }
+            group.addTask { @MainActor in await ask(question) }
             group.addTask {
                 try? await Task.sleep(for: .seconds(60))
                 return nil
@@ -413,17 +484,17 @@ final class DroprrReceiver {
             return first
         }
         guard answer == true else {
-            pairLock.withLock { pairStrikes[address, default: []].append(Date()) }
+            strike(address)
             return answer == nil ? .json(408, ["ok": false, "error": "timed out"]) : .json(403, ["ok": false, "error": "declined"])
         }
         let minted = DroprrSettings.generateToken()
         var port = DroprrDefaults.port
         if let value = json["port"] as? Int, (1...65535).contains(value) { port = value }
         let host = (json["host"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let pair = PairRequest(name: name, platform: platform,
+        let pair = PairRequest(name: session.name, platform: session.platform,
                                host: PairingInfo.isTailscaleHost(host) ? host : "",
                                port: port, token: (json["token"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-                               acceptToken: minted, deviceID: id, fingerprint: fp,
+                               acceptToken: minted, deviceID: session.requesterID, fingerprint: session.clientFingerprint,
                                tlsPort: json["tlsPort"] as? Int, lan: json["lan"] as? [String], viaLAN: true)
         await MainActor.run { onPair(pair) }
         return .json(200, responseFields(token: minted))
@@ -639,4 +710,22 @@ final class DroprrReceiver {
         return f.string(from: Date())
     }
 
+}
+
+extension Data {
+    /// Lowercase hex.
+    var hexString: String { map { String(format: "%02x", $0) }.joined() }
+
+    init?(hex: String) {
+        guard hex.count % 2 == 0, hex.allSatisfy(\.isHexDigit) else { return nil }
+        var bytes = [UInt8]()
+        var index = hex.startIndex
+        while index < hex.endIndex {
+            let next = hex.index(index, offsetBy: 2)
+            guard let byte = UInt8(hex[index..<next], radix: 16) else { return nil }
+            bytes.append(byte)
+            index = next
+        }
+        self.init(bytes)
+    }
 }
