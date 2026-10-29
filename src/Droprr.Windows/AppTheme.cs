@@ -17,7 +17,7 @@ static class AppTheme
 
     static ThemeDef _theme = ThemeCatalog.Find(null);
     static LookDef _look = LookCatalog.Find(null);
-    static string _modeSetting = SystemMode;
+    static string _modeSetting = LightMode;
     static ApplicationTheme _mode = ApplicationTheme.Light;
 
     public static ThemeDef Current => _theme;
@@ -70,9 +70,9 @@ static class AppTheme
 
     static string Normalize(string? mode) => mode?.ToLowerInvariant() switch
     {
-        LightMode => LightMode,
+        SystemMode => SystemMode,
         DarkMode => DarkMode,
-        _ => SystemMode,
+        _ => LightMode,
     };
 
     static ApplicationTheme Resolve() => _look.ForcesDark ? ApplicationTheme.Dark : _modeSetting switch

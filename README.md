@@ -20,7 +20,7 @@ https://github.com/user-attachments/assets/ffdede5f-c8e2-46f5-a341-a4838f963e42
 - **Clipboard.** Received text and links are copied to the clipboard, and **Auto-copy received items to clipboard** copies files and images too. On Windows, these copies are kept out of clipboard history and cloud clipboard.
 - **Styles.** Four window styles, the same on every device: **Material You** (tonal surfaces and big rounded shapes), **Clay** (soft, puffy 3D shapes), **Spatial** (dark frosted glass, always dark), and **Atelier** (ivory paper and serif titles, the default).
 - **Color themes.** Six themes: Graphite & Lime, Sunset, Cherry, Rose Gold, Sage (the default), and Olive & Mustard. The app's icons (the tray or menu bar icon, title bars, and the iPhone home screen) follow the theme.
-- **Light, Dark, or System.** Follow the system's appearance, or pick one. Style, theme, and mode all apply instantly while Settings is open, and Cancel puts them back.
+- **Light, Dark, or System.** Light by default. You can also pick Dark, or follow the system's appearance. Style, theme, and mode all apply instantly while Settings is open, and Cancel puts them back.
 - **Pairing.** Pair an iPhone by scanning a computer's QR code. Pairing goes both ways: the phone saves the computer's address and a token, and the computer adds the phone to its devices. Computers pair with each other the same way when you add one by hand (see [Pairing](#pairing)).
 - **Missing Token tiles.** A computer listed without a token says **Missing Token**. Clicking it opens Settings with that device's token field ready to type into.
 - **Masked tokens.** Tokens show as dots in Settings until you choose to show them. On Windows, **Copy** copies this PC's token without showing it.
