@@ -837,7 +837,12 @@ extension DroprrReceiver {
         }
         host = host.lowercased()
         var v4 = in_addr(), v6 = in6_addr()
-        let names = [ProcessInfo.processInfo.hostName, Host.current().localizedName ?? ""]
+        #if os(macOS)
+        let computerName = Host.current().localizedName ?? ""
+        #else
+        let computerName = ""
+        #endif
+        let names = [ProcessInfo.processInfo.hostName, computerName]
             .map { $0.lowercased() }.flatMap { [$0, $0.components(separatedBy: ".").first ?? $0] }
             .map { $0.replacingOccurrences(of: " ", with: "-") }
         let known = inet_pton(AF_INET, host, &v4) == 1 || inet_pton(AF_INET6, host, &v6) == 1 || host == "localhost"
