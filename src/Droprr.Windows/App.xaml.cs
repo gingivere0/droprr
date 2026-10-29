@@ -511,6 +511,13 @@ public partial class App : Application
         }
     }
 
+    // After pairing from the one code: the Send window, with the new device selected and the usual success tile.
+    internal void ShowAdded(Peer peer)
+    {
+        ShowSendWindow([]);
+        _sendWindow?.ShowAdded(peer);
+    }
+
     // There's one Send window: opening it again adds any files to it and brings it to the front.
     internal void ShowSendWindow(IEnumerable<string> files)
     {

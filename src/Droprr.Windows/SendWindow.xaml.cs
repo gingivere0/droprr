@@ -232,6 +232,16 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         SuccessTile.Visibility = Visibility.Collapsed;
     }
 
+    // A device paired or a browser connected (from the one code): the same success tile as a send, with the new
+    // device selected.
+    internal void ShowAdded(Peer peer)
+    {
+        _settings = SettingsStore.Load();
+        ShowPeers();
+        PeerBox.SelectedItem = _peers.FirstOrDefault(p => p.Name == peer.Name) ?? PeerBox.SelectedItem;
+        ShowStatus(InfoBarSeverity.Success, $"{peer.Name} added");
+    }
+
     void OnSettingsSaved()
     {
         _settings = SettingsStore.Load();

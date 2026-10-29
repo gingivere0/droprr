@@ -170,23 +170,13 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
         }
     }
 
-    // The phone called POST /pair: confirm, and drop the code (it holds the token) before closing.
+    // A phone paired or a browser connected: close at once, and the Send window shows its usual success tile with
+    // the new device selected.
     void OnPaired(Peer peer)
     {
         Code.Source = null;
-        CodePanel.Visibility = Visibility.Collapsed;
-        ScanHint.Visibility = Visibility.Collapsed;
-        Details.Visibility = Visibility.Collapsed;
-        PrivacyNote.IsOpen = false;
-        PairedPanel.Visibility = Visibility.Visible;
-        PairedText.Text = $"Paired with {peer.Name}";
-        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
-        timer.Tick += (_, _) =>
-        {
-            timer.Stop();
-            Close();
-        };
-        timer.Start();
+        Close();
+        (Application.Current as App)?.ShowAdded(peer);
     }
 
     public static string PairingUri(AppSettings settings, string host, string? dns)
