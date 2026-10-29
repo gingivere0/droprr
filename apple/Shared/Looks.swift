@@ -6,7 +6,7 @@ import AppKit
 /// The Mac app's window styles. The color theme (ThemePalette) still supplies the accent and
 /// secondary colors; the style decides surfaces, shapes, type and controls.
 enum LookStyle: String, CaseIterable, Identifiable {
-    case material, clay, spatial, atelier
+    case atelier, material, clay, spatial
 
     var id: String { rawValue }
 
@@ -32,7 +32,7 @@ enum LookStyle: String, CaseIterable, Identifiable {
 /// Style tokens for the current LookStyle. Reading them inside a view's body tracks the setting,
 /// so views redraw when the style changes.
 enum Look {
-    static var style: LookStyle { LookStyle(rawValue: DroprrSettings.shared.style) ?? .material }
+    static var style: LookStyle { LookStyle(rawValue: DroprrSettings.shared.style) ?? .atelier }
     static var isAtelier: Bool { style == .atelier }
     /// Spatial is always dark glass.
     static var forcesDark: Bool { style == .spatial }

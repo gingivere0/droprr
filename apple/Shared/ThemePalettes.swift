@@ -24,7 +24,7 @@ extension ThemePalette {
                      dark: Roles(surface: 0x111116, tile: 0x1A1A22, border: 0x2A2A34, textPrimary: 0xF1F0F6, textSecondary: 0xA3A0B5, primaryButton: 0xA3B25A, onPrimaryButton: 0x1A1D0C, accent: 0xA3B25A, onAccent: 0x1A1D0C, accentText: 0xD2DD99, accentTint: 0x262B16, secondary: 0xE8B93A, secondaryTint: 0x352C12, secondaryText: 0xF5D77E)),
     ]
 
-    static let defaultID = "graphiteLime"
+    static let defaultID = "sage"
     static let successFill: (light: UInt32, dark: UInt32) = (light: 0xE3F7E9, dark: 0x16321F)
     static let successText: (light: UInt32, dark: UInt32) = (light: 0x145C2E, dark: 0x8FF0B0)
 }

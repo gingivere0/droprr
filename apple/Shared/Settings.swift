@@ -60,13 +60,13 @@ final class DroprrSettings {
     var lastPeerID: UUID? { didSet { defaults.set(lastPeerID?.uuidString, forKey: "lastPeerID") } }
     /// Copy every received item (text, links, images and files) to the clipboard. Off by default.
     var autoCopy: Bool { didSet { defaults.set(autoCopy, forKey: "autoCopy") } }
-    /// The Bento color theme's ID (see ThemePalette). Graphite & Lime by default.
+    /// The Bento color theme's ID (see ThemePalette). Sage by default.
     var theme: String { didSet { defaults.set(theme, forKey: "theme") } }
-    /// Mac: the window style (see LookStyle). Material You by default.
+    /// The window style (see LookStyle). Atelier by default.
     var style: String { didSet { defaults.set(style, forKey: "style") } }
     /// Mac: copy received text and links to the clipboard. On by default.
     var copyTextAndLinks: Bool { didSet { defaults.set(copyTextAndLinks, forKey: "copyTextAndLinks") } }
-    /// "system", "light" or "dark". Spatial is always dark regardless.
+    /// "system", "light" or "dark" (Light by default). Spatial is always dark regardless.
     var colorMode: String { didSet { defaults.set(colorMode, forKey: "colorMode") } }
     /// Not saved: a device whose token Settings should open for editing ("Missing Token").
     var tokenRequest: UUID?
@@ -125,8 +125,8 @@ final class DroprrSettings {
         autoCopy = defaults.bool(forKey: "autoCopy")
         copyTextAndLinks = defaults.object(forKey: "copyTextAndLinks") as? Bool ?? true
         theme = defaults.string(forKey: "theme") ?? ThemePalette.defaultID
-        style = defaults.string(forKey: "style") ?? "material"
-        colorMode = defaults.string(forKey: "colorMode") ?? "system"
+        style = defaults.string(forKey: "style") ?? "atelier"
+        colorMode = defaults.string(forKey: "colorMode") ?? "light"
 
         if legacyMain != nil { defaults.removeObject(forKey: "token") }
         savePeers(old: [])   // rewrites the peer list without tokens
