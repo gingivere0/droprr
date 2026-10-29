@@ -143,7 +143,7 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
         return "droprr://pair?" + string.Join("&", fields.Select(f => $"{f.Key}={Uri.EscapeDataString(f.Value)}"));
     }
 
-    static BitmapImage Render(string text)
+    internal static BitmapImage Render(string text)
     {
         using var generator = new QRCodeGenerator();
         using var data = generator.CreateQrCode(text, QRCodeGenerator.ECCLevel.M);

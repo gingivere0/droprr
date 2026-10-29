@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <title>Droprr</title>
+  <link rel="icon" href="/web/icon.png">
+  <link rel="apple-touch-icon" href="/web/icon.png">
+  <link rel="stylesheet" href="/web/app.css">
+  <script src="/web/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header class="top">
+      <img class="logo" src="/web/icon.png" alt="" width="40" height="40">
+      <div>
+        <h1>Droprr</h1>
+        <p class="caption" id="where">Connecting…</p>
+      </div>
+      <button class="link" id="signout" type="button" hidden>Disconnect</button>
+    </header>
+
+    <!-- Shown until this browser has access: the code from the computer's "Open in a browser" window. -->
+    <section id="signin" hidden>
+      <h2>Connect this browser</h2>
+      <p class="caption">On your computer, open Droprr's menu and choose <strong>Open in a browser</strong>. Scan its code with your camera, or type the code here.</p>
+      <form id="signin-form" autocomplete="off">
+        <label for="code">Code</label>
+        <input id="code" name="code" inputmode="text" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" maxlength="9" required>
+        <label for="browser-name">Name this browser</label>
+        <input id="browser-name" name="name" maxlength="64" required>
+        <button class="primary" type="submit">Connect</button>
+        <p class="status" id="signin-status" role="status"></p>
+      </form>
+    </section>
+
+    <div id="app" hidden>
+      <section id="send">
+        <h2 id="send-title">Send</h2>
+        <label class="drop" id="drop" for="files">
+          <span class="drop-title">Choose photos or files</span>
+          <span class="caption" id="drop-hint">or drop them here</span>
+          <input id="files" type="file" multiple>
+        </label>
+        <ul class="chosen" id="chosen"></ul>
+        <label for="text" class="sr-only">Text or a link</label>
+        <textarea id="text" rows="3" placeholder="Text or a link"></textarea>
+        <div class="row">
+          <button class="secondary" id="clear" type="button">Clear</button>
+          <button class="primary" id="send-button" type="button">Send</button>
+        </div>
+        <progress id="progress" max="1" value="0" hidden></progress>
+        <p class="status" id="send-status" role="status"></p>
+      </section>
+
+      <section id="inbox">
+        <h2 id="inbox-title">Received</h2>
+        <p class="caption" id="inbox-empty">Nothing yet. Items sent to this browser from your computer show up here.</p>
+        <ul class="items" id="items"></ul>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

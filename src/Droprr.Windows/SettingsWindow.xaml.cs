@@ -81,7 +81,12 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
 
         // Show a device the moment it pairs, without losing edits made here that aren't saved yet.
         app.DevicePaired += OnDevicePaired;
-        Closed += (_, _) => app.DevicePaired -= OnDevicePaired;
+        app.BrowserConnected += OnDevicePaired;
+        Closed += (_, _) =>
+        {
+            app.DevicePaired -= OnDevicePaired;
+            app.BrowserConnected -= OnDevicePaired;
+        };
 
         // Local network: devices found nearby, and whether the firewall lets them in.
         app.NearbyChanged += ShowNearby;
@@ -109,7 +114,9 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         }
         if (peer.IsPhone && peer.Token.Length == 0)
         {
-            TestResult.Text = $"{peer.Name}: phones collect items when Droprr opens.";
+            TestResult.Text = peer.IsBrowser
+                ? $"{peer.Name}: browsers collect items while the Droprr page is open."
+                : $"{peer.Name}: phones collect items when Droprr opens.";
             return;
         }
         using var cancel = new System.Threading.CancellationTokenSource();

@@ -50,6 +50,9 @@ public partial class App : Application
     // Raised on the UI thread after a device pairs, with its saved peer entry.
     internal event Action<Peer>? DevicePaired;
 
+    // Raised on the UI thread after a browser uses the access code, with its saved peer entry.
+    internal event Action<Peer>? BrowserConnected;
+
     // Received items, newest first: the Send window's Received tile and the tray's Recent menu.
     internal ObservableCollection<RecentItem> Recent { get; } = new();
 
@@ -313,6 +316,38 @@ public partial class App : Application
         DevicePaired?.Invoke(peer);
     }
 
+    // Browser access: the code the "Open in a browser" window shows, kept across receiver restarts.
+    internal BrowserAccess BrowserAccess { get; } = new();
+
+    BrowserWindow? _browserWindow;
+
+    internal void ShowBrowserAccess()
+    {
+        if (_browserWindow is not { IsLoaded: true })
+        {
+            _browserWindow = new BrowserWindow(this);
+            _browserWindow.Show();
+        }
+        BringToFront(_browserWindow);
+    }
+
+    // A browser used the access code: it's a new queue-only peer.
+    string OnBrowserConnected(PairRequest request)
+    {
+        var peer = SavePeer(request);
+        _tray?.Notify($"{peer.Name} connected", "Items you send to it wait here until its Droprr page picks them up.");
+        BrowserConnected?.Invoke(peer);
+        return peer.Name;
+    }
+
+    // A browser disconnected itself: its access and anything waiting for it go.
+    void RemoveBrowser(string name)
+    {
+        Settings = SettingsStore.Update(s => s.Peers.RemoveAll(p => p.IsBrowser && p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
+        ClearWaiting(name);
+        SettingsSaved?.Invoke();
+    }
+
     // Adds the peer or updates an existing one.
     // - A device token's /pair updates only that token's peer, and can't change its platform, id, or pinned
     //   certificate once they're known, so one paired device can't make itself look like another.
@@ -491,7 +526,9 @@ public partial class App : Application
 
         ReceiverServer Create(bool withoutLan)
         {
-            var created = new ReceiverServer(() => Settings) { WithoutLan = withoutLan };
+            var created = new ReceiverServer(() => Settings) { WithoutLan = withoutLan, BrowserAccess = BrowserAccess };
+            created.AddBrowser = request => Dispatcher.Invoke(() => OnBrowserConnected(request));
+            created.BrowserRemoved += name => Dispatcher.BeginInvoke(() => RemoveBrowser(name));
             created.ItemReceived += item => Dispatcher.BeginInvoke(() => OnItemReceived(item));
             created.InboxPolled += device => Dispatcher.BeginInvoke(() => OnInboxPolled(device));
             // Saved before /pair responds, so the caller can use its new token immediately.

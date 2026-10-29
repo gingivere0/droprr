@@ -84,6 +84,8 @@ sealed partial class ReceiverServer : IAsyncDisposable
     public async Task StartAsync()
     {
         TailscaleAddresses = TailscaleNetwork.FindAddresses();
+        if (TailscaleAddresses.Count > 0)
+            _ = Task.Run(() => _magicDns = PairWindow.MagicDnsName());
         var port = Settings.Port;
         var tlsPort = TlsPort;
         var lan = Settings.LocalNetwork && !WithoutLan && tlsPort <= 65535 && (LoopbackOnly || LanFirewall.HasRule(tlsPort));
@@ -158,7 +160,29 @@ sealed partial class ReceiverServer : IAsyncDisposable
                 await result.ExecuteAsync(context);
                 return;
             }
-            if (!TryAuthenticate(context.Request, out var devicePeer))
+            // Browser access: the page and its code exchange need no token.
+            if (IsWebPath(context.Request.Path))
+            {
+                IResult result;
+                try
+                {
+                    result = await HandleWebAsync(context);
+                }
+                catch (Exception ex) when (!context.RequestAborted.IsCancellationRequested)
+                {
+                    RequestLog.WriteError(context, ex);
+                    result = Error("receiver error", StatusCodes.Status500InternalServerError);
+                }
+                await result.ExecuteAsync(context);
+                return;
+            }
+            string? devicePeer;
+            if (CookieAllowed(context.Request) && CookiePeer(context.Request) is { } browser)
+            {
+                devicePeer = browser;
+                context.Items[WebCookie] = browser;
+            }
+            else if (!TryAuthenticate(context.Request, out devicePeer))
             {
                 context.Response.Headers.WWWAuthenticate = "Bearer";
                 await Error("unauthorized", StatusCodes.Status401Unauthorized).ExecuteAsync(context);
@@ -177,7 +201,7 @@ sealed partial class ReceiverServer : IAsyncDisposable
                 await Error("receiver error", StatusCodes.Status500InternalServerError).ExecuteAsync(context);
             }
         });
-        app.MapGet("/ping", () => Results.Json(new
+        app.MapGet("/ping", (HttpContext context) => context.Items[WebCookie] is string browser ? WebPing(context, browser) : Results.Json(new
         {
             name = Settings.DeviceName, version = Version, platform = "windows", protocol = 2,
             id = Settings.DeviceId, fp = DeviceIdentity.Fingerprint(Settings), tlsPort = LanListening ? tlsPort : (int?)null,
@@ -317,6 +341,13 @@ sealed partial class ReceiverServer : IAsyncDisposable
         if (!ContentTypes.TryGetContentType(found.Item.Name, out var contentType))
             contentType = "application/octet-stream";
         var stream = new FileStream(found.DataPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 81920, useAsync: true);
+        context.Response.Headers.XContentTypeOptions = "nosniff";
+        // Browser access's View: photos and videos only, in a sandbox so nothing in the file can act as the page.
+        if (context.Request.Query["inline"] == "1" && InlineTypes.Contains(contentType))
+        {
+            context.Response.Headers.ContentSecurityPolicy = "sandbox; default-src 'none'; img-src 'self'; media-src 'self'";
+            return Results.Stream(stream, contentType, enableRangeProcessing: true);
+        }
         return Results.Stream(stream, contentType, found.Item.Name, enableRangeProcessing: true);
     }
 

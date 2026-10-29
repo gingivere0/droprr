@@ -42,13 +42,17 @@ public sealed class Peer
         _ => "",
     };
 
-    // Phones can't listen, so sends to them are queued in the Outbox until they check in.
+    // Phones can't listen, so sends to them are queued in the Outbox until they check in. Browsers ("web", from
+    // Browser access) are queued the same way.
     [JsonIgnore]
     public bool IsPhone
     {
-        get => Platform.Equals("ios", StringComparison.OrdinalIgnoreCase);
-        set => Platform = value ? "ios" : (IsPhone ? "" : Platform);
+        get => Platform.Equals("ios", StringComparison.OrdinalIgnoreCase) || IsBrowser;
+        set => Platform = value ? (IsBrowser ? Platform : "ios") : (IsPhone ? "" : Platform);
     }
+
+    [JsonIgnore]
+    public bool IsBrowser => Platform.Equals("web", StringComparison.OrdinalIgnoreCase);
 
     // Items in this peer's outbox, filled in by whoever shows the peer.
     [JsonIgnore]
@@ -70,7 +74,8 @@ public sealed class Peer
     [JsonIgnore]
     public string Note => !IsPaired ? "Missing Token"
         : !IsPhone ? Address
-        : Waiting > 0 ? $"iPhone · {Waiting} waiting"
+        : Waiting > 0 ? $"{(IsBrowser ? "Browser" : "iPhone")} · {Waiting} waiting"
+        : IsBrowser ? "Browser"
         : "iPhone";
 
     // Where the device is: its Tailscale host, or for a device paired over Wi-Fi, its Wi-Fi address. Never an

@@ -1,0 +1,66 @@
+<ui:FluentWindow x:Class="Droprr.BrowserWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 Title="Open in a browser" Width="440" SizeToContent="Height" ResizeMode="NoResize"
+                 WindowStartupLocation="CenterScreen"
+                 ExtendsContentIntoTitleBar="True" WindowBackdropType="None" WindowCornerPreference="Round">
+    <StackPanel>
+        <ui:TitleBar x:Name="AppTitleBar" Title="Open in a browser" ShowMaximize="False" ShowMinimize="False" />
+
+        <StackPanel Margin="{StaticResource WindowPadding}">
+            <TextBlock Text="Open in a browser" Style="{StaticResource TitleText}" Margin="0,0,0,4" />
+            <TextBlock Style="{StaticResource Caption}" Margin="0,0,0,16"
+                       Text="Send to and from this PC in any phone's browser, without the Droprr app." />
+
+            <!-- Wi-Fi or Tailscale, when both are available. -->
+            <StackPanel x:Name="PathPanel" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,12">
+                <RadioButton x:Name="WifiChoice" Content="Wi-Fi" GroupName="BrowserPath" Margin="0,0,16,0" Checked="OnPathChanged" />
+                <RadioButton x:Name="TailscaleChoice" Content="Tailscale" GroupName="BrowserPath" Checked="OnPathChanged" />
+            </StackPanel>
+
+            <Border x:Name="CodePanel" CornerRadius="{StaticResource RadiusFeature}" Background="{StaticResource QrPlateBrush}"
+                    Padding="{StaticResource FeaturePadding}" HorizontalAlignment="Center">
+                <Image x:Name="Code" Width="240" Height="240" AutomationProperties.Name="Browser access QR code" RenderOptions.BitmapScalingMode="NearestNeighbor" />
+            </Border>
+            <Grid x:Name="ConnectedPanel" Visibility="Collapsed" Height="272">
+                <StackPanel VerticalAlignment="Center">
+                    <ui:SymbolIcon Symbol="CheckmarkCircle48" Filled="True" FontSize="80" HorizontalAlignment="Center" Margin="0,0,0,12"
+                                   Foreground="{DynamicResource SystemFillColorSuccessBrush}" />
+                    <TextBlock x:Name="ConnectedText" Style="{StaticResource SubtitleText}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+                </StackPanel>
+            </Grid>
+
+            <StackPanel x:Name="CodeDetails">
+                <TextBlock Text="Scan with your phone's camera" Style="{StaticResource SubtitleText}" HorizontalAlignment="Center" Margin="0,16,0,4" />
+                <TextBlock Style="{StaticResource Caption}" HorizontalAlignment="Center" TextAlignment="Center" Text="Or open this address and type the code:" />
+                <TextBox x:Name="Address" IsReadOnly="True" FontFamily="{StaticResource MonoFont}" HorizontalAlignment="Center" Margin="0,8,0,0"
+                         BorderThickness="0" Background="Transparent" AutomationProperties.Name="Address" />
+                <TextBlock x:Name="CodeText" FontFamily="{StaticResource MonoFont}" FontSize="{StaticResource FontSizeSubtitle}" FontWeight="SemiBold"
+                           HorizontalAlignment="Center" Margin="0,8,0,0" AutomationProperties.Name="Access code" />
+                <TextBlock x:Name="Expiry" Style="{StaticResource Caption}" HorizontalAlignment="Center" TextAlignment="Center" Margin="0,4,0,0"
+                           Text="Works once, while this window is open, for 10 minutes." />
+                <ui:InfoBar x:Name="CertificateNote" Margin="0,16,0,0" IsOpen="False" IsClosable="False" Severity="Informational"
+                            Title="Expect one warning on Wi-Fi"
+                            Message="Your browser says the connection isn't private, because Droprr uses its own certificate instead of one from a public authority. In Safari, tap Show Details, then visit this website. Tailscale has no warning." />
+            </StackPanel>
+
+            <ui:InfoBar x:Name="Error" Margin="0,8,0,0" IsOpen="False" IsClosable="False" Severity="Error" Title="Can't open in a browser right now" />
+
+            <!-- Wi-Fi needs the local network listener: when it isn't running, say why and offer the fix here. -->
+            <Border x:Name="WifiPanel" Style="{StaticResource Tile}" Margin="0,8,0,0" Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock x:Name="WifiTitle" Style="{StaticResource BodyStrongText}" TextWrapping="Wrap" Margin="0,0,0,4" />
+                    <TextBlock x:Name="WifiText" Style="{StaticResource Caption}" Margin="0,0,0,8" />
+                    <ui:Button x:Name="AllowButton" Content="Allow Droprr on your private network" Icon="{ui:SymbolIcon ShieldCheckmark24}"
+                               Style="{StaticResource TonalButton}" Click="OnAllow" />
+                </StackPanel>
+            </Border>
+
+            <Grid Margin="0,16,0,0">
+                <ui:Button x:Name="NewCodeButton" Content="New code" HorizontalAlignment="Left" Style="{StaticResource TonalButton}" Click="OnNewCode" />
+                <ui:Button Content="Done" HorizontalAlignment="Right" Style="{StaticResource PrimaryActionButton}" IsCancel="True" IsDefault="True" />
+            </Grid>
+        </StackPanel>
+    </StackPanel>
+</ui:FluentWindow>

@@ -88,6 +88,15 @@ The phone saves that computer's address and token, and the computer adds the pho
 
 To send between two computers, add the other one in Settings with its Tailscale name (for example, `<pc-name>` or `<mac-name>`) and the token from its Settings. When you save, the two introduce themselves: each side gets its own token for the other, so each can send to the other and either can revoke the other.
 
+## In a browser
+
+Any phone (or another computer) can use Droprr in its browser, with no app. On Windows, right-click the tray icon and choose **Open in a browser**, then scan the code with the phone's camera, or open the address shown and type the code. The page lets you send photos, files, text, and links to the computer, and shows what the computer sends to that browser, which appears as a device in the Send window.
+
+- **Wi-Fi** works for any phone on your network. The browser warns once that the connection isn't private, because Droprr uses its own certificate: in Safari, tap **Show Details**, then **visit this website**.
+- **Tailscale** has no warning, for a phone with Tailscale connected.
+
+Each code works once, for 10 minutes, while the window is open. A connected browser stays connected until it's unused for 30 days, it taps **Disconnect**, or you remove it in Settings. See [Browser access](docs/PROTOCOL.md#browser-access) for how it's secured.
+
 ## iPhone shortcuts (optional)
 
 Without the iPhone app, you can still send to a computer from the share sheet, and collect queued items, with two Shortcuts. See [docs/ios-shortcut.md](docs/ios-shortcut.md).
@@ -109,6 +118,7 @@ Without the iPhone app, you can still send to a computer from the share sheet, a
 | --- | --- |
 | `src/Droprr.Windows/` | The Windows app (WPF on .NET 10, styled with [WPF UI](https://github.com/lepoco/wpfui)) |
 | `apple/` | The Mac and iPhone apps and their share extensions (SwiftUI, Xcode project) |
+| `web/` | The browser page both computer apps serve (see [In a browser](#in-a-browser)) |
 | `design-system/droprr/` | The shared design system: colors, themes, type, spacing, and contrast rules |
 | `docs/PROTOCOL.md` | The HTTP protocol every Droprr app speaks |
 | `docs/ios-shortcut.md` | Optional iPhone Shortcuts |

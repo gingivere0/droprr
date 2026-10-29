@@ -20,6 +20,7 @@ sealed class PlatformSymbolConverter : IValueConverter
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => (value as string)?.ToLowerInvariant() switch
     {
         "ios" => SymbolRegular.Phone24,
+        "web" => SymbolRegular.Globe24,
         "macos" => SymbolRegular.Laptop24,
         _ => SymbolRegular.Desktop24,
     };

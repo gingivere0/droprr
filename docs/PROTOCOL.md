@@ -34,8 +34,9 @@ Each device has one **main token** plus one **device token** per paired peer.
 | [`GET /inbox?for=<name>`](#get-inboxfordevice-name) | A phone lists items a desktop queued for it. |
 | [`GET /inbox/<id>`](#get-inboxid) | Download one queued item. |
 | [`DELETE /inbox/<id>`](#delete-inboxid) | Acknowledge a queued item so it's removed. |
+| [`GET /web`](#browser-access) | The [browser page](#browser-access); with `POST /web/session` and `POST /web/signout`, the only endpoints without a bearer token besides LAN pairing. |
 
-All of them require the bearer token and use the error shape below.
+Except where noted, all of them require the bearer token, and all use the error shape below.
 
 ## Errors
 
@@ -439,6 +440,61 @@ These keep one paired device from taking over another's record. They apply to ev
 - **iPhone:** `NSLocalNetworkUsageDescription` and `NSBonjourServices` (`_droprr._tcp`) in Info.plist. Apple's apps handle their own Local Network prompts.
 - **Windows firewall:** the HTTPS port needs an inbound rule for the **Private** profile only. Public networks are ignored: no rule there, and no advertising on interfaces whose network category is Public. Without an installer, the app checks for its rule when Local network is on (reading rules needs no elevation). If the rule is missing, Settings shows "Allow Droprr on your private network", which runs one elevated `netsh advfirewall firewall add rule` for the port (a single UAC prompt). It never elevates on its own at startup.
 - **Mac:** the existing network server entitlement covers the HTTPS listener.
+
+## Browser access
+
+A computer serves its own web page, so any phone's browser can send to it and receive from it without the Droprr app. There's no hosted service: the page comes from the computer, over the same two listeners as everything else. The Windows and Mac apps serve the same files, from `web/` in this repository.
+
+### Addresses
+
+| Path | Address | Notes |
+| --- | --- | --- |
+| Wi-Fi | `https://<private LAN address>:53319/web` | The computer's own certificate, so the browser warns once that the connection isn't private (see [Security](#security)). |
+| Tailscale | `http://<MagicDNS name or Tailscale address>:53318/web` | No warning: Tailscale already encrypts and authenticates the connection. |
+
+Plain HTTP stays Tailscale and loopback only, as everywhere else. The HTTPS port asks for a client certificate but doesn't require one, so browsers continue without one.
+
+### Connecting a browser
+
+1. On the computer, the person chooses **Open in a browser**. It shows a QR code of `<address>#<code>` and, to type by hand, the address and the code.
+2. **Access code:** 8 characters from Crockford's base32 alphabet (`0`–`9` and `A`–`Z` without `I`, `L`, `O`, and `U`), shown as `XXXX-XXXX`. Typing is forgiving: case, dashes, and spaces are ignored, `O` reads as `0`, and `I` and `L` as `1`. A code works **once**, only while that window is open, for at most **10 minutes**. Choosing **New code** replaces it. **Five wrong codes** close it until the person chooses New code. It's never saved or logged, and the QR keeps it in the URL fragment, which browsers never send.
+3. The page sends it:
+
+   ```http
+   POST /web/session
+   X-Droprr-Web: 1
+   Content-Type: application/json
+
+   { "code": "ABCD2345", "name": "iPhone (Safari)" }
+   ```
+
+   Response `200` `{ "ok": true, "name": "<computer name>", "device": "<the name this browser was saved as>" }`, with:
+
+   ```http
+   Set-Cookie: droprr=<device token>; Max-Age=2592000; Path=/; SameSite=Strict; HttpOnly[; Secure]
+   ```
+
+   `Secure` is added on HTTPS. Errors: `403` with `"wrong code"`, or with `"no code is open: …"` when there's no open code (expired, used, or closed), and `400` for a malformed body (over 4 KB is `413`).
+4. The computer adds a new peer with platform **`"web"`** under that name (made unique with a suffix), with the cookie's value as its `acceptToken`. Like a protocol 1 phone it's **queue-only**: everything sent to it waits in its [inbox](#inbox-phone-pull). The person can remove it like any other device, which revokes the cookie.
+
+### What the cookie works on
+
+A request without an `Authorization` header may authenticate with the `droprr` cookie, as that browser's device token, only on:
+
+- `GET /ping`, which for a browser answers `{ name, version, platform, protocol, you }` (`you` is the browser's peer name) and renews the cookie for another 30 days, so it expires only after 30 days unused;
+- `POST /send`;
+- `GET /inbox`, `GET /inbox/<id>`, and `DELETE /inbox/<id>`, scoped to that browser's queue as for any device token.
+
+Never on `/pair` or the LAN pairing endpoints. `GET /inbox/<id>?inline=1` serves a photo or video (JPEG, PNG, GIF, WebP, HEIC, HEIF, MP4, MOV, and M4V) without `attachment`, under `Content-Security-Policy: sandbox`, for the page's View button; other types download as usual.
+
+`POST /web/signout` (with the cookie and `X-Droprr-Web: 1`) removes the browser's peer and anything waiting for it, and clears the cookie.
+
+### Security
+
+- **Cross-site requests.** The cookie is `SameSite=Strict` and `HttpOnly`. Anything other than a `GET` (including `/web/session`) also needs the header `X-Droprr-Web: 1`, which another site can only add after a CORS preflight that receivers never approve, and an `Origin`, when present, must be the request's own origin.
+- **DNS rebinding.** `/web/session` and cookie requests are refused unless the `Host` is an IP address, `localhost`, the computer's own name, or its MagicDNS name (full or short).
+- **The page** (`/web`, `/web/app.js`, `/web/app.css`, `/web/icon.png`) needs no token and holds no secrets. It's served with `Content-Security-Policy: default-src 'self'; …; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer`, and shows everything from the network as text, never HTML.
+- **Wi-Fi certificate warning.** A browser can't pin the computer's certificate the way the apps do, so the first visit trusts whichever certificate answers. Someone actively intercepting the Wi-Fi at that moment could read the code and pose as the computer. On a home network that's unlikely; on any network you don't trust, use the Tailscale address, which has no warning and no such gap.
 
 ## Implementation notes
 
