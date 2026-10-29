@@ -53,6 +53,13 @@ struct Peer: Codable, Identifiable, Hashable {
         return URL(string: "http://\(bracketed):\(port)")
     }
 
+    /// What Settings shows under the name: the Tailscale address, or the Wi-Fi one for a device paired over the LAN.
+    var addressLine: String {
+        if !host.trimmingCharacters(in: .whitespaces).isEmpty { return "\(host):\(port)" }
+        if let first = lan?.first { return "Wi-Fi · \(first)" }
+        return "Wi-Fi"
+    }
+
     /// HTTPS addresses to try first: only with a pin and an address seen in the last 2 minutes.
     var lanURLs: [URL] {
         guard fingerprint != nil, let lan, let lanSeen, Date().timeIntervalSince(lanSeen) < 120 else { return [] }

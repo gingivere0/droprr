@@ -46,7 +46,7 @@ struct SettingsForm: View {
             } header: {
                 Text("Devices")
             } footer: {
-                Text("Use each computer's Tailscale name (e.g. my-pc) or 100.x address. iPhones add themselves the first time they check in.")
+                Text("Add Device lists computers on this Wi-Fi. Or use a computer's Tailscale name (e.g. my-pc) or 100.x address.")
             }
 
             Section {
@@ -157,7 +157,7 @@ private struct PeerRow: View {
             GlyphCircle(symbol: Theme.symbol(for: peer), size: 34)
             VStack(alignment: .leading, spacing: Space.xs) {
                 Text(peer.name).font(.body.weight(.medium))
-                Text(peer.isPhone ? "iPhone · collects items when opened" : "\(peer.host):\(String(peer.port))")
+                Text(peer.isPhone ? "iPhone · collects items when opened" : peer.addressLine)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

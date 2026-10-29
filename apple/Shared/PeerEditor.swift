@@ -18,14 +18,18 @@ extension DroprrSettings {
     /// Checks that a device answers, and remembers what it says it is.
     func ping(_ peer: Peer) async -> PingResult {
         do {
-            let info = try await DroprrClient(peer: peer).ping()
+            // Wi-Fi first (pinned), then Tailscale, like a send.
+            let client = try await DroprrClient.connect(peer).client
+            let info = try await client.ping()
             if let i = peers.firstIndex(where: { $0.id == peer.id }) {
                 peers[i].platform = info.platform
                 peers[i].remoteName = info.name
             }
             // Answered over Tailscale, which already authenticates the device: pin it if it's new (protocol 2).
-            learn(peer.id, deviceID: info.id, fingerprint: info.fp, tlsPort: info.tlsPort, lan: nil)
-            return .ok("\(Theme.platformName(info.platform)) · v\(info.version)")
+            if client.path == .tailscale {
+                learn(peer.id, deviceID: info.id, fingerprint: info.fp, tlsPort: info.tlsPort, lan: nil)
+            }
+            return .ok("\(Theme.platformName(info.platform)) · v\(info.version) · \(client.path.label)")
         } catch {
             return .failed(peer.isPhone ? "Not reachable now (normal for an iPhone)" : error.localizedDescription)
         }
@@ -170,7 +174,8 @@ struct PeerEditor: View {
                         if peer.name.isEmpty { peer.name = peer.host }
                         done(peer)
                     }
-                    .disabled(peer.isPhone ? peer.name.isEmpty : peer.host.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(peer.isPhone ? peer.name.isEmpty
+                              : peer.host.trimmingCharacters(in: .whitespaces).isEmpty && peer.fingerprint == nil)
                 }
             }
         }

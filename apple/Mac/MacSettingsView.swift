@@ -322,7 +322,7 @@ private struct DeviceRow: View {
                     if peer.isPhone {
                         Text("Collects items when Droprr opens on it").font(.system(size: 11))
                     } else {
-                        Text("\(peer.host):\(String(peer.port))").font(.system(size: 11).monospaced())
+                        Text(peer.addressLine).font(.system(size: 11).monospaced())
                     }
                 }
                 .foregroundStyle(Look.muted).lineLimit(1)
