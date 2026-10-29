@@ -9,6 +9,7 @@
 //   POST /api/p/<peer>/send             an item from that browser (the body as in POST /send)
 //   GET  /api/p/<peer>/inbox            items waiting for it; GET or DELETE /api/p/<peer>/inbox/<id>
 //   POST /api/status { browsers }       the peers connected right now
+//   POST /api/invite                    { link }: the website code, opening the join secret if none is open
 //
 // The app posts { t: "config" } when the code changes, and { t: "outbox" } when it queued something.
 "use strict";
@@ -145,6 +146,16 @@ async function addCandidate(pc, candidate) {
 function accept(cid, guest, channel) {
   guest.link = new Link(channel, {
     onControl: async (message) => {
+      // A connected browser's Show QR code: a code another phone can join this computer with.
+      if (message.t === "invite" && guest.peer) {
+        try {
+          const { link } = await (await postJson("/api/invite", {})).json();
+          guest.link.control({ t: "invite", link });
+        } catch {
+          guest.link.control({ t: "invite", e: "the computer couldn't make one" });
+        }
+        return;
+      }
       // One hello per connection.
       if (message.t !== "hello" || guest.hello) return;
       guest.hello = true;

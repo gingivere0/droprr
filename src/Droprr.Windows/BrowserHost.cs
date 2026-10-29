@@ -181,6 +181,17 @@ sealed class BrowserHost : IDisposable
                 Online = (await ReadJsonAsync<StatusBody>(request))?.Browsers?.ToList() ?? [];
                 OnlineChanged?.Invoke();
                 return (200, json, Json(new { ok = true }));
+            case ("POST", "/api/invite"):
+                // A connected browser's Show QR code. host.js only asks for an accepted browser. Opens the join
+                // secret (10 minutes) unless one is already open, e.g. from Pair a phone.
+                if (_access.Secret is null)
+                {
+                    _access.Open();
+                    ConfigChanged();
+                }
+                return JoinLink() is { } invite
+                    ? (200, json, Json(new { ok = true, link = invite }))
+                    : (503, json, Json(new { ok = false, error = "not ready" }));
             case ("POST", "/api/hello"):
                 var hello = await ReadJsonAsync<HelloBody>(request);
                 var result = _hello(new BrowserHello(hello?.Id ?? "", hello?.Name ?? "", hello?.Secret, hello?.Token));

@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="app.css">
   <script src="config.js" defer></script>
   <script src="vendor/jsQR.js" defer></script>
+  <script src="vendor/qrcode.js" defer></script>
   <script src="rtc.js" defer></script>
   <script src="guest.js" defer></script>
 </head>
@@ -47,6 +48,19 @@
     </section>
 
     <div id="app" hidden>
+      <!-- Another phone can join this computer from a code shown here, blurred until tapped. -->
+      <section id="share">
+        <button class="secondary wide" id="show-qr" type="button">Show QR code</button>
+        <div class="share-code" id="share-code" hidden>
+          <button class="qr-plate blurred" id="qr-plate" type="button" aria-label="Tap to show the code">
+            <img id="qr-image" alt="QR code to connect another phone" width="232" height="232">
+            <span class="qr-reveal">Tap to show the code</span>
+          </button>
+          <p class="caption" id="share-hint">Scan with another phone's camera to connect it to this computer. The code works for 10 minutes.</p>
+        </div>
+        <p class="status" id="share-status" role="status"></p>
+      </section>
+
       <section id="send">
         <h2 id="send-title">Send</h2>
         <label class="drop" id="drop" for="files">

@@ -192,6 +192,8 @@ function connect(target) {
           // Only a refused token is forgotten; a stale code says nothing about a token this browser has.
           if (!target.secret) remember(current.room, { token: "" });
           fail(`${name} didn't accept this browser${message.e ? ` (${message.e})` : ""}. Scan its code again.`);
+        } else if (message.t === "invite") {
+          showInvite(message);
         }
       },
       onItem: async (item) => addReceived(item),
@@ -260,8 +262,56 @@ function showStart() {
   $("known").hidden = known.length === 0;
 }
 
+// --- Sharing ----------------------------------------------------------------------------------------------------
+
+// Show QR code asks the computer for a code another phone can join it with; the code shows blurred until tapped.
+$("show-qr").addEventListener("click", () => {
+  if (!link) return;
+  if (!$("share-code").hidden) {
+    hideInvite();
+    return;
+  }
+  setStatus($("share-status"), "Getting a code…");
+  link.control({ t: "invite" });
+});
+
+$("qr-plate").addEventListener("click", () => {
+  $("qr-plate").classList.remove("blurred");
+  $("qr-plate").setAttribute("aria-label", "QR code to connect another phone");
+});
+
+function showInvite(message) {
+  const code = typeof message.link === "string" ? parseCode(message.link) : null;
+  if (!code || !self.qrcode) {
+    setStatus($("share-status"), `Couldn't get a code${message.e ? `: ${message.e}` : ""}.`, "error");
+    return;
+  }
+  // The computer's own link to this website, so only this page's origin is ever encoded.
+  const qr = self.qrcode(0, "M");
+  qr.addData(`${location.origin}${location.pathname}#${code.room}.${code.secret}.${code.fp}`);
+  qr.make();
+  $("qr-image").src = qr.createDataURL(8, 0);
+  $("qr-plate").classList.add("blurred");
+  $("qr-plate").setAttribute("aria-label", "Tap to show the code");
+  $("share-code").hidden = false;
+  $("show-qr").textContent = "Hide QR code";
+  setStatus($("share-status"), "");
+  clearTimeout(inviteTimer);
+  inviteTimer = setTimeout(hideInvite, 10 * 60 * 1000);
+}
+
+let inviteTimer = null;
+
+function hideInvite() {
+  clearTimeout(inviteTimer);
+  $("share-code").hidden = true;
+  $("qr-image").removeAttribute("src");
+  $("show-qr").textContent = "Show QR code";
+}
+
 function showApp(name) {
   stopScan();
+  hideInvite();
   $("start").hidden = true;
   $("app").hidden = false;
   $("disconnect").hidden = false;

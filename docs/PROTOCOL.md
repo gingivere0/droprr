@@ -550,6 +550,7 @@ Text frames are JSON. Binary frames are file chunks.
    - file: `{ "t": "file", "id", "name", "size", "type" }`, then binary chunks of at most 16 KB totaling `size`, then `{ "t": "done", "id" }`
    - the receiver answers `{ "t": "saved", "id" }`, or `{ "t": "failed", "id", "e" }`.
    Senders keep the channel's `bufferedAmount` under 1 MB.
+4. **Show QR code:** a connected browser may send `{ "t": "invite" }`. The computer opens its join secret if none is open (10 minutes, as from Pair a phone) and answers `{ "t": "invite", "link": "<website code>" }`, or `{ "t": "invite", "e" }` if it can't. The browser shows `<its own page URL>#<room>.<secret>.<fp>` as a QR code, blurred until tapped, so another phone can join the same computer. The computer ignores `invite` from a browser whose hello wasn't accepted.
 
 On the computer, items from a browser are saved, announced, and checked exactly like a `POST /send` from that browser's peer. Items for a `"web"` peer wait in its [inbox](#inbox-phone-pull) and go out over the data channel while it's connected, each removed once the browser answers `saved`. The browser offers each received file to save (the share sheet on phones) and each text to copy.
 
@@ -565,6 +566,7 @@ The host page reaches its app with same-origin requests that the app answers its
 | `POST /api/p/<peer>/send` | An item from that browser, with a body as in `POST /send` (a raw file with `X-Droprr-Filename`, or JSON text) |
 | `GET /api/p/<peer>/inbox`, `GET` and `DELETE /api/p/<peer>/inbox/<id>` | That browser's queue, as in the inbox endpoints |
 | `POST /api/status { browsers }` | The browser peers connected right now |
+| `POST /api/invite` | `{ ok: true, link }`: the website code, after opening the join secret if none was open |
 
 The app posts the page `{ "t": "config" }` when the join secret changes, and `{ "t": "outbox" }` when something was queued.
 
