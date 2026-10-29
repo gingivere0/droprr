@@ -373,6 +373,15 @@ Pairing by picking a device that discovery found, without a QR code and without 
 
    A computer also sends `"tlsPort"`, `"lan"`, `"host"` (its Tailscale name, if any), and `"token"` (a device token it minted for the receiver), as in [`POST /pair`](#post-pair). A protocol 2 iPhone sends `"token"` too.
 3. Both screens show the same **six-digit code**: the SHA-256 of the two fingerprints in sorted order, joined with `:`, with its first 4 bytes read as a big-endian unsigned integer, modulo 1,000,000, and zero-padded to six digits. The requester computes it from `fpServer` and its own `fp`, and the receiver from its own `fp` and the request's `fp`. Someone in the middle would have to present a different certificate, which changes the code, so the person can see the mismatch.
+
+   **Test vector.** What's hashed is the UTF-8 of the two lowercase hex strings, sorted and joined with `:`. With
+
+   ```text
+   fp A = e4a47d3c3bdb35669a7b8864ac1eb1007374b3fff99a4cfea5faad8a98f9c991
+   fp B = 41a2a6ceda3570ff77b22160da5b2f526aa5b6da82d5baa33b89fd5e220421c7
+   ```
+
+   the input is `41a2…21c7:e4a4…c991` (B sorts first), its SHA-256 starts `31 6e 59 62`, and the code is **`315426`**, whichever side computes it.
 4. The receiver asks: "Pair with `<name>`? Make sure `<name>` shows `<code>`." The request stays open until the person answers, for up to 60 seconds.
 5. **Accept:** the receiver adds or updates the peer (matched by `id`), pins the request's `fp`, mints a device token, and answers `200` with the same body as [`POST /pair`](#post-pair), plus its `id`, `fp`, `tlsPort`, `lan`, and `host`. When the receiver is an iPhone, the response's `token` is one the phone minted for the requester. The requester pins `fpServer` and stores the token. **Decline:** `403` with `"declined"`. **No answer:** `408` with `"timed out"`.
 
