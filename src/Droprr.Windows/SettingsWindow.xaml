@@ -221,9 +221,9 @@
                         <DockPanel Margin="0,4,0,0">
                             <ComboBox x:Name="ModeBox" DockPanel.Dock="Right" MinWidth="120" AutomationProperties.Name="Light or dark mode"
                                       SelectionChanged="OnModeChanged">
-                                <ComboBoxItem Content="System" Tag="system" />
                                 <ComboBoxItem Content="Light" Tag="light" />
                                 <ComboBoxItem Content="Dark" Tag="dark" />
+                                <ComboBoxItem Content="System" Tag="system" />
                             </ComboBox>
                             <TextBlock Text="Mode" VerticalAlignment="Center" />
                         </DockPanel>
