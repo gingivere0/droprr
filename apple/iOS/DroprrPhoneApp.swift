@@ -379,25 +379,41 @@ final class PhoneModel {
         settings.lastPeerID = peer.id
         sending = true
         progress = nil
-        defer { sending = false; progress = nil }
+        defer { sending = false; progress = nil; sendTask = nil }
         let label = payloads.map(\.label).joined(separator: ", ")
         lastSendResult = "Sending \(label) to \(peer.name)…"
-        do {
-            let (client, identityChanged) = try await DroprrClient.connect(peer)
-            for payload in payloads {
-                try await payload.send(with: client) { [weak self] in self?.progress = $0 }
+        let work = Task { @MainActor () -> Bool in
+            do {
+                let (client, identityChanged) = try await DroprrClient.connect(peer)
+                for payload in payloads {
+                    try Task.checkCancellation()
+                    try await payload.send(with: client) { [weak self] in self?.progress = $0 }
+                }
+                if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) { settings.peers[i].lastPath = client.path.rawValue }
+                lastSendResult = identityChanged
+                    ? "Sent \(label) to \(peer.name) (Tailscale). \(peer.name)'s identity changed. Pair again."
+                    : "Sent \(label) to \(peer.name) (\(client.path.label))."
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                return true
+            } catch {
+                if Task.isCancelled {
+                    lastSendResult = "Canceled sending to \(peer.name)."
+                } else {
+                    lastSendResult = "Couldn't send to \(peer.name): \(error.localizedDescription)"
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
+                return false
             }
-            if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) { settings.peers[i].lastPath = client.path.rawValue }
-            lastSendResult = identityChanged
-                ? "Sent \(label) to \(peer.name) (Tailscale). \(peer.name)'s identity changed. Pair again."
-                : "Sent \(label) to \(peer.name) (\(client.path.label))."
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            return true
-        } catch {
-            lastSendResult = "Couldn't send to \(peer.name): \(error.localizedDescription)"
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            return false
         }
+        sendTask = work
+        return await work.value
+    }
+
+    @ObservationIgnored private var sendTask: Task<Bool, Never>?
+
+    /// Stops the send in progress (Cancel on the status line).
+    func cancelSend() {
+        sendTask?.cancel()
     }
 
     /// Whatever is on the clipboard right now, or nil if it's empty.

@@ -28,7 +28,7 @@ struct SendView: View {
                 devices
                 dropArea
                 composer
-                SendStatusView(message: model.lastSendResult, progress: model.progress)
+                SendStatusView(message: model.lastSendResult, progress: model.progress, onCancel: model.cancelSend)
                 bottomBar
             }
         }

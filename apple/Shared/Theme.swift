@@ -210,6 +210,8 @@ struct GlyphCircle: View {
 struct SendStatusView: View {
     var message: String?
     var progress: Double?
+    /// Shows a Cancel button while a send is in progress.
+    var onCancel: (() -> Void)?
 
     enum Kind { case working, success, failure, info }
 
@@ -232,6 +234,11 @@ struct SendStatusView: View {
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
+                    if kind == .working, let onCancel {
+                        Button("Cancel", action: onCancel)
+                            .font(.callout.weight(.semibold))
+                            .buttonStyle(.borderless)
+                    }
                 }
                 if let progress, kind == .working {
                     ProgressView(value: progress).tint(Theme.end)
@@ -241,7 +248,7 @@ struct SendStatusView: View {
             .padding(Space.md)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(tint(kind), in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
             .transition(.opacity)
         }
     }

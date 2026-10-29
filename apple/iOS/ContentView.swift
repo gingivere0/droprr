@@ -188,7 +188,7 @@ private struct SendTab: View {
                     devicePicker
                     actionGrid
                     composer.id("composer")
-                    SendStatusView(message: model.lastSendResult, progress: model.progress)
+                    SendStatusView(message: model.lastSendResult, progress: model.progress, onCancel: model.cancelSend)
                 }
             }
             .padding(.horizontal, Space.lg)

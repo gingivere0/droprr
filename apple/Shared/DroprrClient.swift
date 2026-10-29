@@ -22,6 +22,7 @@ enum DroprrError: LocalizedError {
     case badPeer
     case server(Int, String)
     case identityChanged(String)
+    case unreachable(String)
 
     var errorDescription: String? {
         switch self {
@@ -29,6 +30,7 @@ enum DroprrError: LocalizedError {
         case .badPeer: return "That device's address isn't valid."
         case .server(let code, let message): return "The device answered \(code): \(message)"
         case .identityChanged(let name): return "\(name)'s identity changed. Pair again."
+        case .unreachable(let name): return "\(name) isn't reachable on this Wi-Fi or over Tailscale. Is Droprr running on it?"
         }
     }
 }
@@ -64,7 +66,11 @@ struct DroprrClient {
     /// LAN answered with the wrong certificate and there's no Tailscale host to fall back to.
     static func connect(_ peer: Peer) async throws -> (client: DroprrClient, identityChanged: Bool) {
         var client = DroprrClient(peer: peer)
-        guard let fp = peer.fingerprint, let token = peer.token, !token.isEmpty else { return (client, false) }
+        guard let token = peer.token, !token.isEmpty else { return (client, false) }
+        guard let fp = peer.fingerprint else {
+            try await client.checkReachable(token: token)
+            return (client, false)
+        }
         var mismatch = false
         for base in peer.lanURLs {
             guard let url = URL(string: base.absoluteString + "/ping") else { continue }
@@ -90,7 +96,24 @@ struct DroprrClient {
             }
         }
         if mismatch && peer.baseURL == nil { throw DroprrError.identityChanged(peer.name) }
+        try await client.checkReachable(token: token)
         return (client, mismatch)
+    }
+
+    /// Fails fast (about 3 s) when the Tailscale address doesn't answer, instead of waiting out a send's timeout.
+    private func checkReachable(token: String) async throws {
+        guard let base = peer.baseURL, let url = URL(string: base.absoluteString + "/ping") else {
+            throw DroprrError.unreachable(peer.name)
+        }
+        var request = URLRequest(url: url, timeoutInterval: 3)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        do {
+            _ = try await Self.session.data(for: request)
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
+        } catch {
+            throw DroprrError.unreachable(peer.name)
+        }
     }
 
     private static let session: URLSession = {

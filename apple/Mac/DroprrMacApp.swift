@@ -362,9 +362,17 @@ final class MacModel {
     func send(_ payloads: [SendPayload], to peer: Peer) async -> Bool {
         for payload in payloads {
             await send(payload, to: peer)
-            if let result = lastSendResult, result.hasPrefix("Couldn't") { return false }
+            if Task.isCancelled { return false }
+            if let result = lastSendResult, result.hasPrefix("Couldn't") || result.hasPrefix("Canceled") { return false }
         }
         return true
+    }
+
+    @ObservationIgnored private var sendTask: Task<Void, Never>?
+
+    /// Stops the send in progress (Cancel on the status line).
+    func cancelSend() {
+        sendTask?.cancel()
     }
 
     func send(_ payload: SendPayload, to peer: Peer) async {
@@ -383,17 +391,24 @@ final class MacModel {
         isSending = true
         progress = nil
         lastSendResult = "Sending \(payload.label) to \(peer.name)…"
-        defer { isSending = false; progress = nil }
-        do {
-            let (client, identityChanged) = try await DroprrClient.connect(peer)
-            try await payload.send(with: client) { [weak self] in self?.progress = $0 }
-            if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) { settings.peers[i].lastPath = client.path.rawValue }
-            lastSendResult = identityChanged
-                ? "Sent \(payload.label) to \(peer.name) (Tailscale). \(peer.name)'s identity changed. Pair again."
-                : "Sent \(payload.label) to \(peer.name) (\(client.path.label))."
-        } catch {
-            lastSendResult = "Couldn't send to \(peer.name): \(error.localizedDescription)"
+        defer { isSending = false; progress = nil; sendTask = nil }
+        let work = Task { @MainActor in
+            do {
+                let (client, identityChanged) = try await DroprrClient.connect(peer)
+                try Task.checkCancellation()
+                try await payload.send(with: client) { [weak self] in self?.progress = $0 }
+                if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) { settings.peers[i].lastPath = client.path.rawValue }
+                lastSendResult = identityChanged
+                    ? "Sent \(payload.label) to \(peer.name) (Tailscale). \(peer.name)'s identity changed. Pair again."
+                    : "Sent \(payload.label) to \(peer.name) (\(client.path.label))."
+            } catch {
+                lastSendResult = Task.isCancelled
+                    ? "Canceled sending to \(peer.name)."
+                    : "Couldn't send to \(peer.name): \(error.localizedDescription)"
+            }
         }
+        sendTask = work
+        await work.value
     }
 }
 

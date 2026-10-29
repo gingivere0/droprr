@@ -34,7 +34,7 @@ struct PanelView: View {
                 }
             }
 
-            SendStatusView(message: model.lastSendResult, progress: model.progress)
+            SendStatusView(message: model.lastSendResult, progress: model.progress, onCancel: model.cancelSend)
 
             if !model.recent.isEmpty {
                 VStack(alignment: .leading, spacing: Space.xs) {
