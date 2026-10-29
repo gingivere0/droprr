@@ -37,6 +37,13 @@ extension SnapshotSupport {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             NSApp.activate(ignoringOtherApps: true)
             NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            // Also open the menu bar popup, so its window shows up in the dump.
+            func buttons(_ view: NSView) -> [NSStatusBarButton] {
+                ((view as? NSStatusBarButton).map { [$0] } ?? []) + view.subviews.flatMap(buttons)
+            }
+            for window in NSApp.windows {
+                if let frame = window.contentView?.superview ?? window.contentView { buttons(frame).first?.performClick(nil) }
+            }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             var out = ""
