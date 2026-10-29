@@ -75,28 +75,14 @@ struct PairView: View {
         .onDisappear { model.closeOneCode() }
         .onChange(of: model.lastPaired) { _, name in close(after: name) }
         .onChange(of: model.connectedBrowser) { _, name in close(after: name) }
-        .overlay {
-            if let name = model.lastPaired ?? model.connectedBrowser {
-                VStack(spacing: Space.md) {
-                    Image(systemName: "checkmark").font(.system(size: 32, weight: .light)).foregroundStyle(Theme.end)
-                    Text("Paired with \(name)").font(Look.display(24))
-                }
-                .foregroundStyle(Look.ink)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background { LookBackground() }
-                .transition(.opacity)
-            }
-        }
-        .motion(Motion.standard, value: model.lastPaired ?? model.connectedBrowser)
     }
 
-    /// A phone or browser scanned the code and connected: confirm, then close.
+    /// A phone or browser scanned the code and connected: close at once; the Send window shows it, selected,
+    /// with its usual success line.
     private func close(after name: String?) {
         guard name != nil else { return }
-        Task {
-            try? await Task.sleep(for: .seconds(1.5))
-            dismissWindow(id: "pair")
-            model.connectedBrowser = nil
-        }
+        dismissWindow(id: "pair")
+        model.connectedBrowser = nil
+        model.lastPaired = nil
     }
 }

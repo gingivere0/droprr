@@ -40,6 +40,7 @@ struct SendView: View {
         .seamlessWindow()
         .lookRoot()
         .motion(Motion.standard, value: model.lastSendResult)
+        .onChange(of: model.justAdded) { _, id in if let id { selectedID = id } }
         .motion(Motion.fast, value: files)
     }
 

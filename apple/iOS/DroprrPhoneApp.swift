@@ -366,6 +366,20 @@ final class PhoneModel {
         }
     }
 
+    /// The device that was just added, for the Send tab to show and select.
+    var justAdded: UUID?
+
+    /// A computer was added from the one code: no separate screen; the Send tab selects it and shows its usual
+    /// success line, "<name> added".
+    private func added(_ id: UUID) {
+        pairingStatus = nil
+        guard let peer = settings.peers.first(where: { $0.id == id }) else { return }
+        settings.lastPeerID = id
+        justAdded = id
+        lastSendResult = "\(peer.name) added"
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
     /// The one code: pair with the computer's join secret (no token in the code). Nothing is saved until the computer
     /// answers with this phone's device token.
     private func join(_ info: PairingInfo, secret: String) {
@@ -386,14 +400,16 @@ final class PhoneModel {
                 }
                 settings.learn(peer.id, deviceID: result.deviceID, fingerprint: result.fingerprint, tlsPort: result.tlsPort,
                                lan: result.lan, host: result.host, replacePin: result.fingerprint != nil)
-                pairingStatus = .success("Paired with \(result.name)")
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                Task {
-                    try? await Task.sleep(for: .seconds(2.5))
-                    if case .success = pairingStatus { pairingStatus = nil }
-                }
+                added(peer.id)
                 await collectInbox()
             } catch DroprrError.server(409, let message) {
+                // Already paired with each other: nothing to do, so it's a success like any pairing.
+                if let known = settings.peers.first(where: { peer in
+                    (info.id != nil && peer.deviceID == info.id) || (info.fp != nil && peer.fingerprint == info.fp)
+                }), known.token?.isEmpty == false {
+                    added(known.id)
+                    return
+                }
                 pairingStatus = .failure("\(info.name) says this iPhone is \(message).")
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             } catch DroprrError.server(401, _) {

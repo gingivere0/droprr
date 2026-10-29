@@ -174,7 +174,11 @@ final class MacModel {
         let host = browserHost!
         receiver.hostBridge = { request in await host.handle(request) }
         host.onChange = { [weak self] in self?.browserHostVersion += 1 }
-        host.onBrowserJoined = { [weak self] name in self?.connectedBrowser = name }
+        host.onBrowserJoined = { [weak self] name in
+            guard let self else { return }
+            self.connectedBrowser = name
+            if let peer = self.settings.peers.first(where: { $0.isBrowser && $0.name == name }) { self.added(peer.id) }
+        }
         host.appInfo = { [weak self] in self?.appInfo }
         receiver.addBrowser = { [weak self] in self?.addBrowser($0) ?? "Browser" }
         receiver.onBrowserRemoved = { [weak self] id in
@@ -280,7 +284,7 @@ final class MacModel {
         // A phone upgrading an existing pairing to protocol 2 isn't news.
         guard request.existingPeerID == nil else { return }
         lastPaired = request.name
-        lastSendResult = "\(request.name) paired."
+        added(peerID)
         let content = UNMutableNotificationContent()
         content.title = "\(request.name) paired"
         if request.platform == "ios" { content.body = "Items you send to it wait here until Droprr opens on the phone." }
@@ -371,7 +375,21 @@ final class MacModel {
                         remoteName: request.name, token: nil, acceptToken: request.acceptToken)
         settings.peers.append(peer)
         connectedBrowser = peer.name
+        added(peer.id)
         return peer.name
+    }
+
+    /// The device that was just added, for the Send window to select.
+    var justAdded: UUID?
+
+    /// A device was added (paired, or a browser joined): the Send window comes forward with it selected and shows
+    /// its usual success line, "<name> added".
+    private func added(_ id: UUID) {
+        guard let peer = settings.peers.first(where: { $0.id == id }) else { return }
+        settings.lastPeerID = id
+        justAdded = id
+        lastSendResult = "\(peer.name) added"
+        showSendWindow?()
     }
 
     func clearWaiting(for peer: Peer) {

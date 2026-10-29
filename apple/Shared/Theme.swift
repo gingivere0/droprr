@@ -219,7 +219,7 @@ struct SendStatusView: View {
 
     static func kind(of message: String) -> Kind {
         if message.hasPrefix("Sending") || message.hasPrefix("Preparing") || message.hasPrefix("Queueing") { return .working }
-        if message.hasPrefix("Sent") || message.hasPrefix("Paired") || message.hasPrefix("Cleared") || message.hasSuffix("paired.") { return .success }
+        if message.hasPrefix("Sent") || message.hasPrefix("Paired") || message.hasPrefix("Cleared") || message.hasSuffix("paired.") || message.hasSuffix(" added") { return .success }
         if message.hasPrefix("Couldn't") || message.hasPrefix("Open the") || message.contains("empty") { return .failure }
         return .info
     }

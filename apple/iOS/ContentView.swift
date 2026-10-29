@@ -48,6 +48,7 @@ struct ContentView: View {
         // "Missing Token" on the Send tab opens that device in Settings.
         .onChange(of: model.settings.localNetwork) { _, on in if on { model.startLocalNetwork() } else { model.stopLocalNetwork() } }
         .onChange(of: model.settings.tokenRequest) { _, id in if id != nil { tab = 2 } }
+        .onChange(of: model.justAdded) { _, id in if id != nil { tab = 0 } }
         .environment(\.startPairing, { scanning = true })
         .environment(\.pairWithCode, { model.pair(with: $0) })
         .sheet(isPresented: $scanning) {
@@ -248,6 +249,7 @@ private struct SendTab: View {
         .background(backdrop)
         .toolbar(.hidden, for: .navigationBar)
         .motion(Motion.standard, value: model.lastSendResult)
+        .onChange(of: model.justAdded) { _, id in if let id { peerID = id } }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }
             Motion.perform { files = urls.compactMap(Self.copyToTemp) }
