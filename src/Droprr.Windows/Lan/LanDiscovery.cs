@@ -33,6 +33,10 @@ static class LanDiscovery
 
     static readonly ConcurrentDictionary<string, LanDevice> Found = new();
     static readonly List<Dnssd.Registration> Registrations = new();
+    // What's advertised now (name, port, TXT, and addresses), so an unchanged advertisement is left alone.
+    static string _advertised = "";
+    // Bumped by every Start and Stop, so a delayed re-advertisement that's no longer wanted is dropped.
+    static int _generation;
     static CancellationTokenSource? _browsing;
     static string _ownId = "";
 
@@ -48,13 +52,36 @@ static class LanDiscovery
             ? device
             : null;
 
-    // (Re)starts browsing, and advertising when this PC is listening for HTTPS.
+    // (Re)starts browsing, and advertising when this PC is listening for HTTPS. An advertisement that hasn't changed
+    // is kept as it is. A changed one is withdrawn, and the new one goes out a moment later: registering the same name
+    // again before Windows has finished withdrawing the old one makes Windows rename it "Name (1)", and a renamed
+    // registration can never be withdrawn (it stays on the network until Windows restarts).
     public static void Start(AppSettings settings, int tlsPort, bool advertise)
     {
-        Stop();
+        _browsing?.Cancel();
         _ownId = settings.DeviceId;
-        if (advertise)
-            Advertise(settings, tlsPort);
+        var generation = Interlocked.Increment(ref _generation);
+        var wanted = advertise ? AdvertisementKey(settings, tlsPort) : "";
+        bool withdrawn;
+        lock (Registrations)
+        {
+            withdrawn = wanted != _advertised && Registrations.Count > 0;
+            if (wanted != _advertised)
+                Withdraw();
+        }
+        if (advertise && wanted != _advertised)
+        {
+            _ = Task.Run(async () =>
+            {
+                if (withdrawn)
+                    await Task.Delay(TimeSpan.FromSeconds(2));
+                lock (Registrations)
+                {
+                    if (generation == Volatile.Read(ref _generation) && Registrations.Count == 0)
+                        Advertise(settings, tlsPort, wanted);
+                }
+            });
+        }
         var browsing = new CancellationTokenSource();
         _browsing = browsing;
         _ = Task.Run(() => BrowseLoopAsync(browsing.Token));
@@ -64,17 +91,29 @@ static class LanDiscovery
     {
         _browsing?.Cancel();
         _browsing = null;
+        Interlocked.Increment(ref _generation);
         lock (Registrations)
-        {
-            foreach (var registration in Registrations)
-                registration.Dispose();
-            Registrations.Clear();
-        }
+            Withdraw();
     }
 
-    // One registration per private-network interface, carrying that interface's address.
-    static void Advertise(AppSettings settings, int tlsPort)
+    // Callers hold the Registrations lock.
+    static void Withdraw()
     {
+        foreach (var registration in Registrations)
+            registration.Dispose();
+        Registrations.Clear();
+        _advertised = "";
+    }
+
+    static string AdvertisementKey(AppSettings settings, int tlsPort) =>
+        string.Join("|", settings.DeviceName, settings.DeviceId, tlsPort, DeviceIdentity.Fingerprint(settings),
+            string.Join(",", LanNetwork.LocalAddresses().Select(a => $"{a.Address}%{a.InterfaceIndex}")));
+
+    // One registration per private-network interface, carrying that interface's address. Callers hold the
+    // Registrations lock.
+    static void Advertise(AppSettings settings, int tlsPort, string key)
+    {
+        _advertised = key;
         var txt = new Dictionary<string, string>
         {
             ["v"] = "2",
@@ -84,15 +123,12 @@ static class LanDiscovery
             ["port"] = tlsPort.ToString(),
             ["fp"] = DeviceIdentity.Fingerprint(settings),
         };
-        lock (Registrations)
+        foreach (var (address, index) in LanNetwork.LocalAddresses())
         {
-            foreach (var (address, index) in LanNetwork.LocalAddresses())
-            {
-                if (Dnssd.Register(settings.DeviceName, LanNetwork.ServiceType, tlsPort, txt, (uint)index, address) is { } registration)
-                    Registrations.Add(registration);
-            }
-            RequestLog.Note($"local network: advertising on {Registrations.Count} interface(s)");
+            if (Dnssd.Register(settings.DeviceName, LanNetwork.ServiceType, tlsPort, txt, (uint)index, address) is { } registration)
+                Registrations.Add(registration);
         }
+        RequestLog.Note($"local network: advertising on {Registrations.Count} interface(s)");
     }
 
     static async Task BrowseLoopAsync(CancellationToken cancel)
