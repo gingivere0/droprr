@@ -72,6 +72,16 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
         };
         if (!string.IsNullOrEmpty(dns))
             fields.Add(("dns", dns));
+        // Local network (protocol 2): optional fields older apps ignore. The phone pins the fingerprint.
+        fields.Add(("id", settings.DeviceId));
+        fields.Add(("fp", DeviceIdentity.Fingerprint(settings)));
+        if (Application.Current is App { LanListening: true })
+        {
+            var tlsPort = LanNetwork.TlsPort(settings.Port);
+            var lan = string.Join(",", LanNetwork.LocalAddresses().Select(a => $"{a.Address}:{tlsPort}"));
+            if (lan.Length > 0)
+                fields.Add(("lan", lan));
+        }
         // Uri.EscapeDataString percent-encodes everything outside RFC 3986's unreserved characters.
         return "droprr://pair?" + string.Join("&", fields.Select(f => $"{f.Key}={Uri.EscapeDataString(f.Value)}"));
     }

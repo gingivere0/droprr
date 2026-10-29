@@ -26,6 +26,22 @@ public sealed class Peer
     // "windows", "macos", or "ios", from pairing or the peer's /ping. Empty means not known yet.
     public string Platform { get; set; } = "";
 
+    // Local network (protocol 2): the peer's device id, its pinned certificate fingerprint, its HTTPS port, its
+    // last known LAN addresses ("host:port"), and the path the last send took ("lan" or "tailscale").
+    public string Id { get; set; } = "";
+    public string Fingerprint { get; set; } = "";
+    public int TlsPort { get; set; }
+    public List<string> Lan { get; set; } = new();
+    public string LastPath { get; set; } = "";
+
+    [JsonIgnore]
+    public string PathLabel => LastPath switch
+    {
+        "lan" => "Wi-Fi",
+        "tailscale" => "Tailscale",
+        _ => "",
+    };
+
     // Phones can't listen, so sends to them are queued in the Outbox until they check in.
     [JsonIgnore]
     public bool IsPhone
@@ -87,6 +103,13 @@ public sealed class AppSettings
     // A Start menu shortcut, which is what makes Droprr show up in Windows Search.
     public bool AddToStartMenu { get; set; } = true;
 
+    // Send and receive over the local network too (docs/PROTOCOL.md, "Local network (LAN) transport").
+    public bool LocalNetwork { get; set; } = true;
+
+    // This PC's device id and its TLS certificate (base64 PKCS #12, stored encrypted). Made on first run.
+    public string DeviceId { get; set; } = "";
+    public string Identity { get; set; } = "";
+
     public List<Peer> Peers { get; set; } = new();
 
     public Peer? FindPeer(string name) =>
@@ -126,6 +149,16 @@ static class SettingsStore
             settings.Token = NewToken();
             changed = true;
         }
+        if (string.IsNullOrWhiteSpace(settings.DeviceId))
+        {
+            settings.DeviceId = DeviceIdentity.NewId();
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(settings.Identity))
+        {
+            settings.Identity = DeviceIdentity.NewCertificate(settings.DeviceId);
+            changed = true;
+        }
         if (changed)
             Save(settings);
         return settings;
@@ -136,6 +169,7 @@ static class SettingsStore
         Directory.CreateDirectory(Folder);
         var stored = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings, Options), Options)!;
         stored.Token = Hide(stored.Token);
+        stored.Identity = Hide(stored.Identity);
         foreach (var peer in stored.Peers)
         {
             peer.Token = Hide(peer.Token);
@@ -157,6 +191,7 @@ static class SettingsStore
     {
         var plain = false;
         settings.Token = Reveal(settings.Token, ref plain);
+        settings.Identity = Reveal(settings.Identity, ref plain);
         foreach (var peer in settings.Peers)
         {
             peer.Token = Reveal(peer.Token, ref plain);

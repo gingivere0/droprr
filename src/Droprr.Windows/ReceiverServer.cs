@@ -23,13 +23,18 @@ public sealed record ReceivedItem(ItemKind Kind, string Display, string? Path, s
 
 public sealed record TransferProgress(Guid Id, long Received, long? Total, bool Done);
 
-sealed record PairBody(string? Name, string? Platform, string? Host, int? Port, string? Token);
+sealed record PairBody(string? Name, string? Platform, string? Host, int? Port, string? Token,
+    string? Id = null, string? Fp = null, int? TlsPort = null, List<string>? Lan = null);
 
-// SendToken: the token the caller minted for this PC to use when calling it (computers only).
-// AcceptToken: the device token this PC minted for the caller, returned in the response.
-public sealed record PairRequest(string Name, string Platform, string? Host, int? Port, string? SendToken, string? AcceptToken);
+// SendToken: the token the caller minted for this PC to use when calling it (computers, and phones that receive
+// directly over the local network). AcceptToken: the device token this PC minted for the caller, returned in the
+// response. Id, Fingerprint, TlsPort, and Lan: the caller's local network identity and addresses (protocol 2).
+// ExistingPeer: the peer whose device token authenticated the request, which is updated rather than matched by name.
+public sealed record PairRequest(string Name, string Platform, string? Host, int? Port, string? SendToken, string? AcceptToken,
+    string? Id = null, string? Fingerprint = null, int? TlsPort = null, IReadOnlyList<string>? Lan = null, string? ExistingPeer = null);
 
-// The HTTP receiver described in docs/PROTOCOL.md. Binds only to loopback and Tailscale addresses.
+// The receiver described in docs/PROTOCOL.md: plain HTTP on loopback and Tailscale addresses, plus HTTPS on the
+// next port for the local network when it's turned on and the firewall allows it.
 sealed partial class ReceiverServer : IAsyncDisposable
 {
     static readonly string Version =
@@ -63,10 +68,20 @@ sealed partial class ReceiverServer : IAsyncDisposable
 
     public IReadOnlyList<IPAddress> TailscaleAddresses { get; private set; } = [];
 
+    // Whether HTTPS for the local network is listening, and on which port.
+    public bool LanListening { get; private set; }
+    public int TlsPort => LanNetwork.TlsPort(Settings.Port);
+
+    // For tests: listen on loopback only (HTTP and HTTPS), without needing the firewall rule.
+    internal bool LoopbackOnly { get; init; }
+
     public async Task StartAsync()
     {
         TailscaleAddresses = TailscaleNetwork.FindAddresses();
         var port = Settings.Port;
+        var tlsPort = TlsPort;
+        var lan = Settings.LocalNetwork && (LoopbackOnly || LanFirewall.HasRule(tlsPort));
+        var certificate = lan ? DeviceIdentity.Certificate(Settings) : null;
 
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
         {
@@ -77,8 +92,29 @@ sealed partial class ReceiverServer : IAsyncDisposable
         {
             kestrel.Limits.MaxRequestBodySize = null;
             kestrel.ListenLocalhost(port);
-            foreach (var address in TailscaleAddresses)
+            foreach (var address in LoopbackOnly ? [] : TailscaleAddresses)
                 kestrel.Listen(address, port);
+            if (certificate is not null)
+            {
+                void Https(Microsoft.AspNetCore.Server.Kestrel.Core.ListenOptions listen)
+                {
+                    // Dropped before the TLS handshake: anything but loopback, Tailscale, and private LAN ranges.
+                    listen.Use(next => connection =>
+                    {
+                        if (!LanNetwork.IsAllowedRemote((connection.RemoteEndPoint as IPEndPoint)?.Address))
+                        {
+                            connection.Abort();
+                            return Task.CompletedTask;
+                        }
+                        return next(connection);
+                    });
+                    listen.UseHttps(certificate);
+                }
+                if (LoopbackOnly)
+                    kestrel.ListenLocalhost(tlsPort, Https);
+                else
+                    kestrel.ListenAnyIP(tlsPort, Https);
+            }
         });
 
         var app = builder.Build();
@@ -89,6 +125,24 @@ sealed partial class ReceiverServer : IAsyncDisposable
         });
         app.Use(async (context, next) =>
         {
+            // LAN pairing is the one request without a token, and only over HTTPS.
+            if (context.Request.Path.Equals("/pair/request", StringComparison.OrdinalIgnoreCase))
+            {
+                IResult result;
+                try
+                {
+                    result = certificate is not null && context.Connection.LocalPort == tlsPort && HttpMethods.IsPost(context.Request.Method)
+                        ? await LanPairRequestAsync(context)
+                        : Error("not found", StatusCodes.Status404NotFound);
+                }
+                catch (Exception ex) when (!context.RequestAborted.IsCancellationRequested)
+                {
+                    RequestLog.WriteError(context, ex);
+                    result = Error("receiver error", StatusCodes.Status500InternalServerError);
+                }
+                await result.ExecuteAsync(context);
+                return;
+            }
             if (!TryAuthenticate(context.Request, out var devicePeer))
             {
                 context.Response.Headers.WWWAuthenticate = "Bearer";
@@ -108,7 +162,11 @@ sealed partial class ReceiverServer : IAsyncDisposable
                 await Error("receiver error", StatusCodes.Status500InternalServerError).ExecuteAsync(context);
             }
         });
-        app.MapGet("/ping", () => Results.Json(new { name = Settings.DeviceName, version = Version, platform = "windows", protocol = 1 }));
+        app.MapGet("/ping", () => Results.Json(new
+        {
+            name = Settings.DeviceName, version = Version, platform = "windows", protocol = 2,
+            id = Settings.DeviceId, fp = DeviceIdentity.Fingerprint(Settings), tlsPort = LanListening ? tlsPort : (int?)null,
+        }));
         app.MapFallback(() => Error("not found", StatusCodes.Status404NotFound));
         app.MapPost("/send", (Func<HttpContext, Task<IResult>>)HandleSendAsync);
         app.MapPost("/pair", (Func<HttpContext, Task<IResult>>)PairAsync);
@@ -118,6 +176,7 @@ sealed partial class ReceiverServer : IAsyncDisposable
 
         await app.StartAsync();
         _app = app;
+        LanListening = certificate is not null;
     }
 
     // Accepts the main token or any peer's device token, comparing against every one in constant time.
@@ -173,11 +232,13 @@ sealed partial class ReceiverServer : IAsyncDisposable
             return Error("port must be from 1 to 65535", StatusCodes.Status400BadRequest);
 
         var phone = platform == "ios";
-        var sendToken = phone ? null : body.Token?.Trim();
+        // Phones send one too when they can receive directly over the local network.
+        var sendToken = body.Token?.Trim();
         var acceptToken = SettingsStore.NewToken();
         PairRequested?.Invoke(new PairRequest(name, platform, phone ? null : host, body.Port,
-            string.IsNullOrEmpty(sendToken) ? null : sendToken, acceptToken));
-        return Results.Json(new { ok = true, name = Settings.DeviceName, token = acceptToken });
+            string.IsNullOrEmpty(sendToken) ? null : sendToken, acceptToken,
+            ValidId(body.Id), ValidFingerprint(body.Fp), body.TlsPort, body.Lan, DevicePeer(context)));
+        return Results.Json(LanPairResponse(acceptToken));
     }
 
     // With a device token, only that peer's queue (?for= is ignored); with the main token, the queue named by ?for=.

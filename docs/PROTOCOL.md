@@ -1,6 +1,6 @@
 # Droprr protocol
 
-Version 1, plus the planned [local network transport](#local-network-lan-transport) (protocol 2). The Windows and Mac apps implement all of version 1. The iPhone app receives directly only while it's open, and otherwise collects items through the [inbox](#inbox-phone-pull).
+Version 1, plus the [local network transport](#local-network-lan-transport) (protocol 2). The Windows and Mac apps implement all of version 1. The iPhone app receives directly only while it's open, and otherwise collects items through the [inbox](#inbox-phone-pull).
 
 Devices talk over plain HTTP inside a Tailscale network. Tailscale's WireGuard tunnel already encrypts and authenticates the connection between devices, and a shared bearer token keeps other devices on the tailnet out.
 
@@ -312,7 +312,7 @@ A desktop also still adds an unknown name that calls `GET /inbox?for=` as an `"i
 
 ## Local network (LAN) transport
 
-**Protocol 2. Design, not implemented yet.** Protocol 2 lets devices on the same Wi-Fi or wired network reach each other directly, without Tailscale. It's additive: everything above stays as it is, a protocol 1 device keeps working with a protocol 2 device over Tailscale, and the iOS Shortcuts are unaffected.
+**Protocol 2.** The Windows app implements it; the Mac and iPhone apps are adding it. Protocol 2 lets devices on the same Wi-Fi or wired network reach each other directly, without Tailscale. It's additive: everything above stays as it is, a protocol 1 device keeps working with a protocol 2 device over Tailscale, and the iOS Shortcuts are unaffected.
 
 ### Transports
 

@@ -6,7 +6,7 @@ https://github.com/user-attachments/assets/ffdede5f-c8e2-46f5-a341-a4838f963e42
 
 ## How it works
 
-- **Tailscale only.** Every device runs Tailscale on the same tailnet. Computers accept connections only from Tailscale addresses (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) and from the device itself, never from your LAN or the internet. Tailscale encrypts the traffic.
+- **Tailscale, or the same Wi-Fi.** Over Tailscale, computers accept plain connections only from Tailscale addresses (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) and from the device itself, and Tailscale encrypts the traffic. On the same Wi-Fi or wired network, devices find each other with Bonjour and talk over HTTPS on the next port (`53319`), each pinning the other's certificate, so it works without Tailscale too. Droprr tries Wi-Fi first and falls back to Tailscale, and the status says which it used.
 - **One port.** Each computer listens on port `53318` by default (changeable in Settings).
 - **A token per device.** Every request carries a secret token. Each computer has a main token, which goes in its pairing QR code. Pairing gives every device its own token, and removing a device in Settings revokes its token without affecting the others. A device never sends its own main token to anyone. Tokens are stored encrypted for your Windows account on Windows, and in the Keychain on the Mac and iPhone.
 - **Phones collect.** An iPhone can't accept connections in the background, so anything sent to it waits on the sending computer for up to 7 days. The phone collects it when the app opens, or when you pull to refresh on Received.
@@ -24,6 +24,7 @@ https://github.com/user-attachments/assets/ffdede5f-c8e2-46f5-a341-a4838f963e42
 - **Pairing.** Pair an iPhone by scanning a computer's QR code. Pairing goes both ways: the phone saves the computer's address and a token, and the computer adds the phone to its devices. Computers pair with each other the same way when you add one by hand (see [Pairing](#pairing)).
 - **Missing Token tiles.** A computer listed without a token says **Missing Token**. Clicking it opens Settings with that device's token field ready to type into.
 - **Masked tokens.** Tokens show as dots in Settings until you choose to show them. On Windows, **Copy** copies this PC's token without showing it.
+- **Wi-Fi pairing.** Devices on the same network show up under **Nearby on this network** in Settings. Choosing **Pair** shows the same six-digit code on both screens, and pairing happens once the other device accepts. No token is shown or typed. Settings also shows the path each device last used, and the **Local network** switch turns all of this off.
 - **Safer receiving.** Received files are marked as coming from another computer (Mark of the Web on Windows, quarantine on the Mac). On Windows, only common media, document, and text files open with a click, and anything else is shown in Explorer instead. Only `http` and `https` links ever open, and any other "link" is received as text.
 
 ## Setup
@@ -40,7 +41,8 @@ Install Tailscale on every device and sign in to the same tailnet first.
    ```
 
 3. Start that `Droprr.exe` once. It creates `%APPDATA%\Droprr\settings.json` with a random token, adds itself to the Start menu (so Windows Search finds it) and to Explorer's **Send to** menu, and appears in the tray.
-4. Allow Droprr through Windows Firewall from Tailscale addresses only. Run this once in an elevated PowerShell:
+4. For Wi-Fi, open Settings and choose **Allow Droprr on your private network** under Receiving. It asks for permission once and adds a firewall rule for port `53319` on private networks only. Droprr doesn't listen on Wi-Fi until that rule exists.
+5. Allow Droprr through Windows Firewall from Tailscale addresses only. Run this once in an elevated PowerShell:
 
    ```powershell
    New-NetFirewallRule -DisplayName "Droprr (Tailscale)" -Direction Inbound -Protocol TCP -LocalPort 53318 -RemoteAddress 100.64.0.0/10 -Action Allow

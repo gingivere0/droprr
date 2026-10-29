@@ -23,6 +23,8 @@
   "mode": "light",
   // A Start menu shortcut, which is what makes Droprr show up in Windows Search.
   "addToStartMenu": true,
+  // Send and receive over the local network (Wi-Fi or wired) too, with HTTPS on the port after "port".
+  "localNetwork": true,
   // Devices this PC can send to. "host" is a Tailscale (MagicDNS) name or 100.x address.
   // "token" is what this PC sends when calling the device: the token pairing gave it, or one you entered
   // (empty for phones, and for computers that aren't paired yet).

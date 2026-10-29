@@ -1,0 +1,28 @@
+<ui:FluentWindow x:Class="Droprr.PairCodeWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 Title="Pair over Wi-Fi" Width="400" SizeToContent="Height" ResizeMode="NoResize"
+                 WindowStartupLocation="CenterScreen" Topmost="True"
+                 ExtendsContentIntoTitleBar="True" WindowBackdropType="None" WindowCornerPreference="Round">
+    <StackPanel>
+        <ui:TitleBar x:Name="AppTitleBar" Title="Pair over Wi-Fi" ShowMaximize="False" ShowMinimize="False" />
+
+        <StackPanel Margin="{StaticResource WindowPadding}">
+            <TextBlock x:Name="Heading" Style="{StaticResource SubtitleText}" TextWrapping="Wrap" Margin="0,0,0,12" />
+
+            <!-- The six-digit code both screens show (docs/PROTOCOL.md, "LAN pairing"). -->
+            <Border Style="{StaticResource Tile}" Margin="0,0,0,12">
+                <TextBlock x:Name="CodeText" HorizontalAlignment="Center" FontSize="40" FontFamily="{StaticResource MonoFont}"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" AutomationProperties.Name="Pairing code" />
+            </Border>
+            <TextBlock x:Name="Hint" Style="{StaticResource Caption}" Margin="0,0,0,16" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <ui:Button x:Name="DeclineButton" Content="Decline" Margin="0,0,8,0" IsCancel="True" Click="OnDecline" />
+                <ui:Button x:Name="AcceptButton" Content="Pair" Icon="{ui:SymbolIcon Link24}" Style="{StaticResource PrimaryActionButton}"
+                           IsDefault="True" Click="OnAccept" />
+            </StackPanel>
+        </StackPanel>
+    </StackPanel>
+</ui:FluentWindow>

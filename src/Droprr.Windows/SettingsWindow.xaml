@@ -8,6 +8,7 @@
                  ExtendsContentIntoTitleBar="True" WindowBackdropType="None" WindowCornerPreference="Round">
     <ui:FluentWindow.Resources>
         <local:MaskedTokenConverter x:Key="MaskedToken" />
+        <local:PlatformSymbolConverter x:Key="PlatformSymbol" />
         <!-- A labeled on/off row inside a tile. -->
         <Style x:Key="ToggleRow" TargetType="DockPanel">
             <Setter Property="Margin" Value="0,12,0,0" />
@@ -86,6 +87,8 @@
                                 <DataGridTextColumn x:Name="NameColumn" Header="Name" Binding="{Binding Name}" Width="2*" />
                                 <DataGridTextColumn Header="Tailscale host" Binding="{Binding Host}" Width="2*" />
                                 <DataGridTextColumn Header="Port" Binding="{Binding Port}" Width="70" />
+                                <!-- The path the last send took: Wi-Fi or Tailscale. -->
+                                <DataGridTextColumn Header="Last path" Binding="{Binding PathLabel, Mode=OneWay}" IsReadOnly="True" Width="90" />
                                 <DataGridCheckBoxColumn Header="iPhone" Binding="{Binding IsPhone, UpdateSourceTrigger=PropertyChanged}" Width="70"
                                                         ElementStyle="{StaticResource {x:Type CheckBox}}" EditingElementStyle="{StaticResource {x:Type CheckBox}}" />
                                 <!-- Shown as dots until Show tokens is on; editing a cell shows that one token. -->
@@ -116,6 +119,26 @@
                             <ui:Button x:Name="ShowPeerTokensButton" Content="Show tokens" Icon="{ui:SymbolIcon Eye24}" Margin="8,0,0,0"
                                        Click="OnShowPeerTokens" />
                         </StackPanel>
+
+                        <!-- Droprr devices discovered on this network that aren't paired yet (LAN pairing). -->
+                        <StackPanel x:Name="NearbyPanel" Visibility="Collapsed" Margin="0,16,0,0">
+                            <TextBlock Text="Nearby on this network" Style="{StaticResource BodyStrongText}" Margin="0,0,0,4" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,0,0,8"
+                                       Text="Droprr devices on this Wi-Fi that aren't paired yet. Pairing shows the same code on both screens." />
+                            <ItemsControl x:Name="NearbyList" AutomationProperties.Name="Nearby devices">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type local:LanDevice}">
+                                        <DockPanel Margin="0,0,0,8">
+                                            <ui:Button DockPanel.Dock="Right" Content="Pair" Icon="{ui:SymbolIcon Link24}" Style="{StaticResource TonalButton}"
+                                                       AutomationProperties.Name="{Binding Name, StringFormat='Pair with {0}'}" Click="OnPairNearby" />
+                                            <ui:SymbolIcon Symbol="{Binding Platform, Converter={StaticResource PlatformSymbol}}" FontSize="20"
+                                                           Margin="0,0,12,0" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -143,6 +166,20 @@
                                 <TextBlock Text="Files too, and images as pictures" Style="{StaticResource Caption}" />
                             </StackPanel>
                         </DockPanel>
+                        <DockPanel Style="{StaticResource ToggleRow}">
+                            <ui:ToggleSwitch x:Name="LocalNetworkBox" DockPanel.Dock="Right" AutomationProperties.Name="Local network"
+                                             Click="OnLocalNetworkToggled" />
+                            <StackPanel>
+                                <TextBlock Text="Local network" TextWrapping="Wrap" />
+                                <TextBlock Text="Send and receive over Wi-Fi too, not only Tailscale" Style="{StaticResource Caption}" />
+                            </StackPanel>
+                        </DockPanel>
+                        <!-- Shown when the firewall rule for the local network is missing, or Windows blocks a Droprr copy. -->
+                        <StackPanel x:Name="FirewallPanel" Visibility="Collapsed" Margin="0,12,0,0">
+                            <TextBlock x:Name="FirewallText" Style="{StaticResource Caption}" Margin="0,0,0,8" />
+                            <ui:Button x:Name="FirewallButton" Content="Allow Droprr on your private network"
+                                       Icon="{ui:SymbolIcon ShieldCheckmark24}" Style="{StaticResource TonalButton}" Click="OnAllowFirewall" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 

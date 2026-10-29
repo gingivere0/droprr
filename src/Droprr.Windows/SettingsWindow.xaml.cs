@@ -42,6 +42,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         StartMenuBox.IsChecked = _settings.AddToStartMenu;
         CopyFilesBox.IsChecked = _settings.CopyFilesToClipboard;
         CopyTextBox.IsChecked = _settings.CopyTextToClipboard;
+        LocalNetworkBox.IsChecked = _settings.LocalNetwork;
         _peers = new ObservableCollection<Peer>(_settings.Peers);
         _originalTokens = _settings.Peers.GroupBy(p => p.Name.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Token, StringComparer.OrdinalIgnoreCase);
@@ -76,6 +77,76 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         // Show a device the moment it pairs, without losing edits made here that aren't saved yet.
         app.DevicePaired += OnDevicePaired;
         Closed += (_, _) => app.DevicePaired -= OnDevicePaired;
+
+        // Local network: devices found nearby, and whether the firewall lets them in.
+        app.NearbyChanged += ShowNearby;
+        Closed += (_, _) => app.NearbyChanged -= ShowNearby;
+        ShowNearby();
+        Loaded += async (_, _) => await ShowFirewallAsync();
+    }
+
+    void ShowNearby()
+    {
+        var nearby = _app.UnpairedNearby().Where(d => !_peers.Any(p => p.Id == d.Id)).ToList();
+        NearbyList.ItemsSource = nearby;
+        NearbyPanel.Visibility = nearby.Count > 0 && LocalNetworkBox.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    async void OnPairNearby(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: LanDevice device })
+            return;
+        ((UIElement)sender).IsEnabled = false;
+        try
+        {
+            await _app.PairOverLanAsync(device);
+        }
+        finally
+        {
+            ((UIElement)sender).IsEnabled = true;
+            ShowNearby();
+        }
+    }
+
+    async void OnLocalNetworkToggled(object sender, RoutedEventArgs e)
+    {
+        ShowNearby();
+        await ShowFirewallAsync();
+    }
+
+    // The rule is read off the UI thread: Windows Firewall can have hundreds of rules.
+    async System.Threading.Tasks.Task ShowFirewallAsync()
+    {
+        if (LocalNetworkBox.IsChecked != true)
+        {
+            FirewallPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var port = LanNetwork.TlsPort(_settings.Port);
+        var (hasRule, blocked) = await System.Threading.Tasks.Task.Run(() => (LanFirewall.HasRule(port), LanFirewall.BlockRules().Count));
+        FirewallText.Text = (hasRule, blocked) switch
+        {
+            (false, 0) => "Windows Firewall needs to let nearby devices reach Droprr. This asks for permission once, for private networks only.",
+            (false, _) => "Windows Firewall needs to let nearby devices reach Droprr, and it's blocking an older copy. This asks for permission once and fixes both.",
+            _ => "Windows Firewall is blocking an older copy of Droprr. This asks for permission once to remove the block.",
+        };
+        FirewallPanel.Visibility = hasRule && blocked == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    async void OnAllowFirewall(object sender, RoutedEventArgs e)
+    {
+        FirewallButton.IsEnabled = false;
+        try
+        {
+            if (!await _app.AllowLocalNetworkAsync())
+                FirewallText.Text = "Windows didn't allow it. Try again, and choose Yes when Windows asks.";
+            else
+                await ShowFirewallAsync();
+        }
+        finally
+        {
+            FirewallButton.IsEnabled = true;
+        }
     }
 
     void OnDevicePaired(Peer paired)
@@ -279,9 +350,10 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
             Error.Text = "Port must be a number from 1 to 65535.";
             return;
         }
-        if (_peers.Any(p => string.IsNullOrWhiteSpace(p.Name) || (!p.IsPhone && string.IsNullOrWhiteSpace(p.Host))))
+        // A computer paired over Wi-Fi may have no Tailscale host.
+        if (_peers.Any(p => string.IsNullOrWhiteSpace(p.Name) || (!p.IsPhone && string.IsNullOrWhiteSpace(p.Host) && p.Fingerprint.Length == 0)))
         {
-            Error.Text = "Each device needs a name, and computers need a host.";
+            Error.Text = "Each device needs a name, and computers need a Tailscale host unless they were paired over Wi-Fi.";
             return;
         }
 
@@ -297,6 +369,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         _settings.Peers = _peers.ToList();
         _settings.AddToStartMenu = StartMenuBox.IsChecked == true;
         _settings.CopyFilesToClipboard = CopyFilesBox.IsChecked == true;
+        _settings.LocalNetwork = LocalNetworkBox.IsChecked == true;
         _settings.CopyTextToClipboard = CopyTextBox.IsChecked == true;
         _settings.Theme = AppTheme.Current.Id;
         _settings.Mode = AppTheme.Mode;

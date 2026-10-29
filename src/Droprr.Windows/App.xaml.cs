@@ -273,18 +273,23 @@ public partial class App : Application
         DevicePaired?.Invoke(peer);
     }
 
-    // Adds the peer or updates the one with the same name. A host this PC already has (often a MagicDNS
-    // name the user typed) is kept for computers; phones never have one.
+    // Adds the peer or updates an existing one: the one whose device token made the request, else the one with
+    // the same device id, else the same name. A host this PC already has (often a MagicDNS name the user typed)
+    // is kept for computers; phones never have one.
     Peer SavePeer(PairRequest request)
     {
+        var name = request.Name;
         Settings = SettingsStore.Update(s =>
         {
-            var peer = s.FindPeer(request.Name);
+            var peer = (request.ExistingPeer is { } existing ? s.FindPeer(existing) : null)
+                ?? (request.Id is { } id ? s.Peers.Find(p => p.Id == id) : null)
+                ?? s.FindPeer(request.Name);
             if (peer is null)
             {
                 peer = new Peer { Name = request.Name };
                 s.Peers.Add(peer);
             }
+            name = peer.Name;
             peer.Platform = request.Platform;
             if (peer.IsPhone)
                 peer.Host = "";
@@ -295,14 +300,25 @@ public partial class App : Application
             // Pairing again replaces the device token, so the previous one stops working.
             if (request.AcceptToken is not null)
                 peer.AcceptToken = request.AcceptToken;
-            // The token this PC sends to the peer: from the caller for computers; phones can't be called.
-            if (peer.IsPhone)
-                peer.Token = "";
-            else if (request.SendToken is not null)
+            // The token this PC sends to the peer: from the caller. A phone without one (protocol 1) can't be
+            // called, so items for it are queued.
+            if (request.SendToken is not null)
                 peer.Token = request.SendToken;
+            else if (peer.IsPhone)
+                peer.Token = "";
+            // Local network identity and addresses (protocol 2). The fingerprint comes from an authenticated
+            // /pair or a confirmed LAN pairing, so it's pinned.
+            if (request.Id is not null)
+                peer.Id = request.Id;
+            if (request.Fingerprint is not null)
+                peer.Fingerprint = request.Fingerprint;
+            if (request.TlsPort is { } tlsPort)
+                peer.TlsPort = tlsPort;
+            if (request.Lan is { } lan)
+                peer.Lan = lan.ToList();
         });
         SettingsSaved?.Invoke();
-        return Settings.FindPeer(request.Name)!;
+        return Settings.FindPeer(name)!;
     }
 
     // Pairs with computers just added or given a new token in Settings: mints a device token for each, calls
@@ -320,15 +336,25 @@ public partial class App : Application
             var minted = SettingsStore.NewToken();
             // Accept the new token before asking, since the computer may call back right away.
             Settings = SettingsStore.Update(s => { if (s.FindPeer(name) is { } p) p.AcceptToken = minted; });
-            var returned = await Sender.PairAsync(peer, peer.Token, Settings.DeviceName, host, Settings.Port, minted);
+            var returned = await Sender.PairAsync(peer, peer.Token, Settings, host, minted);
             Settings = SettingsStore.Update(s =>
             {
                 if (s.FindPeer(name) is not { } p)
                     return;
                 if (returned is null)
+                {
                     p.AcceptToken = "";
-                else
-                    p.Token = returned;
+                    return;
+                }
+                p.Token = returned.Token;
+                // Over Tailscale, which authenticates the device, so its fingerprint can be pinned.
+                if (returned.Id is { Length: > 0 } id)
+                    p.Id = id;
+                if (returned.Fingerprint is { Length: 64 } fp)
+                    p.Fingerprint = fp;
+                if (returned.TlsPort is { } tlsPort)
+                    p.TlsPort = tlsPort;
+                p.Lan = returned.Lan;
             });
             SettingsSaved?.Invoke();
             _tray?.Notify(returned is null ? $"Couldn't pair with {name}" : $"{name} paired",
@@ -393,13 +419,16 @@ public partial class App : Application
         // Saved before /pair responds, so the caller can use its new token immediately.
         receiver.PairRequested += request => Dispatcher.Invoke(() => OnPairRequested(request));
         receiver.ReceiveProgress += progress => Dispatcher.BeginInvoke(() => OnReceiveProgress(progress));
+        receiver.ConfirmLanPair = ConfirmLanPairAsync;
         try
         {
             await receiver.StartAsync();
             _receiver = receiver;
-            _tray?.SetStatus(receiver.TailscaleAddresses.Count > 0
+            _tray?.SetStatus((receiver.TailscaleAddresses.Count > 0
                 ? $"Receiving on port {Settings.Port}"
-                : $"Tailscale not found; localhost only (port {Settings.Port})");
+                : $"Tailscale not found; localhost only (port {Settings.Port})")
+                + (receiver.LanListening ? " and Wi-Fi" : ""));
+            StartLocalNetwork(receiver);
         }
         catch (Exception ex)
         {
@@ -477,6 +506,7 @@ public partial class App : Application
         _outboxPurge?.Stop();
         _tray?.Dispose();
         _tray = null;
+        LanDiscovery.Stop();
         if (_receiver is not null)
             await _receiver.DisposeAsync();
         Shutdown();
@@ -484,6 +514,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        LanDiscovery.Stop();
         _tray?.Dispose();
         _instanceMutex?.Dispose();
         base.OnExit(e);

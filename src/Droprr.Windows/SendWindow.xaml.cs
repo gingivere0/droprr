@@ -205,19 +205,29 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             ((App)Application.Current).ShowSettings(peer.Name);
     }
 
-    // Ask desktops what they are, so phones (which never answer) are the only ones queued.
+    // Ask desktops what they are, so phones (which never answer) are the only ones queued. Over Tailscale,
+    // which authenticates the device, a protocol 2 peer's id and certificate fingerprint are pinned too, so it
+    // can be reached over Wi-Fi without pairing again.
     async System.Threading.Tasks.Task LearnPlatformsAsync()
     {
-        foreach (var peer in _settings.Peers.Where(p => p.Platform.Length == 0 && p.Host.Length > 0 && p.Token.Length > 0).ToList())
+        foreach (var peer in _settings.Peers.Where(p => (p.Platform.Length == 0 || p.Fingerprint.Length == 0)
+                     && p.Host.Length > 0 && p.Token.Length > 0 && !p.IsPhone).ToList())
         {
-            var platform = await Sender.PingAsync(peer, peer.Token);
-            if (string.IsNullOrEmpty(platform))
+            if (await Sender.PingAsync(peer, peer.Token) is not { } info)
                 continue;
-            peer.Platform = platform;
             SettingsStore.Update(s =>
             {
-                if (s.FindPeer(peer.Name) is { } saved)
-                    saved.Platform = platform;
+                if (s.FindPeer(peer.Name) is not { } saved)
+                    return;
+                if (!string.IsNullOrEmpty(info.Platform))
+                    saved.Platform = peer.Platform = info.Platform;
+                if (saved.Fingerprint.Length == 0 && info.Fingerprint is { Length: 64 } fp && info.Id is { Length: > 0 } id)
+                {
+                    saved.Fingerprint = peer.Fingerprint = fp;
+                    saved.Id = peer.Id = id;
+                    if (info.TlsPort is { } tlsPort)
+                        saved.TlsPort = peer.TlsPort = tlsPort;
+                }
             });
         }
         PeerBox.Items.Refresh();
@@ -326,6 +336,19 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         await SendAsync(_files.Select(f => f.FullPath).ToList(), text, clearWindow: true);
     }
 
+    // Saved per device, so Settings can show which path it last took.
+    static void RememberPath(Peer peer, string path)
+    {
+        if (peer.LastPath == path)
+            return;
+        peer.LastPath = path;
+        SettingsStore.Update(s =>
+        {
+            if (s.FindPeer(peer.Name) is { } saved)
+                saved.LastPath = path;
+        });
+    }
+
     async System.Threading.Tasks.Task SendAsync(List<string> paths, string text, bool clearWindow)
     {
         if (!SendButton.IsEnabled)
@@ -361,7 +384,9 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             ShowTile(SymbolRegular.ArrowSync24, $"Sending to {peer.Name}…");
         try
         {
-            if (peer.IsPhone)
+            // A phone that gave this PC a token and is open on this network takes the items directly.
+            var direct = !peer.IsPhone || (peer.Token.Length > 0 && await Sender.IsOnLanAsync(peer));
+            if (!direct)
             {
                 foreach (var path in paths)
                     await Outbox.EnqueueFileAsync(peer.Name, path, progress);
@@ -373,11 +398,16 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             }
             else
             {
+                SendOutcome? outcome = null;
                 if (paths.Count > 0)
-                    await Sender.SendFilesAsync(peer, peer.Token, paths, progress);
+                    outcome = await Sender.SendFilesAsync(peer, peer.Token, paths, progress);
                 if (text.Length > 0)
-                    await Sender.SendTextAsync(peer, peer.Token, text);
-                ShowStatus(InfoBarSeverity.Success, $"Sent to {peer.Name}.");
+                    outcome = await Sender.SendTextAsync(peer, peer.Token, text);
+                if (outcome is not null)
+                    RememberPath(peer, outcome.Path);
+                ShowStatus(InfoBarSeverity.Success, $"Sent to {peer.Name} ({outcome?.Label}).");
+                if (outcome is { IdentityChanged: true })
+                    ((App)Application.Current).Notify($"{peer.Name}'s identity changed", "Droprr used Tailscale instead of Wi-Fi. Pair again to use Wi-Fi.");
             }
             if (clearWindow)
             {
