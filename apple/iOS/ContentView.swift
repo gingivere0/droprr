@@ -45,6 +45,8 @@ struct ContentView: View {
         // The home-screen icon follows the theme too (alternate app icons).
         .onAppear { AppIconSwitcher.apply(model.settings.theme) }
         .onChange(of: model.settings.theme) { _, theme in AppIconSwitcher.apply(theme) }
+        // "Missing Token" on the Send tab opens that device in Settings.
+        .onChange(of: model.settings.tokenRequest) { _, id in if id != nil { tab = 2 } }
         .environment(\.startPairing, { scanning = true })
         .environment(\.pairWithCode, { model.pair(with: $0) })
         .sheet(isPresented: $scanning) {
@@ -123,7 +125,6 @@ private struct PairingStatusCard: View {
                         .font(.system(size: 56))
                         .foregroundStyle(Theme.start)
                     Text(text).font(.headline).multilineTextAlignment(.center)
-                    Text("You can send to it now.").font(.subheadline).foregroundStyle(.secondary)
                 case .failure(let text):
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 44))
@@ -266,6 +267,7 @@ private struct SendTab: View {
                                 Text(device.name).font(.subheadline.weight(.semibold))
                                     .lineLimit(1).minimumScaleFactor(0.7)
                                 Text(Theme.platformName(device.platform)).font(.caption)
+                                    .opacity(device.isPaired ? 1 : 0)
                                     .foregroundStyle(selected ? Look.selectedInk.opacity(0.75) : Look.muted)
                             }
                             Spacer(minLength: 0)
@@ -277,6 +279,12 @@ private struct SendTab: View {
                         .contentShape(RoundedRectangle(cornerRadius: LookTile.radius, style: .continuous))
                     }
                     .buttonStyle(PressableStyle())
+                    .overlay(alignment: .bottomLeading) {
+                        if !device.isPaired {
+                            MissingTokenButton { model.settings.tokenRequest = device.id }
+                                .padding(.leading, Space.md + 36 + Space.md).padding(.bottom, Space.md)
+                        }
+                    }
                     .accessibilityLabel("\(device.name), \(Theme.platformName(device.platform))")
                     .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
                 }

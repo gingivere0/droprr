@@ -23,7 +23,11 @@ struct PanelView: View {
                             DeviceTile(peer: peer, waiting: model.waiting(for: peer),
                                        onClipboard: { Task { await model.sendClipboard(to: peer) } },
                                        onFiles: { model.chooseFiles(for: peer) },
-                                       onClearWaiting: { model.clearWaiting(for: peer) })
+                                       onClearWaiting: { model.clearWaiting(for: peer) },
+                                       onMissingToken: {
+                                           model.settings.tokenRequest = peer.id
+                                           showSettings()
+                                       })
                         }
                     }
                     .lookCard(list: true, padding: 8)
@@ -149,6 +153,7 @@ private struct DeviceTile: View {
     var onClipboard: () -> Void
     var onFiles: () -> Void
     var onClearWaiting: () -> Void
+    var onMissingToken: () -> Void
     @State private var hovering = false
 
     var body: some View {
@@ -159,7 +164,8 @@ private struct DeviceTile: View {
                     .font(.system(size: 13))
                     .foregroundStyle(hovering ? Look.ink : Look.muted)
                     .frame(width: 18)
-                Text(peer.name).font(Look.name(16)).lineLimit(1)
+                Text(peer.name).font(Look.name(16)).lineLimit(1).layoutPriority(1)
+                if !peer.isPaired { MissingTokenButton(action: onMissingToken) }
                 if waiting > 0 {
                     WaitingBadge(count: waiting, peerName: peer.name, onClear: onClearWaiting)
                 }

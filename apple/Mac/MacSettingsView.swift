@@ -5,6 +5,7 @@ struct MacSettingsView: View {
     @Bindable var model: MacModel
     @Environment(\.openWindow) private var openWindow
     @State private var editing: Peer?
+    @State private var editingToken = false
     @State private var removing: Peer?
     @State private var pingResults: [UUID: PingResult] = [:]
     @State private var showToken = false
@@ -49,12 +50,14 @@ struct MacSettingsView: View {
         .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { endEditing() } }
         .seamlessWindow()
         .lookRoot()
+        .onAppear(perform: takeTokenRequest)
+        .onChange(of: settings.tokenRequest) { takeTokenRequest() }
         .onChange(of: settings.style) {
             // Window chrome (background, opacity, dark glass) follows the style too.
             for window in NSApp.windows { AppDelegate.hideTitleBar(window) }
         }
         .sheet(item: $editing) { peer in
-            PeerEditor(peer: peer, isNew: !settings.peers.contains { $0.id == peer.id },
+            PeerEditor(peer: peer, isNew: !settings.peers.contains { $0.id == peer.id }, focusToken: editingToken,
                        onRemove: { editing = nil; removing = peer }) { saved in
                 if let saved {
                     let tokenChanged = settings.peers.first { $0.id == saved.id }?.token != saved.token
@@ -156,6 +159,15 @@ struct MacSettingsView: View {
         .hoverHint("Style and colors")
     }
 
+    /// Opens the device that a "Missing Token" button elsewhere asked for.
+    private func takeTokenRequest() {
+        guard let id = settings.tokenRequest, let peer = settings.peers.first(where: { $0.id == id }) else { return }
+        settings.tokenRequest = nil
+        showingAppearance = false
+        editingToken = true
+        editing = peer
+    }
+
     /// Return (or opening the window) leaves no field focused, so no cursor lingers.
     private func endEditing() {
         NSApp.keyWindow?.makeFirstResponder(nil)
@@ -178,7 +190,7 @@ struct MacSettingsView: View {
     private var devices: some View {
         VStack(alignment: .leading, spacing: Space.md) {
             SectionHeader(title: "Devices", detail: settings.peers.isEmpty ? "None yet" : "\(settings.peers.count) paired") {
-                Button("Add device") { editing = Peer(name: "", host: "") }
+                Button("Add device") { editingToken = false; editing = Peer(name: "", host: "") }
                     .buttonStyle(SecondaryStyle())
             }
             VStack(alignment: .leading, spacing: 0) {
@@ -192,8 +204,9 @@ struct MacSettingsView: View {
                 RowSeparator()
                 DeviceRow(peer: peer, result: pingResults[peer.id],
                           onTest: { Task { await ping(peer) } },
-                          onEdit: { editing = peer },
-                          onRemove: { removing = peer })
+                          onEdit: { editingToken = false; editing = peer },
+                          onRemove: { removing = peer },
+                          onFixToken: { editingToken = true; editing = peer })
                     .padding(.vertical, Space.md)
             }
             Hairline()
@@ -296,6 +309,7 @@ private struct DeviceRow: View {
     var onTest: () -> Void
     var onEdit: () -> Void
     var onRemove: () -> Void
+    var onFixToken: () -> Void
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Space.md) {
@@ -319,10 +333,7 @@ private struct DeviceRow: View {
                 }
                 .foregroundStyle(Look.muted).lineLimit(1)
                 status
-                if !peer.isPaired {
-                    Label("Not paired: scan its code or enter its token", systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 11)).foregroundStyle(.orange)
-                }
+                if !peer.isPaired { MissingTokenButton(action: onFixToken) }
             }
             Spacer()
             if !peer.isPhone {

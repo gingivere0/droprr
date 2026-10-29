@@ -66,6 +66,8 @@ final class DroprrSettings {
     var style: String { didSet { defaults.set(style, forKey: "style") } }
     /// Mac: copy received text and links to the clipboard. On by default.
     var copyTextAndLinks: Bool { didSet { defaults.set(copyTextAndLinks, forKey: "copyTextAndLinks") } }
+    /// Not saved: a device whose token Settings should open for editing ("Missing Token").
+    var tokenRequest: UUID?
 
     init() {
         let group = Bundle.main.object(forInfoDictionaryKey: "DroprrAppGroup") as? String

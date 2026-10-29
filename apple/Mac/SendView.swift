@@ -113,7 +113,8 @@ struct SendView: View {
                               waiting: model.waiting(for: peer),
                               onSelect: { selectedID = peer.id },
                               onDropFiles: { urls in Task { await model.send(.files(urls), to: peer) } },
-                              onClearWaiting: { model.clearWaiting(for: peer) })
+                              onClearWaiting: { model.clearWaiting(for: peer) },
+                              onMissingToken: { fixToken(peer) })
                         // ⌘1…⌘9 pick a device.
                         .background {
                             if index < 9 {
@@ -254,6 +255,13 @@ struct SendView: View {
 
     // MARK: Actions
 
+    /// "Missing Token": open Settings at that device's token.
+    private func fixToken(_ peer: Peer) {
+        model.settings.tokenRequest = peer.id
+        openSettings()
+        bringToFront()
+    }
+
     private func addFiles() {
         files += model.pickFiles().filter { !files.contains($0) }
     }
@@ -297,6 +305,7 @@ private struct DeviceTab: View {
     var onSelect: () -> Void
     var onDropFiles: ([URL]) -> Void
     var onClearWaiting: () -> Void
+    var onMissingToken: () -> Void
     @State private var targeted = false
     @State private var hovering = false
 
@@ -333,6 +342,7 @@ private struct DeviceTab: View {
                 Text(peer.name).font(.system(size: 14, weight: Look.style == .clay ? .bold : .semibold)).lineLimit(1)
                 Text(targeted ? "Release to send now" : Theme.platformName(peer.platform))
                     .font(.system(size: 11))
+                    .opacity(peer.isPaired || targeted ? 1 : 0)
                     .foregroundStyle(active ? Look.selectedInk.opacity(0.75) : Look.muted)
             }
             .foregroundStyle(active ? Look.selectedInk : Look.ink)
@@ -357,6 +367,9 @@ private struct DeviceTab: View {
             if waiting > 0 {
                 WaitingBadge(count: waiting, peerName: peer.name, onClear: onClearWaiting).padding(10)
             }
+        }
+        .overlay(alignment: .bottomLeading) {
+            if !peer.isPaired && !targeted { MissingTokenButton(action: onMissingToken).padding(14) }
         }
     }
 
@@ -388,6 +401,8 @@ private struct DeviceTab: View {
 
             if targeted {
                 Text("Release to send now").font(.system(size: 11)).foregroundStyle(Look.muted)
+            } else if !peer.isPaired {
+                MissingTokenButton(action: onMissingToken)
             } else if waiting > 0 {
                 WaitingBadge(count: waiting, peerName: peer.name, onClear: onClearWaiting)
             } else {

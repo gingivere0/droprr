@@ -13,6 +13,7 @@ struct SettingsForm<Extra: View>: View {
     @Bindable var settings: DroprrSettings
     var extra: Extra
     @State private var editing: Peer?
+    @State private var editingToken = false
     @State private var pingResults: [UUID: PingResult] = [:]
     @State private var showToken = false
     @State private var removing: Peer?
@@ -43,7 +44,8 @@ struct SettingsForm<Extra: View>: View {
                     PeerRow(peer: peer, result: pingResults[peer.id],
                             onTest: { Task { await ping(peer) } },
                             onEdit: { editing = peer },
-                            onRemove: { removing = peer })
+                            onRemove: { removing = peer },
+                            onFixToken: { editToken(peer) })
                         .contextMenu {
                             Button("Edit…") { editing = peer }
                             Button("Remove \(peer.name)", role: .destructive) { removing = peer }
@@ -51,6 +53,7 @@ struct SettingsForm<Extra: View>: View {
                 }
                 .onDelete { settings.peers.remove(atOffsets: $0) }
                 Button {
+                    editingToken = false
                     editing = Peer(name: "", host: "")
                 } label: {
                     Label("Add Device", systemImage: "plus.circle.fill")
@@ -155,8 +158,10 @@ struct SettingsForm<Extra: View>: View {
                  ? "Anything waiting for it is discarded within 7 days. If the iPhone checks in again, it's added back."
                  : "You can add it again later with its Tailscale name.")
         }
+        .onAppear(perform: takeTokenRequest)
+        .onChange(of: settings.tokenRequest) { takeTokenRequest() }
         .sheet(item: $editing) { peer in
-            PeerEditor(peer: peer, isNew: !settings.peers.contains { $0.id == peer.id },
+            PeerEditor(peer: peer, isNew: !settings.peers.contains { $0.id == peer.id }, focusToken: editingToken,
                        onRemove: { editing = nil; removing = peer }) { saved in
                 if let saved {
                     let tokenChanged = settings.peers.first { $0.id == saved.id }?.token != saved.token
@@ -198,6 +203,7 @@ private struct PeerRow: View {
     var onTest: () -> Void
     var onEdit: () -> Void
     var onRemove: () -> Void
+    var onFixToken: () -> Void
 
     var body: some View {
         HStack(spacing: Space.md) {
@@ -208,10 +214,7 @@ private struct PeerRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                if !peer.isPaired {
-                    Label("Not paired: scan its code or enter its token", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption2).foregroundStyle(.orange)
-                }
+                if !peer.isPaired { MissingTokenButton(action: onFixToken) }
                 statusLine
             }
             Spacer()
@@ -258,11 +261,49 @@ private struct PeerRow: View {
     }
 }
 
+extension SettingsForm {
+    func editToken(_ peer: Peer) {
+        editingToken = true
+        editing = peer
+    }
+
+    /// Opens the device that a "Missing Token" button elsewhere asked for.
+    func takeTokenRequest() {
+        guard let id = settings.tokenRequest, let peer = settings.peers.first(where: { $0.id == id }) else { return }
+        settings.tokenRequest = nil
+        editToken(peer)
+    }
+}
+
+/// "Missing Token" on a device that can't be sent to yet; clicking it opens that device's token.
+struct MissingTokenButton: View {
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label("Missing Token", systemImage: "exclamationmark.triangle.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .buttonStyle(.plain)
+        #if os(macOS)
+        .hoverHint("Enter this device's token")
+        #endif
+    }
+}
+
 struct PeerEditor: View {
     @State var peer: Peer
     var isNew: Bool
+    /// Open with the token field focused (from "Missing Token").
+    var focusToken = false
     var onRemove: () -> Void
     var done: (Peer?) -> Void
+    enum Field { case name, token }
+    @FocusState private var focused: Field?
+    @State private var showToken = false
     #if os(iOS)
     @Environment(\.pairWithCode) private var pairWithCode
     @State private var scanning = false
@@ -301,6 +342,7 @@ struct PeerEditor: View {
                 #endif
                 Section {
                     TextField("Name", text: $peer.name)
+                        .focused($focused, equals: .name)
                     Toggle("This is an iPhone", isOn: $peer.isPhone)
                 }
                 if !peer.isPhone {
@@ -312,8 +354,17 @@ struct PeerEditor: View {
                             .keyboardType(.URL)
                             #endif
                         TextField("Port", value: $peer.port, format: .number.grouping(.never))
-                        SecureField("Its token", text: Binding(
-                            get: { peer.token ?? "" }, set: { peer.token = $0.isEmpty ? nil : $0 }))
+                        HStack {
+                            let token = Binding(get: { peer.token ?? "" }, set: { peer.token = $0.isEmpty ? nil : $0 })
+                            Group {
+                                if showToken { TextField("Its token", text: token) } else { SecureField("Its token", text: token) }
+                            }
+                            .focused($focused, equals: .token)
+                            Button { showToken.toggle() } label: { Image(systemName: showToken ? "eye.slash" : "eye") }
+                                .buttonStyle(.borderless)
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel(showToken ? "Hide token" : "Show token")
+                        }
                     } footer: {
                         Text("Find the name in the Tailscale app, for example my-pc. Scanning a device's pairing QR code fills all of this in.")
                     }
@@ -333,6 +384,12 @@ struct PeerEditor: View {
             }
             .formStyle(.grouped)
             .navigationTitle(isNew ? "Add Device" : peer.name)
+            .onAppear {
+                // Add Device starts in the name field; "Missing Token" starts in the token field.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    focused = focusToken && !peer.isPhone ? .token : (isNew ? .name : nil)
+                }
+            }
             #if os(macOS)
             // A phone that scans the code adds itself, so this screen's job is done.
             .onChange(of: DroprrSettings.shared.peers.count) { old, new in
