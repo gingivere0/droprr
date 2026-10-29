@@ -50,6 +50,8 @@ Every error response, on any endpoint, has a 4xx or 5xx status and this body:
 | `400` | Bad request: empty content, unknown `type`, invalid URL, malformed JSON, no items, a missing `?for=`, or invalid `/pair` fields. |
 | `401` | Missing or wrong token. |
 | `404` | Unknown path. |
+| `409` | LAN pairing with a device that's already paired. See [Pairing rules](#pairing-rules). |
+| `413` | Too large: a `/pair`, `/pair/request`, or `/pair/confirm` body over 64 KB, or a JSON text item over 16 MB. |
 | `500` | The receiver failed. The body says `"receiver error"`; details stay in the receiver's local log, never in the response. |
 | `507` | Not enough disk space: a `/send` body with a known `Content-Length` would leave less than 1 GB free on the drive it saves to. |
 
@@ -312,7 +314,7 @@ A desktop also still adds an unknown name that calls `GET /inbox?for=` as an `"i
 
 ## Local network (LAN) transport
 
-**Protocol 2.** The Windows app implements it; the Mac and iPhone apps are adding it. Protocol 2 lets devices on the same Wi-Fi or wired network reach each other directly, without Tailscale. It's additive: everything above stays as it is, a protocol 1 device keeps working with a protocol 2 device over Tailscale, and the iOS Shortcuts are unaffected.
+**Protocol 2.** The Windows, Mac, and iPhone apps implement it. Protocol 2 lets devices on the same Wi-Fi or wired network reach each other directly, without Tailscale. It's additive: everything above stays as it is, a protocol 1 device keeps working with a protocol 2 device over Tailscale, and the iOS Shortcuts are unaffected.
 
 ### Transports
 
@@ -321,7 +323,8 @@ A desktop also still adds an unknown name that calls `GET /inbox?for=` as an `"i
 | Plain HTTP | `53318` (the existing port setting) | Loopback and Tailscale (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) only | Exactly as in protocol 1: Tailscale peers, protocol 1 peers, and the iOS Shortcuts. |
 | HTTPS | `53319` (the HTTP port + 1) | Loopback, Tailscale, and private LAN ranges: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fe80::/10`, and `fd00::/8` | The LAN, where it's required, and Tailscale, where it's optional. |
 
-- A receiver drops any connection from an address outside its port's list, as in [Implementation notes](#implementation-notes). Every request still needs a bearer token, except [`POST /pair/request`](#lan-pairing-post-pairrequest).
+- A receiver drops any connection from an address outside its port's list, as in [Implementation notes](#implementation-notes). Every request still needs a bearer token, except [`POST /pair/request` and `POST /pair/confirm`](#lan-pairing-post-pairrequest-post-pairconfirm).
+- On HTTPS, every protocol 2 client presents its [device certificate](#device-identity) as the TLS client certificate, on every request. A receiver may require it.
 - **Tokens and file contents never travel over plain HTTP outside Tailscale.** A sender uses only HTTPS for a LAN address.
 - When the **Local network** setting is off, a device doesn't listen on `53319`, advertise, browse, or send over the LAN.
 
@@ -331,7 +334,7 @@ A desktop also still adds an unknown name that calls `GET /inbox?for=` as an `"i
 - **Certificate:** each device generates a self-signed certificate once: an ECDSA P-256 key, a subject of `CN=Droprr <device id>`, and a validity of 20 years. Its private key is protected like the tokens: DPAPI on Windows and the Keychain on Apple. It's never exported or logged.
 - **Fingerprint (`fp`):** the SHA-256 of the certificate's DER encoding, as 64 lowercase hex characters, always in full.
 - **Pinning:** a client accepts a LAN server only if the server's certificate fingerprint equals the one pinned for that peer. It doesn't check the chain, the host name, or the expiry. On a mismatch, it refuses the connection over that address, falls back to Tailscale if the peer has a Tailscale host, and shows "`<name>`'s identity changed. Pair again." Only pairing again replaces a pinned fingerprint.
-- **Where a pin comes from:** the [pairing QR code](#pairing-qr), a `/pair` response, a confirmed [LAN pairing](#lan-pairing-post-pairrequest), or a `/ping` answered over Tailscale, which already authenticates the device. A protocol 1 peer can be upgraded that last way, without pairing again. Discovery never sets or changes a pin.
+- **Where a pin comes from:** the [pairing QR code](#pairing-qr), a `/pair` response, a confirmed [LAN pairing](#lan-pairing-post-pairrequest-post-pairconfirm) (the requester's certificate from the TLS handshake), or a `/ping` answered over Tailscale, which already authenticates the device. A protocol 1 peer can be upgraded that last way, without pairing again. Discovery never sets or changes a pin, and a pin is never moved from one peer to another (see [Pairing rules](#pairing-rules)).
 
 ### Discovery
 
@@ -351,41 +354,71 @@ DNS-SD (Bonjour, mDNS) only, with no custom UDP multicast, because raw multicast
 
 - **Who advertises:** computers whenever Local network is on, and the iPhone only while Droprr is open.
 - **Who browses:** every device while Local network is on. The iPhone browses only while open.
-- **Trust:** discovery only finds addresses; it never grants trust. When a found instance's `id` matches a paired peer and its `fp` matches that peer's pin, the browser records the instance's addresses as the peer's LAN addresses, with the time it was seen. An instance whose `fp` doesn't match is ignored.
+- **Trust:** discovery only finds addresses; it never grants trust. When a found instance's `id` matches a paired peer and its `fp` matches that peer's pin, the browser records the instance's addresses as the peer's LAN addresses, with the time it was seen. An instance whose `fp` doesn't match is ignored. Names, like everything else in a TXT record, are shown and logged only after removing control and bidirectional-override characters, cut to 64 characters.
 - **APIs:** Windows uses `DnsServiceRegister`, `DnsServiceBrowse`, and `DnsServiceResolve` from `dnsapi.dll` (Windows 10 1809 and later). They work in an unpackaged app on .NET 10 without extra packages. Apple uses Network.framework (`NWListener` and `NWBrowser` with Bonjour).
 
 ### Additions to existing messages
 
 - **`GET /ping`** adds `"id"`, `"fp"`, and `"tlsPort"`, and reports `"protocol": 2`. A protocol 1 client ignores the extra fields.
 - **Pairing QR:** still payload version `v=1`, with three optional keys that older apps ignore: `id`, `fp`, and `lan`, a comma-separated list of the desktop's current LAN `host:port` pairs for HTTPS (IPv6 in brackets). A scanner that gets `fp` pins it right away.
-- **`POST /pair`:** the request may add `"id"`, `"fp"`, `"tlsPort"`, and `"lan"` (an array of `host:port` strings) for the caller, and the response adds the desktop's `"id"`, `"fp"`, `"tlsPort"`, `"lan"`, and `"host"` (its Tailscale name, if it has one). Each side stores the other's values. A protocol 2 iPhone also sends `"token"`, a device token it minted for this computer, as computers already do; see [Phones](#phones). When `/pair` is authenticated with a device token, the desktop updates the peer that token belongs to (matched by that, not by name), so a device can repeat `/pair` to add new fields without creating a duplicate.
+- **`POST /pair`:** the request may add `"id"`, `"fp"`, `"tlsPort"`, and `"lan"` (an array of `host:port` strings) for the caller, and the response adds the desktop's `"id"`, `"fp"`, `"tlsPort"`, `"lan"`, and `"host"` (its Tailscale name, if it has one). Each side stores the other's values. A protocol 2 iPhone also sends `"token"`, a device token it minted for this computer, as computers already do; see [Phones](#phones). When `/pair` is authenticated with a device token, the desktop updates the peer that token belongs to (matched by that, not by name), so a device can repeat `/pair` to add new fields without creating a duplicate. It can fill in a missing `id` or `fp` but never replace one (see [Pairing rules](#pairing-rules)).
 
-### LAN pairing (`POST /pair/request`)
+### LAN pairing (`POST /pair/request`, `POST /pair/confirm`)
 
-Pairing by picking a device that discovery found, without a QR code and without either side showing a token.
+Pairing by picking a device that discovery found, without a QR code and without either side showing a token. It takes two requests, both over HTTPS on the TLS port and without a bearer token.
 
-1. The requester picks a discovered device and connects to it over HTTPS, accepting whatever certificate it presents, because there's no pin yet. It remembers that certificate's fingerprint as `fpServer`.
-2. It sends `POST /pair/request` **without a token**:
+**Identity comes from TLS, not from JSON.** Every protocol 2 client presents its own [device certificate](#device-identity) as the TLS client certificate on every HTTPS request (not just pairing), and a receiver may require one on its HTTPS port. The receiver takes the requester's fingerprint from that certificate. A body `fp` that differs from it is `400`. Clients without a certificate (curl, Shortcuts) use plain HTTP over Tailscale.
+
+1. The requester picks a discovered device and connects over HTTPS, presenting its certificate and accepting whatever certificate the receiver presents, because there's no pin yet. It remembers the receiver's fingerprint as `fpS`. (Its own is `fpR`.)
+2. It makes a random 32-byte nonce `nonceR` and sends a commitment to it:
+
+   ```http
+   POST /pair/request
+   { "id": "<requester id>", "name": "iPhone", "platform": "ios", "commit": "<hex SHA-256 of nonceR's 32 bytes>" }
+   ```
+
+   `fp` may be included; it must equal the client certificate's. The receiver answers right away, without asking anyone:
 
    ```json
-   { "id": "<requester id>", "name": "iPhone", "platform": "ios", "fp": "<requester fp>" }
+   { "ok": true, "session": "<opaque string>", "nonce": "<nonceS: 32 random bytes, hex>" }
    ```
 
-   A computer also sends `"tlsPort"`, `"lan"`, `"host"` (its Tailscale name, if any), and `"token"` (a device token it minted for the receiver), as in [`POST /pair`](#post-pair). A protocol 2 iPhone sends `"token"` too.
-3. Both screens show the same **six-digit code**: the SHA-256 of the two fingerprints in sorted order, joined with `:`, with its first 4 bytes read as a big-endian unsigned integer, modulo 1,000,000, and zero-padded to six digits. The requester computes it from `fpServer` and its own `fp`, and the receiver from its own `fp` and the request's `fp`. Someone in the middle would have to present a different certificate, which changes the code, so the person can see the mismatch.
+   Or `409` with `"already paired …"` when the requester's `id` **or** certificate fingerprint already belongs to a paired peer (see [Rules](#pairing-rules)), `429` while another pairing is in progress, and `400` for a missing certificate or bad fields.
+3. Only now, holding `nonceS`, does the requester reveal `nonceR`, on a connection with the same client certificate, along with what [`POST /pair`](#post-pair) carries for it (`token`, `host`, `port`, `tlsPort`, `lan`):
 
-   **Test vector.** What's hashed is the UTF-8 of the two lowercase hex strings, sorted and joined with `:`. With
+   ```http
+   POST /pair/confirm
+   { "session": "<session>", "nonce": "<nonceR, hex>", "token": "...", "tlsPort": 53319, "lan": ["192.168.1.20:53319"] }
+   ```
+
+   The receiver checks that the session is its open one (sessions expire after 30 seconds), that the client certificate is the one from step 2 (else `404`), and that SHA-256 of `nonceR` equals the commitment (else `400`).
+4. Both screens show the same **six-digit code**: SHA-256 of the UTF-8 string `fpLow:fpHigh:nonceR:nonceS` (the two fingerprints sorted, then the requester's nonce, then the receiver's, all lowercase hex), first 4 bytes as a big-endian unsigned integer, modulo 1,000,000, zero-padded to six digits. The requester shows it as soon as it has `nonceS`; the receiver shows it after step 3. Because the requester commits to its nonce before it sees the receiver's, and the receiver's is fixed before the requester's is revealed, nobody in the middle can choose certificates or nonces that make two different codes match.
+
+   **Test vector.** With
 
    ```text
-   fp A = e4a47d3c3bdb35669a7b8864ac1eb1007374b3fff99a4cfea5faad8a98f9c991
-   fp B = 41a2a6ceda3570ff77b22160da5b2f526aa5b6da82d5baa33b89fd5e220421c7
+   fp A   = e4a47d3c3bdb35669a7b8864ac1eb1007374b3fff99a4cfea5faad8a98f9c991
+   fp B   = 41a2a6ceda3570ff77b22160da5b2f526aa5b6da82d5baa33b89fd5e220421c7
+   nonceR = 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+   nonceS = 202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f
    ```
 
-   the input is `41a2…21c7:e4a4…c991` (B sorts first), its SHA-256 starts `31 6e 59 62`, and the code is **`315426`**, whichever side computes it.
-4. The receiver asks: "Pair with `<name>`? Make sure `<name>` shows `<code>`." The request stays open until the person answers, for up to 60 seconds.
-5. **Accept:** the receiver adds or updates the peer (matched by `id`), pins the request's `fp`, mints a device token, and answers `200` with the same body as [`POST /pair`](#post-pair), plus its `id`, `fp`, `tlsPort`, `lan`, and `host`. When the receiver is an iPhone, the response's `token` is one the phone minted for the requester. The requester pins `fpServer` and stores the token. **Decline:** `403` with `"declined"`. **No answer:** `408` with `"timed out"`.
+   the commitment to `nonceR` is `630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd`, the hashed string is `41a2…21c7:e4a4…c991:0001…1e1f:2021…3e3f` (B sorts first), and the code is **`876152`**, whichever side computes it.
+5. The receiver asks: "Pair with `<name>`? Only if you started pairing on `<name>` and it shows `<code>`." It shows the prompt without taking keyboard focus and with no default button, so typing elsewhere can't accept it. `/pair/confirm` stays open until the person answers, for up to 60 seconds.
+6. **Accept:** the receiver adds a **new** peer with the requester's `id` and its certificate fingerprint pinned, mints a device token, and answers `200` with the same body as [`POST /pair`](#post-pair), plus its `id`, `fp`, `tlsPort`, `lan`, and `host`. When the receiver is an iPhone, the response's `token` is one the phone minted for the requester. The requester pins `fpS` and stores the token. **Decline:** `403` with `"declined"`. **No answer:** `408` with `"timed out"`.
 
-**Limits:** only over HTTPS on `53319`, never on plain HTTP. One request at a time: a second one while a prompt is open gets `429`. After three declines or timeouts from the same address within 10 minutes, the receiver answers `429` to that address for 10 minutes. A request is never accepted without a person confirming it.
+**Limits:** only over HTTPS on the TLS port, never on plain HTTP (`404` there). Bodies over 64 KB are refused. One pairing at a time: a second `/pair/request` while a session or prompt is open gets `429`. After three declines, timeouts, or wrong reveals from the same address within 10 minutes, the receiver answers `429` to that address for 10 minutes. A request is never accepted without a person confirming it.
+
+### Pairing rules
+
+These keep one paired device from taking over another's record. They apply to every way of pairing.
+
+- **No takeover by LAN pairing.** `/pair/request` and `/pair/confirm` never update an existing peer. A requester whose `id` or certificate fingerprint already belongs to a peer gets `409`; to pair again, remove the device first. A name that's already taken gets a new entry with a suffix (`MacBook (2)`), never the existing one.
+- **The requester matches only by identity.** When the requester saves the result, it updates an existing peer only if that peer has the discovered device's `id` or pinned fingerprint, never by the name in the response, and it changes nothing until pairing succeeds. The device token it offered is accepted only while the pairing is in progress.
+- **A device token can't change who a peer is.** A `/pair` authenticated with a device token updates only that token's peer. It can fill in a missing `id` or fingerprint (a protocol 1 pairing upgrading), but never replace one, never take one that belongs to another peer, and never change the peer between phone and computer.
+- **Merging.** Two records are the same device only when they share a device id or a pinned fingerprint and don't have two different pins. A shared host alone is never enough. A merge only adds a pin to a record that has none; it never moves one.
+- **Inbox fallback.** A main-token `GET /inbox?for=<name>` adds a phone only when no peer has that name; it never changes an existing peer.
+- **Plain HTTP is for Tailscale only.** A sender resolves a peer's host and uses plain HTTP only if the address is in `100.64.0.0/10`, in `fd7a:115c:a1e0::/48`, or loopback. Otherwise it refuses, rather than send a token or a file unencrypted.
 
 ### Sending
 
@@ -396,7 +429,7 @@ Pairing by picking a device that discovery found, without a QR code and without 
 
 ### Phones
 
-- **A token for the computer:** a protocol 2 iPhone mints a [device token](#tokens) for each computer it pairs with and sends it as `"token"` in `POST /pair` and `POST /pair/request`, or returns it in the `/pair/request` response when the phone is the one being asked. The computer stores it as the token it sends to that phone. A protocol 1 phone sends none, so computers keep only queuing for it.
+- **A token for the computer:** a protocol 2 iPhone mints a [device token](#tokens) for each computer it pairs with and sends it as `"token"` in `POST /pair` and `POST /pair/confirm`, or returns it in the `/pair/confirm` response when the phone is the one being asked. The computer stores it as the token it sends to that phone. A protocol 1 phone sends none, so computers keep only queuing for it.
 - **Upgrading an existing pairing:** when a protocol 2 iPhone sees from `/ping` that a computer it's already paired with speaks protocol 2, and it hasn't given that computer a token yet, it calls `POST /pair` on that computer once, authenticated with the token it already has, carrying `token`, `id`, `fp`, `tlsPort`, and `lan`. The computer updates that phone's existing peer (matched by the bearer token's device), so nobody has to pair again.
 - **Sending to an iPhone:** if the computer has a token for the phone, has its pin, and the phone is advertising right now (Droprr is open), the computer sends to it directly over HTTPS with `POST /send`. Otherwise it queues the item in the phone's [inbox](#inbox-phone-pull), as today.
 - **Inbox polling:** the phone polls whichever path to the computer answers first: LAN HTTPS if the computer is discovered, otherwise Tailscale. The inbox endpoints and their scoping are unchanged.

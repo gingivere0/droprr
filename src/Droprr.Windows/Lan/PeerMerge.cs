@@ -5,15 +5,16 @@ using System.Linq;
 namespace Droprr;
 
 // One device can end up paired twice: once over Tailscale (by host and token) and again over Wi-Fi (by device id
-// and certificate). These records are the same device when they share a device id, a pinned fingerprint, or a
-// Tailscale host, and they're merged into the older one.
+// and certificate). These records are the same device when they share a device id or a pinned fingerprint, and
+// don't have two different pins; they're merged into the older one. A shared host alone isn't enough: a host
+// comes from the device itself, so it would let one device claim another's record.
 static class PeerMerge
 {
     // Whether two peers are the same device.
     public static bool SameDevice(Peer a, Peer b) =>
-        (a.Id.Length > 0 && a.Id == b.Id)
-        || (a.Fingerprint.Length > 0 && a.Fingerprint.Equals(b.Fingerprint, StringComparison.OrdinalIgnoreCase))
-        || (a.Host.Length > 0 && a.Host.Equals(b.Host, StringComparison.OrdinalIgnoreCase) && !a.IsPhone && !b.IsPhone);
+        ((a.Id.Length > 0 && a.Id == b.Id)
+         || (a.Fingerprint.Length > 0 && a.Fingerprint.Equals(b.Fingerprint, StringComparison.OrdinalIgnoreCase)))
+        && !(a.Fingerprint.Length > 0 && b.Fingerprint.Length > 0 && !a.Fingerprint.Equals(b.Fingerprint, StringComparison.OrdinalIgnoreCase));
 
     // Pairs (older, newer) of peers that are the same device, by their order in settings (older first).
     public static IReadOnlyList<(Peer Older, Peer Newer)> Duplicates(AppSettings settings)
@@ -44,7 +45,8 @@ static class PeerMerge
     {
         if (newer.Id.Length > 0)
             older.Id = newer.Id;
-        if (newer.Fingerprint.Length > 0)
+        // A pin is only ever added, never moved (SameDevice never pairs two different pins).
+        if (older.Fingerprint.Length == 0)
             older.Fingerprint = newer.Fingerprint;
         if (newer.TlsPort > 0)
             older.TlsPort = newer.TlsPort;

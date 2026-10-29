@@ -125,6 +125,16 @@ public sealed class AppSettings
 
     public List<Peer> Peers { get; set; } = new();
 
+    // `name`, or "name (2)", "name (3)", and so on if a peer already has it.
+    public string UniqueName(string name)
+    {
+        name = name.Trim();
+        var unique = name;
+        for (var i = 2; FindPeer(unique) is not null; i++)
+            unique = $"{name} ({i})";
+        return unique;
+    }
+
     public Peer? FindPeer(string name) =>
         Peers.Find(p => p.Name.Trim().Equals(name.Trim(), StringComparison.OrdinalIgnoreCase));
 
@@ -152,9 +162,7 @@ static class SettingsStore
     public static AppSettings Load()
     {
         var exists = File.Exists(FilePath);
-        var settings = exists
-            ? JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath), Options) ?? new AppSettings()
-            : new AppSettings();
+        var settings = exists ? Read(FilePath) : new AppSettings();
 
         var changed = !exists | RevealTokens(settings);
         if (string.IsNullOrWhiteSpace(settings.Token))
@@ -188,8 +196,51 @@ static class SettingsStore
             peer.Token = Hide(peer.Token);
             peer.AcceptToken = Hide(peer.AcceptToken);
         }
+        // Written to a temporary file and swapped in, keeping the previous file as a backup, so a crash or power cut
+        // mid-write never leaves a half-written settings.json.
+        var temp = FilePath + ".tmp";
         lock (Gate)
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(stored, Options));
+        {
+            File.WriteAllText(temp, JsonSerializer.Serialize(stored, Options));
+            if (File.Exists(FilePath))
+                Retry(() => File.Replace(temp, FilePath, BackupPath, ignoreMetadataErrors: true));
+            else
+                File.Move(temp, FilePath);
+        }
+    }
+
+    static string BackupPath => FilePath + ".bak";
+
+    // The settings file, or its backup if the file can't be parsed. Another Droprr process writing at the same
+    // moment can briefly hold the file, so reading retries.
+    static AppSettings Read(string path)
+    {
+        string text = "";
+        Retry(() => text = File.ReadAllText(path));
+        try
+        {
+            return JsonSerializer.Deserialize<AppSettings>(text, Options) ?? new AppSettings();
+        }
+        catch (JsonException) when (File.Exists(BackupPath))
+        {
+            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(BackupPath), Options) ?? new AppSettings();
+        }
+    }
+
+    static void Retry(Action action)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                action();
+                return;
+            }
+            catch (IOException) when (attempt < 10)
+            {
+                System.Threading.Thread.Sleep(50);
+            }
+        }
     }
 
     const string ProtectedPrefix = "dpapi:";

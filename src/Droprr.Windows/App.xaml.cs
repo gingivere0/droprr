@@ -41,6 +41,9 @@ public partial class App : Application
 
     internal AppSettings Settings { get; private set; } = null!;
 
+    // Sends in progress from the Send window; an update waits for them (and for anything arriving).
+    internal int ActiveSends { get; set; }
+
     // Raised on the UI thread after settings change (saved in Settings, or a device paired), so open windows can refresh.
     internal event Action? SettingsSaved;
 
@@ -181,7 +184,7 @@ public partial class App : Application
     // Hands over to a newer deployed build (see LiveUpdate), waiting until nothing is being received.
     void CheckForUpdate()
     {
-        if (_receiving.Count > 0 || LiveUpdate.NewerVersion() is not { } exe)
+        if (_receiving.Count > 0 || ActiveSends > 0 || LiveUpdate.NewerVersion() is not { } exe)
             return;
         _updateCheck?.Stop();
         var reopen = new List<string>();
@@ -246,15 +249,15 @@ public partial class App : Application
     }
 
     // Fallback for phones that never called POST /pair: one that checks its inbox under an unknown name
-    // becomes an iPhone peer, so the Send window offers it.
+    // becomes an iPhone peer, so the Send window offers it. A known name is never changed this way (a computer
+    // isn't turned into a phone).
     void OnInboxPolled(string device)
     {
-        var known = Settings.FindPeer(device);
-        if (known is { IsPhone: true })
+        device = FileNames.Printable(device, 64);
+        if (device.Length == 0 || Settings.FindPeer(device) is not null || Settings.Peers.Count(p => p.IsPhone) >= 50)
             return;
         SavePeer(new PairRequest(device, "ios", null, null, null, null));
-        if (known is null)
-            _tray?.Notify("New device", $"{device} checked in and can now receive from this PC.");
+        _tray?.Notify("New device", $"{device} checked in and can now receive from this PC.");
     }
 
     // Removes everything waiting for the phone (files too) and updates the tray at once.
@@ -276,25 +279,32 @@ public partial class App : Application
         DevicePaired?.Invoke(peer);
     }
 
-    // Adds the peer or updates an existing one: the one whose device token made the request, else the one with
-    // the same device id, else the same name. A host this PC already has (often a MagicDNS name the user typed)
-    // is kept for computers; phones never have one.
+    // Adds the peer or updates an existing one.
+    // - A device token's /pair updates only that token's peer, and can't change its platform, id, or pinned
+    //   certificate once they're known, so one paired device can't make itself look like another.
+    // - A confirmed LAN pairing always adds a new peer; the receiver already refused devices paired before.
+    // - Otherwise (the main token: the pairing QR, or a token typed in), the peer with the same device id, else
+    //   the same name.
+    // A host this PC already has (often a MagicDNS name the user typed) is kept for computers; phones never have one.
     Peer SavePeer(PairRequest request)
     {
         var name = request.Name;
         Settings = SettingsStore.Update(s =>
         {
-            var peer = (request.ExistingPeer is { } existing ? s.FindPeer(existing) : null)
-                ?? (request.Id is { } id ? s.Peers.Find(p => p.Id == id) : null)
-                ?? (request.Fingerprint is { } fp ? s.Peers.Find(p => p.Fingerprint == fp) : null)
-                ?? s.FindPeer(request.Name);
+            bool OwnedByOther(Peer self, string? id, string? fp) => s.Peers.Any(p => p != self
+                && ((id is not null && p.Id == id) || (fp is not null && p.Fingerprint.Equals(fp, StringComparison.OrdinalIgnoreCase))));
+            var existing = request.ExistingPeer is { } owner ? s.FindPeer(owner) : null;
+            var peer = existing
+                ?? (request.FromLan ? null
+                    : (request.Id is { } id ? s.Peers.Find(p => p.Id == id) : null) ?? s.FindPeer(request.Name));
             if (peer is null)
             {
-                peer = new Peer { Name = request.Name };
+                peer = new Peer { Name = s.UniqueName(request.Name) };
                 s.Peers.Add(peer);
             }
             name = peer.Name;
-            peer.Platform = request.Platform;
+            if (existing is null || peer.Platform.Length == 0)
+                peer.Platform = request.Platform;
             if (peer.IsPhone)
                 peer.Host = "";
             else if (peer.Host.Length == 0 && request.Host is not null)
@@ -311,10 +321,12 @@ public partial class App : Application
             else if (peer.IsPhone)
                 peer.Token = "";
             // Local network identity and addresses (protocol 2). The fingerprint comes from an authenticated
-            // /pair or a confirmed LAN pairing, so it's pinned.
-            if (request.Id is not null)
+            // /pair or a confirmed LAN pairing, so it's pinned. A device token can only fill them in (a protocol 1
+            // pairing upgrading), never replace them, and never with another peer's.
+            var mayReplace = existing is null;
+            if (request.Id is not null && (mayReplace || peer.Id.Length == 0) && !OwnedByOther(peer, request.Id, null))
                 peer.Id = request.Id;
-            if (request.Fingerprint is not null)
+            if (request.Fingerprint is not null && (mayReplace || peer.Fingerprint.Length == 0) && !OwnedByOther(peer, null, request.Fingerprint))
                 peer.Fingerprint = request.Fingerprint;
             if (request.TlsPort is { } tlsPort)
                 peer.TlsPort = tlsPort;
@@ -338,20 +350,21 @@ public partial class App : Application
             if (Settings.FindPeer(name) is not { IsPhone: false } peer || peer.Token.Length == 0 || peer.Host.Length == 0)
                 continue;
             var minted = SettingsStore.NewToken();
-            // Accept the new token before asking, since the computer may call back right away.
-            Settings = SettingsStore.Update(s => { if (s.FindPeer(name) is { } p) p.AcceptToken = minted; });
+            // Accept the new token while asking, since the computer may call back right away. The previous one
+            // keeps working unless this pairing succeeds.
+            _receiver?.AcceptPendingToken(minted, name);
             var returned = await Sender.PairAsync(peer, peer.Token, Settings, host, minted);
             Settings = SettingsStore.Update(s =>
             {
-                if (s.FindPeer(name) is not { } p)
+                if (s.FindPeer(name) is not { } p || returned is null)
                     return;
-                if (returned is null)
-                {
-                    p.AcceptToken = "";
-                    return;
-                }
+                p.AcceptToken = minted;
                 p.Token = returned.Token;
-                // Over Tailscale, which authenticates the device, so its fingerprint can be pinned.
+                // Over Tailscale, which authenticates the device, so its fingerprint can be pinned, unless another
+                // peer already has that identity.
+                if (s.Peers.Any(o => o != p && ((returned.Id is { Length: > 0 } rid && o.Id == rid)
+                        || (returned.Fingerprint is { Length: 64 } rfp && o.Fingerprint == rfp))))
+                    return;
                 if (returned.Id is { Length: > 0 } id)
                     p.Id = id;
                 if (returned.Fingerprint is { Length: 64 } fp)
@@ -360,6 +373,7 @@ public partial class App : Application
                     p.TlsPort = tlsPort;
                 p.Lan = returned.Lan;
             });
+            _receiver?.ForgetPendingToken(minted);
             SettingsSaved?.Invoke();
             _tray?.Notify(returned is null ? $"Couldn't pair with {name}" : $"{name} paired",
                 returned is null ? "Using the token you entered instead." : "Each of you can now send to the other.");
@@ -393,7 +407,8 @@ public partial class App : Application
         window.Focus();
     }
 
-    // Called after Settings saves: picks up the new settings and restarts the receiver in case the port or token changed.
+    // Called after Settings saves: picks up the new settings. The receiver reads tokens, names, and devices on every
+    // request, so it's restarted (which ends transfers in progress) only when the port or Local network changed.
     internal async Task ReloadAsync()
     {
         try
@@ -406,8 +421,15 @@ public partial class App : Application
             return;
         }
         SettingsSaved?.Invoke();
-        await StartReceiverAsync();
+        if (_receiver is { } receiver && _receiverPort == Settings.Port && _receiverLan == Settings.LocalNetwork)
+            StartLocalNetwork(receiver);
+        else
+            await StartReceiverAsync();
     }
+
+    // What the running receiver was started with.
+    int _receiverPort;
+    bool _receiverLan;
 
     // One restart at a time: network changes can come in quick succession.
     readonly SemaphoreSlim _receiverGate = new(1, 1);
@@ -433,16 +455,35 @@ public partial class App : Application
             _receiver = null;
         }
 
-        var receiver = new ReceiverServer(() => Settings);
-        receiver.ItemReceived += item => Dispatcher.BeginInvoke(() => OnItemReceived(item));
-        receiver.InboxPolled += device => Dispatcher.BeginInvoke(() => OnInboxPolled(device));
-        // Saved before /pair responds, so the caller can use its new token immediately.
-        receiver.PairRequested += request => Dispatcher.Invoke(() => OnPairRequested(request));
-        receiver.ReceiveProgress += progress => Dispatcher.BeginInvoke(() => OnReceiveProgress(progress));
-        receiver.ConfirmLanPair = ConfirmLanPairAsync;
+        ReceiverServer Create(bool withoutLan)
+        {
+            var created = new ReceiverServer(() => Settings) { WithoutLan = withoutLan };
+            created.ItemReceived += item => Dispatcher.BeginInvoke(() => OnItemReceived(item));
+            created.InboxPolled += device => Dispatcher.BeginInvoke(() => OnInboxPolled(device));
+            // Saved before /pair responds, so the caller can use its new token immediately.
+            created.PairRequested += request => Dispatcher.Invoke(() => OnPairRequested(request));
+            created.ReceiveProgress += progress => Dispatcher.BeginInvoke(() => OnReceiveProgress(progress));
+            created.ConfirmLanPair = ConfirmLanPairAsync;
+            return created;
+        }
+
+        _receiverPort = Settings.Port;
+        _receiverLan = Settings.LocalNetwork;
+        var receiver = Create(withoutLan: false);
         try
         {
-            await receiver.StartAsync();
+            try
+            {
+                await receiver.StartAsync();
+            }
+            catch (Exception ex) when (receiver.LanListening || Settings.LocalNetwork)
+            {
+                // The HTTPS port may be taken: keep receiving over Tailscale rather than not at all.
+                RequestLog.Note($"receiver: couldn't start with the local network ({ex.Message.ReplaceLineEndings(" ")}); starting without it");
+                await receiver.DisposeAsync();
+                receiver = Create(withoutLan: true);
+                await receiver.StartAsync();
+            }
             _receiver = receiver;
             _tray?.SetStatus((receiver.TailscaleAddresses.Count > 0
                 ? $"Receiving on port {Settings.Port}"
@@ -454,6 +495,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             await receiver.DisposeAsync();
+            LanDiscovery.Stop();
             _tray?.SetStatus("Receiver stopped");
             _tray?.Notify("Droprr couldn't start receiving", ex.Message);
         }

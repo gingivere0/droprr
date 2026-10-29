@@ -24,14 +24,17 @@ public sealed record ReceivedItem(ItemKind Kind, string Display, string? Path, s
 public sealed record TransferProgress(Guid Id, long Received, long? Total, bool Done);
 
 sealed record PairBody(string? Name, string? Platform, string? Host, int? Port, string? Token,
-    string? Id = null, string? Fp = null, int? TlsPort = null, List<string>? Lan = null);
+    string? Id = null, string? Fp = null, int? TlsPort = null, List<string>? Lan = null,
+    string? Commit = null, string? Session = null, string? Nonce = null);
 
 // SendToken: the token the caller minted for this PC to use when calling it (computers, and phones that receive
 // directly over the local network). AcceptToken: the device token this PC minted for the caller, returned in the
 // response. Id, Fingerprint, TlsPort, and Lan: the caller's local network identity and addresses (protocol 2).
 // ExistingPeer: the peer whose device token authenticated the request, which is updated rather than matched by name.
+// FromLan: a confirmed LAN pairing, which always adds a new peer (the receiver refuses devices already paired).
 public sealed record PairRequest(string Name, string Platform, string? Host, int? Port, string? SendToken, string? AcceptToken,
-    string? Id = null, string? Fingerprint = null, int? TlsPort = null, IReadOnlyList<string>? Lan = null, string? ExistingPeer = null);
+    string? Id = null, string? Fingerprint = null, int? TlsPort = null, IReadOnlyList<string>? Lan = null, string? ExistingPeer = null,
+    bool FromLan = false);
 
 // The receiver described in docs/PROTOCOL.md: plain HTTP on loopback and Tailscale addresses, plus HTTPS on the
 // next port for the local network when it's turned on and the firewall allows it.
@@ -75,12 +78,15 @@ sealed partial class ReceiverServer : IAsyncDisposable
     // For tests: listen on loopback only (HTTP and HTTPS), without needing the firewall rule.
     internal bool LoopbackOnly { get; init; }
 
+    // Plain HTTP only, even with Local network on (when the HTTPS port couldn't be opened).
+    public bool WithoutLan { get; init; }
+
     public async Task StartAsync()
     {
         TailscaleAddresses = TailscaleNetwork.FindAddresses();
         var port = Settings.Port;
         var tlsPort = TlsPort;
-        var lan = Settings.LocalNetwork && (LoopbackOnly || LanFirewall.HasRule(tlsPort));
+        var lan = Settings.LocalNetwork && !WithoutLan && tlsPort <= 65535 && (LoopbackOnly || LanFirewall.HasRule(tlsPort));
         var certificate = lan ? DeviceIdentity.Certificate(Settings) : null;
 
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
@@ -108,7 +114,15 @@ sealed partial class ReceiverServer : IAsyncDisposable
                         }
                         return next(connection);
                     });
-                    listen.UseHttps(certificate);
+                    // Devices present their own certificate as a client certificate; LAN pairing takes the requester's
+                    // identity from it. It's checked by fingerprint where it matters, not by a chain.
+                    listen.UseHttps(new Microsoft.AspNetCore.Server.Kestrel.Https.HttpsConnectionAdapterOptions
+                    {
+                        ServerCertificate = certificate,
+                        ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.AllowCertificate,
+                        ClientCertificateValidation = (_, _, _) => true,
+                        HandshakeTimeout = TimeSpan.FromSeconds(10),
+                    });
                 }
                 if (LoopbackOnly)
                     kestrel.ListenLocalhost(tlsPort, Https);
@@ -125,14 +139,15 @@ sealed partial class ReceiverServer : IAsyncDisposable
         });
         app.Use(async (context, next) =>
         {
-            // LAN pairing is the one request without a token, and only over HTTPS.
-            if (context.Request.Path.Equals("/pair/request", StringComparison.OrdinalIgnoreCase))
+            // LAN pairing is the one exchange without a token, and only over HTTPS.
+            var pairRequest = context.Request.Path.Equals("/pair/request", StringComparison.OrdinalIgnoreCase);
+            if (pairRequest || context.Request.Path.Equals("/pair/confirm", StringComparison.OrdinalIgnoreCase))
             {
                 IResult result;
                 try
                 {
                     result = certificate is not null && context.Connection.LocalPort == tlsPort && HttpMethods.IsPost(context.Request.Method)
-                        ? await LanPairRequestAsync(context)
+                        ? await (pairRequest ? LanPairRequestAsync(context) : LanPairConfirmAsync(context))
                         : Error("not found", StatusCodes.Status404NotFound);
                 }
                 catch (Exception ex) when (!context.RequestAborted.IsCancellationRequested)
@@ -195,9 +210,29 @@ sealed partial class ReceiverServer : IAsyncDisposable
             if (Matches(given, peer.AcceptToken))
                 devicePeer ??= peer.Name;
         }
+        foreach (var (token, peerName) in _pendingTokens)
+        {
+            if (Matches(given, token))
+                devicePeer ??= peerName;
+        }
         if (main)
             devicePeer = null;
         return main || devicePeer is not null;
+    }
+
+    // Device tokens offered in a LAN pairing this PC started, accepted while it's in progress (the device may call
+    // back before it answers): token -> the name the peer will be saved under.
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _pendingTokens = new();
+
+    public void AcceptPendingToken(string token, string peerName) => _pendingTokens[token] = peerName;
+
+    public void ForgetPendingToken(string token) => _pendingTokens.TryRemove(token, out _);
+
+    // Refuses bodies over `max` bytes (413), for requests that are small by nature.
+    static void LimitBody(HttpContext context, long max)
+    {
+        if (context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+            limit.MaxRequestBodySize = max;
     }
 
     static bool Matches(byte[] given, string token) =>
@@ -212,14 +247,14 @@ sealed partial class ReceiverServer : IAsyncDisposable
         PairBody? body;
         try
         {
-            body = await context.Request.ReadFromJsonAsync<PairBody>(context.RequestAborted);
+            body = await ReadPairBodyAsync(context);
         }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or BadHttpRequestException)
         {
             return Error("body must be JSON: {\"name\", \"platform\", \"host\"?, \"port\"?, \"token\"?}", StatusCodes.Status400BadRequest);
         }
 
-        var name = body?.Name?.Trim() ?? "";
+        var name = Printable(body?.Name);
         var platform = body?.Platform?.Trim().ToLowerInvariant() ?? "";
         var host = body?.Host?.Trim() ?? "";
         if (name.Length == 0)
@@ -253,7 +288,8 @@ sealed partial class ReceiverServer : IAsyncDisposable
             InboxPolled?.Invoke(device);
         }
 
-        var items = Outbox.List(device).Select(item => item.Type == "file"
+        // Different names can share a folder once cleaned up for the file system, so filter by the exact name too.
+        var items = Outbox.List(device).Where(item => item.Peer.Trim().Equals(device.Trim(), StringComparison.OrdinalIgnoreCase)).Select(item => item.Type == "file"
             ? (object)new { id = item.Id, type = item.Type, name = item.Name, size = item.Size, created = Iso8601(item.Created) }
             : new { id = item.Id, type = item.Type, name = item.Name, size = item.Size, content = item.Content, created = Iso8601(item.Created) });
         return Results.Json(new { ok = true, items });

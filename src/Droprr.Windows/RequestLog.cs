@@ -42,7 +42,7 @@ static class RequestLog
                 File.AppendAllText(FilePath, line);
             }
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Logging is best effort.
         }

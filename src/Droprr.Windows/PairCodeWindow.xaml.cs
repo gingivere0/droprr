@@ -24,17 +24,23 @@ public partial class PairCodeWindow : Wpf.Ui.Controls.FluentWindow
         };
     }
 
-    // Returns whether the person accepted; false if they declined, closed the window, or `cancel` fired first
-    // (the request timed out or the device gave up).
+    // Returns whether the person accepted; false if they declined or closed the window. Canceled (an
+    // OperationCanceledException) if `cancel` fired first: the request timed out or the device gave up.
+    // It appears on top without taking the keyboard, and has no default button, so typing elsewhere can't accept a
+    // request nobody expected.
     public static Task<bool> AskAsync(string name, string code, CancellationToken cancel)
     {
+        name = FileNames.Printable(name, 64);
         var window = new PairCodeWindow(code);
         window.Heading.Text = $"Pair with {name}?";
-        window.Hint.Text = $"Make sure {name} shows this code. Pairing lets it send to this PC, and this PC send to it.";
-        var registration = cancel.Register(() => window.Dispatcher.BeginInvoke(window.Close));
+        window.Hint.Text = $"Only if you started pairing on {name} and it shows this code. Pairing lets it send to this PC, and this PC send to it.";
+        var registration = cancel.Register(() => window.Dispatcher.BeginInvoke(() =>
+        {
+            window._answer.TrySetCanceled(cancel);
+            window.Close();
+        }));
         window._answer.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
         window.Show();
-        window.Activate();
         return window._answer.Task;
     }
 

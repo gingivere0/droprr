@@ -80,13 +80,22 @@ static class DeviceIdentity
     public static string Fingerprint(X509Certificate certificate) =>
         Convert.ToHexStringLower(SHA256.HashData(certificate.GetRawCertData()));
 
-    // The six-digit code both screens show during LAN pairing: SHA-256 of the two fingerprints, sorted and
-    // joined with ':', first 4 bytes big-endian, modulo 1,000,000, zero-padded.
-    public static string PairingCode(string fingerprintA, string fingerprintB)
+    // The six-digit code both screens show during LAN pairing: SHA-256 of "fpLow:fpHigh:nonceR:nonceS" (the two
+    // fingerprints sorted, then the requester's and the receiver's nonces, all lowercase hex), first 4 bytes
+    // big-endian, modulo 1,000,000, zero-padded. The requester commits to its nonce before it sees the receiver's,
+    // so nobody in the middle can pick certificates or nonces that make two different codes match.
+    public static string PairingCode(string fingerprintA, string fingerprintB, string requesterNonce, string receiverNonce)
     {
         var sorted = new[] { fingerprintA.ToLowerInvariant(), fingerprintB.ToLowerInvariant() }.Order(StringComparer.Ordinal);
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(string.Join(":", sorted)));
+        var input = string.Join(":", sorted.Append(requesterNonce.ToLowerInvariant()).Append(receiverNonce.ToLowerInvariant()));
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(input));
         var value = ((uint)hash[0] << 24) | ((uint)hash[1] << 16) | ((uint)hash[2] << 8) | hash[3];
         return (value % 1_000_000).ToString("D6");
     }
+
+    // 32 random bytes as lowercase hex: a pairing nonce.
+    public static string NewNonce() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
+
+    // The commitment to a nonce: SHA-256 of its 32 raw bytes, as lowercase hex.
+    public static string Commit(string nonce) => Convert.ToHexStringLower(SHA256.HashData(Convert.FromHexString(nonce)));
 }

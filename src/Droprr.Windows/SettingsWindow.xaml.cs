@@ -18,6 +18,9 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
     readonly AppSettings _settings;
     readonly ObservableCollection<Peer> _peers;
     readonly Dictionary<string, string> _originalTokens;
+    // Each device row that came from the saved settings, with its name there, so Save changes only what was edited
+    // here and keeps anything that changed meanwhile (a device pairing, a phone checking in, Wi-Fi addresses).
+    readonly Dictionary<Peer, string> _savedName = new(ReferenceEqualityComparer.Instance);
     readonly string _originalTheme;
     readonly string _originalMode;
     readonly string _originalStyle;
@@ -44,6 +47,8 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         CopyTextBox.IsChecked = _settings.CopyTextToClipboard;
         LocalNetworkBox.IsChecked = _settings.LocalNetwork;
         _peers = new ObservableCollection<Peer>(_settings.Peers);
+        foreach (var peer in _settings.Peers)
+            _savedName[peer] = peer.Name;
         _originalTokens = _settings.Peers.GroupBy(p => p.Name.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Token, StringComparer.OrdinalIgnoreCase);
         PeerGrid.ItemsSource = _peers;
@@ -200,6 +205,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
             _peers[_peers.IndexOf(existing)] = paired;
         else
             _peers.Add(paired);
+        _savedName[paired] = paired.Name;
     }
 
     void ShowToken()
@@ -381,6 +387,46 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         }
     }
 
+    // Applies this window's edits to the settings on disk: its own fields, and for devices only what the grid
+    // changed (added, removed, or the fields it edits), so changes made while it was open aren't undone.
+    void ApplyEdits(AppSettings s)
+    {
+        s.DeviceName = _settings.DeviceName;
+        s.Port = _settings.Port;
+        s.SaveFolder = _settings.SaveFolder;
+        s.Token = _settings.Token;
+        s.AddToStartMenu = _settings.AddToStartMenu;
+        s.CopyFilesToClipboard = _settings.CopyFilesToClipboard;
+        s.LocalNetwork = _settings.LocalNetwork;
+        s.CopyTextToClipboard = _settings.CopyTextToClipboard;
+        s.Theme = _settings.Theme;
+        s.Mode = _settings.Mode;
+        s.Style = _settings.Style;
+
+        var kept = new HashSet<string>(_peers.Where(_savedName.ContainsKey).Select(p => _savedName[p]), StringComparer.OrdinalIgnoreCase);
+        foreach (var removed in _savedName.Values.Where(n => !kept.Contains(n)).ToList())
+            if (s.FindPeer(removed) is { } gone)
+                s.Peers.Remove(gone);
+        foreach (var row in _peers)
+        {
+            if (!_savedName.TryGetValue(row, out var savedAs))
+            {
+                // Added here.
+                if (s.FindPeer(row.Name) is null)
+                    s.Peers.Add(row);
+                continue;
+            }
+            // Gone from disk meanwhile (merged into another record): not brought back.
+            if (s.FindPeer(savedAs) is not { } peer)
+                continue;
+            peer.Name = row.Name.Trim();
+            peer.Host = row.Host.Trim();
+            peer.Port = row.Port;
+            peer.Token = row.Token.Trim();
+            peer.IsPhone = row.IsPhone;
+        }
+    }
+
     async void OnSave(object sender, RoutedEventArgs e)
     {
         PeerGrid.CommitEdit(System.Windows.Controls.DataGridEditingUnit.Row, true);
@@ -410,7 +456,6 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
             .Where(p => _originalTokens.TryGetValue(p.Name.Trim(), out var before) ? before != p.Token : true)
             .Select(p => p.Name)
             .ToList();
-        _settings.Peers = _peers.ToList();
         _settings.AddToStartMenu = StartMenuBox.IsChecked == true;
         _settings.CopyFilesToClipboard = CopyFilesBox.IsChecked == true;
         _settings.LocalNetwork = LocalNetworkBox.IsChecked == true;
@@ -420,7 +465,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         _settings.Style = AppTheme.Look.Id;
         try
         {
-            SettingsStore.Save(_settings);
+            SettingsStore.Update(ApplyEdits);
             StartWithWindows.Set(StartWithWindowsBox.IsChecked == true);
             Shortcuts.SyncStartMenu(_settings.AddToStartMenu);
         }

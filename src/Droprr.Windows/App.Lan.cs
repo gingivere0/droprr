@@ -32,6 +32,7 @@ public partial class App
     {
         _advertisedOn = CurrentLanAddresses();
         Sender.LocalNetworkEnabled = Settings.LocalNetwork;
+        Sender.ClientCertificate = DeviceIdentity.Certificate(Settings);
         if (!_discoveryHooked)
         {
             LanDiscovery.Changed += () => Dispatcher.BeginInvoke(OnNearbyChanged);
@@ -191,37 +192,34 @@ public partial class App
         }
 
         var minted = SettingsStore.NewToken();
-        // The same device may already be paired over Tailscale under another name: update that one.
+        // The same device may already be paired over Tailscale under another name (matched by its id or pin, never
+        // by name): that one is updated. Nothing is saved until the pairing succeeds.
         bool Matches(Peer p) => p.Id == device.Id || (p.Fingerprint.Length > 0 && p.Fingerprint == fingerprint);
-        var existed = Settings.Peers.Any(Matches);
-        // Accept the new token before asking, since the device may call back right away.
-        Settings = SettingsStore.Update(s =>
-        {
-            var peer = s.Peers.Find(Matches) ?? s.FindPeer(device.Name);
-            if (peer is null)
-            {
-                peer = new Peer { Name = device.Name, Platform = device.Platform };
-                s.Peers.Add(peer);
-            }
-            peer.Id = device.Id;
-            peer.AcceptToken = minted;
-        });
-        var name = Settings.Peers.Find(Matches)!.Name;
+        var name = Settings.Peers.Find(Matches)?.Name ?? Settings.UniqueName(FileNames.Printable(device.Name, 64));
+        // Accept the new token while asking, since the device may call back right away.
+        _receiver?.AcceptPendingToken(minted, name);
 
-        var code = DeviceIdentity.PairingCode(fingerprint, DeviceIdentity.Fingerprint(Settings));
         using var cancel = new CancellationTokenSource();
-        var waiting = PairCodeWindow.ShowWaiting(device.Name, code, cancel.Cancel);
+        PairCodeWindow? waiting = null;
         var host = PairWindow.MagicDnsName() ?? TailscaleNetwork.FindAddresses().FirstOrDefault()?.ToString();
-        var (status, info) = await Sender.RequestLanPairAsync(endpoint, fingerprint,
-            Sender.OwnPairFields(Settings, host, minted, LanListening), cancel.Token);
-        waiting.Close();
+        var (status, info, error) = await Sender.RequestLanPairAsync(endpoint, fingerprint, DeviceIdentity.Fingerprint(Settings),
+            Sender.OwnPairFields(Settings, host, minted, LanListening),
+            code => Dispatcher.Invoke(() => waiting = PairCodeWindow.ShowWaiting(device.Name, code, cancel.Cancel)), cancel.Token);
+        waiting?.Close();
 
         if (status == 200 && info is not null)
         {
             Settings = SettingsStore.Update(s =>
             {
-                if (s.FindPeer(name) is not { } p)
-                    return;
+                var p = s.Peers.Find(Matches);
+                if (p is null)
+                {
+                    p = new Peer { Name = s.UniqueName(name), Platform = device.Platform };
+                    s.Peers.Add(p);
+                }
+                name = p.Name;
+                p.Id = device.Id;
+                p.AcceptToken = minted;
                 p.Platform = device.Platform.Length > 0 ? device.Platform : p.Platform;
                 p.Fingerprint = fingerprint;
                 p.TlsPort = info.TlsPort ?? device.Port;
@@ -230,6 +228,7 @@ public partial class App
                 if (p.Host.Length == 0 && !p.IsPhone && info.Host is { Length: > 0 } tailscaleHost)
                     p.Host = tailscaleHost;
             });
+            _receiver?.ForgetPendingToken(minted);
             SettingsSaved?.Invoke();
             var peer = Settings.FindPeer(name)!;
             _tray?.Notify($"{peer.Name} paired", "Each of you can now send to the other over Wi-Fi.");
@@ -238,25 +237,19 @@ public partial class App
             return;
         }
 
-        // Not paired: drop the token offered, and the peer if this attempt added it.
-        Settings = SettingsStore.Update(s =>
-        {
-            if (s.FindPeer(name) is not { } p)
-                return;
-            if (!existed)
-                s.Peers.Remove(p);
-            else
-                p.AcceptToken = "";
-        });
-        SettingsSaved?.Invoke();
+        // Not paired: the token offered stops working, and nothing else changed.
+        _receiver?.ForgetPendingToken(minted);
         if (cancel.IsCancellationRequested)
             return;
+        var shownName = FileNames.Printable(device.Name, 64);
         var reason = status switch
         {
-            403 => $"{device.Name} declined.",
-            408 => $"Nobody confirmed on {device.Name} in time.",
-            429 => $"{device.Name} is busy with another pairing request. Try again in a moment.",
-            _ => $"Couldn't reach {device.Name}.",
+            403 => $"{shownName} declined.",
+            408 => $"Nobody confirmed on {shownName} in time.",
+            409 => $"{shownName} already has this PC paired. Remove it in Droprr's settings there, then pair again.",
+            429 => $"{shownName} is busy with another pairing request. Try again in a moment.",
+            0 => $"Couldn't reach {shownName}.",
+            _ => $"{shownName} didn't pair{(error is { Length: > 0 } e ? $": {FileNames.Printable(e, 200)}" : ".")}",
         };
         await AppTheme.ShowMessageAsync("Not paired", reason);
     }

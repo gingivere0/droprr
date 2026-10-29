@@ -21,7 +21,12 @@ static class FileNames
         var invalid = Path.GetInvalidFileNameChars();
         var builder = new StringBuilder();
         foreach (var c in Path.GetFileName(name ?? ""))
+        {
+            // Bidirectional overrides would let "gpj.exe" display as "exe.jpg"; drop them.
+            if (IsHidden(c))
+                continue;
             builder.Append(invalid.Contains(c) ? '_' : c);
+        }
 
         var clean = builder.ToString().Trim().TrimEnd('.', ' ');
         if (clean.Trim('.').Length == 0)
@@ -36,6 +41,19 @@ static class FileNames
             clean = clean[..(MaxLength - extension.Length)] + extension;
         }
         return clean;
+    }
+
+    // Control characters and the invisible formatting characters that change how text is displayed (bidirectional
+    // overrides and isolates, zero-width characters).
+    static bool IsHidden(char c) =>
+        char.IsControl(c) || c is >= '​' and <= '‏' or >= '‪' and <= '‮' or >= '⁦' and <= '⁩' or '﻿';
+
+    // Text from another device (such as its name), made safe to show and log: one line, without hidden
+    // characters, at most `max` characters.
+    public static string Printable(string text, int max)
+    {
+        var clean = new string(text.Where(c => !IsHidden(c)).ToArray()).Trim();
+        return clean.Length > max ? clean[..max].TrimEnd() : clean;
     }
 
     // Opens a new file, adding " (1)", " (2)", and so on instead of overwriting an existing one.

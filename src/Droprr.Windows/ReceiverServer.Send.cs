@@ -53,6 +53,23 @@ sealed partial class ReceiverServer
 
     const long MinimumFreeBytes = 1L << 30;
 
+    // Text and links are held in memory, copied to the clipboard, and listed in Recent, so they're capped.
+    const int MaxTextBytes = 16 * 1024 * 1024;
+
+    static async Task<string> ReadTextAsync(Stream body, CancellationToken cancel)
+    {
+        var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await body.ReadAsync(chunk, cancel)) > 0)
+        {
+            if (buffer.Length + read > MaxTextBytes)
+                throw new InvalidDataException("text is over 16 MB: send it as a file");
+            buffer.Write(chunk, 0, read);
+        }
+        return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+    }
+
     static long? FreeSpace(string folder)
     {
         try
@@ -90,6 +107,7 @@ sealed partial class ReceiverServer
             }
             else if (request.HasJsonContentType())
             {
+                LimitBody(context, MaxTextBytes);
                 var body = await request.ReadFromJsonAsync<SendBody>(context.RequestAborted)
                     ?? throw new InvalidDataException("empty JSON body");
                 items = [SaveText(folder, body.Type, body.Content)];
@@ -106,11 +124,16 @@ sealed partial class ReceiverServer
                         items.Add(SaveText(folder, field == "url" || IsSingleWebUrl(value) ? "url" : "text", value));
                 }
             }
+            else if (IsMediaType(request, "text/plain") && RawFileName(request) is null && request.ContentLength is null or <= MaxTextBytes)
+            {
+                var value = await ReadTextAsync(request.Body, context.RequestAborted);
+                items = [SaveText(folder, IsSingleWebUrl(value) ? "url" : "text", value)];
+            }
             else if (IsMediaType(request, "text/plain") && RawFileName(request) is null)
             {
-                using var reader = new StreamReader(request.Body, Encoding.UTF8);
-                var value = await reader.ReadToEndAsync(context.RequestAborted);
-                items = [SaveText(folder, IsSingleWebUrl(value) ? "url" : "text", value)];
+                // Too long to be a text item (for the clipboard and the Recent list): saved as a text file instead.
+                request.Headers["X-Droprr-Filename"] = $"Text {DateTime.Now:yyyy-MM-dd HHmmss}.txt";
+                items = [await SaveRawFileAsync(request, folder, context.RequestAborted)];
             }
             else
             {
@@ -121,6 +144,10 @@ sealed partial class ReceiverServer
         catch (Exception ex) when (ex is InvalidDataException or JsonException)
         {
             return Error(ex.Message, StatusCodes.Status400BadRequest);
+        }
+        catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            return Error("too large for text: send it as a file", StatusCodes.Status413PayloadTooLarge);
         }
 
         if (items.Count == 0)
@@ -140,26 +167,36 @@ sealed partial class ReceiverServer
 
         var reader = new MultipartReader(boundary, request.Body) { BodyLengthLimit = null };
         var items = new List<ReceivedItem>();
-        for (var section = await reader.ReadNextSectionAsync(cancel); section is not null; section = await reader.ReadNextSectionAsync(cancel))
+        try
         {
-            if (!ContentDispositionHeaderValue.TryParse(section.ContentDisposition, out var disposition))
-                continue;
+            for (var section = await reader.ReadNextSectionAsync(cancel); section is not null; section = await reader.ReadNextSectionAsync(cancel))
+            {
+                if (!ContentDispositionHeaderValue.TryParse(section.ContentDisposition, out var disposition))
+                    continue;
 
-            if (disposition.IsFileDisposition())
-            {
-                var name = disposition.FileNameStar.HasValue
-                    ? disposition.FileNameStar.Value
-                    : HeaderUtilities.RemoveQuotes(disposition.FileName).Value;
-                items.Add(await SaveFileAsync(folder, name, section.Body, cancel));
+                if (disposition.IsFileDisposition())
+                {
+                    var name = disposition.FileNameStar.HasValue
+                        ? disposition.FileNameStar.Value
+                        : HeaderUtilities.RemoveQuotes(disposition.FileName).Value;
+                    items.Add(await SaveFileAsync(folder, name, section.Body, cancel));
+                }
+                else
+                {
+                    // Any part without a filename is text, or a url when it's a single http(s) URL.
+                    var value = await ReadTextAsync(section.Body, cancel);
+                    if (value.Length > 0)
+                        items.Add(SaveText(folder, IsSingleWebUrl(value) ? "url" : "text", value));
+                }
             }
-            else
-            {
-                // Any part without a filename is text, or a url when it's a single http(s) URL.
-                using var text = new StreamReader(section.Body, Encoding.UTF8);
-                var value = await text.ReadToEndAsync(cancel);
-                if (value.Length > 0)
-                    items.Add(SaveText(folder, IsSingleWebUrl(value) ? "url" : "text", value));
-            }
+        }
+        catch
+        {
+            // All or nothing: a request that fails partway leaves no unannounced files behind, and a retry
+            // doesn't make " (1)" copies.
+            foreach (var item in items)
+                try { File.Delete(item.Path!); } catch { /* best effort */ }
+            throw;
         }
         return items;
     }

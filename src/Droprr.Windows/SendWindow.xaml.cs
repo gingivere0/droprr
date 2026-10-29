@@ -370,6 +370,11 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             return;
         }
 
+        if (paths.FirstOrDefault(p => !File.Exists(p)) is { } missing)
+        {
+            ShowStatus(InfoBarSeverity.Warning, $"{Path.GetFileName(missing)} isn't there anymore. Remove it and try again.");
+            return;
+        }
         var total = Math.Max(1, paths.Sum(p => new FileInfo(p).Length));
         long done = 0;
         var progress = new Progress<long>(n =>
@@ -389,6 +394,9 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         ShowTile(SymbolRegular.ArrowSync24, $"Sending to {peer.Name}…", busy: true);
         using var cancel = new System.Threading.CancellationTokenSource();
         _sendCancel = cancel;
+        // An update waits for this send to finish.
+        var app = (App)Application.Current;
+        app.ActiveSends++;
         var stage = new Progress<string>(message =>
         {
             if (!cancel.IsCancellationRequested)
@@ -396,19 +404,7 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         });
         try
         {
-            // A phone that gave this PC a token and is open on this network takes the items directly.
-            var direct = !peer.IsPhone || (peer.Token.Length > 0 && await Sender.IsOnLanAsync(peer, cancel.Token));
-            if (!direct)
-            {
-                foreach (var path in paths)
-                    await Outbox.EnqueueFileAsync(peer.Name, path, progress);
-                if (text.Length > 0)
-                    Outbox.EnqueueText(peer.Name, Sender.TextType(text), text);
-                // Queuing for a phone is quiet: its "N waiting" badge and the tray count show the result.
-                HideStatus();
-                ShowPeers();
-            }
-            else
+            async System.Threading.Tasks.Task SendDirectAsync()
             {
                 SendOutcome? outcome = null;
                 if (paths.Count > 0)
@@ -419,7 +415,32 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
                     RememberPath(peer, outcome.Path);
                 ShowStatus(InfoBarSeverity.Success, $"Sent to {peer.Name} ({outcome?.Label}).");
                 if (outcome is { IdentityChanged: true })
-                    ((App)Application.Current).Notify($"{peer.Name}'s identity changed", "Droprr used Tailscale instead of Wi-Fi. Pair again to use Wi-Fi.");
+                    app.Notify($"{peer.Name}'s identity changed", "Droprr used Tailscale instead of Wi-Fi. Pair again to use Wi-Fi.");
+            }
+
+            // A phone that gave this PC a token and is open on this network takes the items directly. It can close
+            // Droprr at any moment, so if nothing got through, the items are queued for it instead.
+            var queue = peer.IsPhone && !(peer.Token.Length > 0 && await Sender.IsOnLanAsync(peer, cancel.Token));
+            if (!queue)
+            {
+                try
+                {
+                    await SendDirectAsync();
+                }
+                catch (System.Net.Http.HttpRequestException) when (peer.IsPhone && !cancel.IsCancellationRequested && done == 0)
+                {
+                    queue = true;
+                }
+            }
+            if (queue)
+            {
+                foreach (var path in paths)
+                    await Outbox.EnqueueFileAsync(peer.Name, path, progress, cancel.Token);
+                if (text.Length > 0)
+                    Outbox.EnqueueText(peer.Name, Sender.TextType(text), text);
+                // Queuing for a phone is quiet: its "N waiting" badge and the tray count show the result.
+                HideStatus();
+                ShowPeers();
             }
             if (clearWindow)
             {
@@ -446,6 +467,7 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         }
         finally
         {
+            app.ActiveSends--;
             _sendCancel = null;
             SendButton.IsEnabled = true;
             UpdateSendClipboard();
