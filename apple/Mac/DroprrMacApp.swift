@@ -357,11 +357,13 @@ final class MacModel {
         lastPaired = nil
         browserAccess.openJoin()
         browserHost.configChanged()   // the host page learns the new join secret
+        browserHostVersion += 1       // and Pair a phone shows the code at once (the secret isn't observable)
     }
 
     func closeOneCode() {
         browserAccess.close()
         browserHost.configChanged()
+        browserHostVersion += 1
     }
 
     private func addBrowser(_ request: PairRequest) -> String {
