@@ -44,27 +44,36 @@ static class LanNetwork
     }
 
     // This PC's private LAN IPv4 addresses on networks Windows doesn't treat as Public, with the interface each
-    // is on. Public networks (a café, an airport) are left out: Droprr doesn't advertise or listen there.
+    // is on. Public networks (a café, an airport) are left out: Droprr doesn't advertise or listen there. So are
+    // virtual adapters (Hyper-V, VM, and VPN switches), whose addresses other devices can't reach. Adapters with a
+    // default gateway (the real Wi-Fi or Ethernet) come first.
     public static IReadOnlyList<(IPAddress Address, int InterfaceIndex)> LocalAddresses()
     {
         var publicAdapters = PublicAdapterIds();
-        var result = new List<(IPAddress, int)>();
+        var result = new List<(IPAddress Address, int Index, bool Gateway)>();
         foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
         {
             if (nic.OperationalStatus != OperationalStatus.Up || nic.NetworkInterfaceType == NetworkInterfaceType.Loopback
-                || publicAdapters.Contains(nic.Id.Trim('{', '}').ToLowerInvariant()))
+                || publicAdapters.Contains(nic.Id.Trim('{', '}').ToLowerInvariant()) || IsVirtual(nic))
                 continue;
             var properties = nic.GetIPProperties();
             if (IPv4Index(properties) is not { } index)
                 continue;
+            var gateway = properties.GatewayAddresses.Any(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !g.Address.Equals(IPAddress.Any));
             foreach (var unicast in properties.UnicastAddresses)
             {
                 if (unicast.Address.AddressFamily == AddressFamily.InterNetwork && IsPrivateLan(unicast.Address))
-                    result.Add((unicast.Address, index));
+                    result.Add((unicast.Address, index, gateway));
             }
         }
-        return result;
+        return result.OrderBy(r => r.Gateway ? 0 : 1).Select(r => (r.Address, r.Index)).ToList();
     }
+
+    static readonly string[] VirtualNames = ["Hyper-V", "vEthernet", "Virtual", "VMware", "VirtualBox", "TAP-", "WireGuard", "Tailscale", "VPN", "Wintun"];
+
+    static bool IsVirtual(NetworkInterface nic) =>
+        nic.NetworkInterfaceType is NetworkInterfaceType.Tunnel or NetworkInterfaceType.Ppp
+        || VirtualNames.Any(v => nic.Description.Contains(v, StringComparison.OrdinalIgnoreCase) || nic.Name.Contains(v, StringComparison.OrdinalIgnoreCase));
 
     // Throws for adapters without IPv4 (such as IPv6-only tunnels) rather than returning null.
     static int? IPv4Index(IPInterfaceProperties properties)
