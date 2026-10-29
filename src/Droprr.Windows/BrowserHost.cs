@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -19,7 +19,7 @@ namespace Droprr;
 // its code. The page reaches this class through requests to its own origin under /api, which never leave the PC.
 sealed class BrowserHost : IDisposable
 {
-    public const string DefaultRelay = "wss://droprr-relay.example.workers.dev";
+    public const string DefaultRelay = "wss://droprr-relay.droprr-domain.workers.dev";
     public const string DefaultSite = "https://gingivere0.github.io/droprr/";
     const string Origin = "https://host.droprr.example";
 
