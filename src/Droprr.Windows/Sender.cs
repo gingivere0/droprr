@@ -23,7 +23,7 @@ public sealed record SendOutcome(string Path, bool IdentityChanged)
 }
 
 // What a peer's /ping says about it.
-public sealed record PingInfo(string? Platform, string? Id, string? Fingerprint, int? TlsPort);
+public sealed record PingInfo(string? Platform, string? Id, string? Fingerprint, int? TlsPort, string? Version = null);
 
 // A /pair or /pair/request response: the device token minted for this PC, and the peer's identity and addresses.
 public sealed record PairInfo(string Token, string? Name, string? Id, string? Fingerprint, int? TlsPort, List<string> Lan, string? Host);
@@ -251,12 +251,56 @@ static class Sender
             var root = json.RootElement;
             string? Text(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
             var tlsPort = root.TryGetProperty("tlsPort", out var port) && port.ValueKind == JsonValueKind.Number ? port.GetInt32() : (int?)null;
-            return new PingInfo(Text("platform"), Text("id"), Text("fp")?.ToLowerInvariant(), tlsPort);
+            return new PingInfo(Text("platform"), Text("id"), Text("fp")?.ToLowerInvariant(), tlsPort, Text("version"));
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException)
         {
             return null;
         }
+    }
+
+    // Settings' Test: /ping the way a send would go (Wi-Fi first, pinned; then Tailscale). Returns, for example,
+    // "Mac · v0.1.0 · Wi-Fi", or what went wrong.
+    public static async Task<(bool Ok, string Text)> TestAsync(Peer peer, CancellationToken cancel = default)
+    {
+        if (peer.Token.Length == 0)
+            return (false, "Missing Token");
+        var routes = new List<Route>();
+        if (await LanRouteAsync(peer, cancel) is { } lan)
+            routes.Add(lan);
+        if (peer.Host.Length > 0)
+            routes.Add(TailscaleRoute(peer));
+        if (routes.Count == 0)
+            return (false, "Not on this network right now");
+        var identityChanged = false;
+        foreach (var route in routes)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+            timeout.CancelAfter(TimeSpan.FromSeconds(4));
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(route.Base, "ping"));
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", peer.Token);
+                using var response = await route.Client.SendAsync(request, timeout.Token);
+                if ((int)response.StatusCode == 401)
+                    return (false, "Wrong token");
+                if (!response.IsSuccessStatusCode)
+                    continue;
+                using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
+                string? Text(string name) => json.RootElement.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+                var platform = Text("platform") switch { "macos" => "Mac", "windows" => "Windows PC", "ios" => "iPhone", var other => other ?? "Droprr" };
+                var path = route.Path == "lan" ? "Wi-Fi" : "Tailscale";
+                return (true, $"{platform} · v{Text("version") ?? "?"} · {path}" + (identityChanged ? " (Wi-Fi identity changed: pair again)" : ""));
+            }
+            catch (HttpRequestException ex) when (ex.InnerException is AuthenticationException)
+            {
+                identityChanged = true;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException)
+            {
+            }
+        }
+        return (false, identityChanged ? $"{peer.Name}'s identity changed. Pair again." : "Couldn't reach it");
     }
 
     // "url" for a single http(s) link, otherwise "text".

@@ -85,6 +85,33 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         Loaded += async (_, _) => await ShowFirewallAsync();
     }
 
+    // Test: /ping the selected device, Wi-Fi first (pinned) and then Tailscale, as a send would.
+    async void OnTestPeer(object sender, RoutedEventArgs e)
+    {
+        PeerGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        if (PeerGrid.SelectedItem is not Peer peer)
+        {
+            TestResult.Text = "Select a device first.";
+            return;
+        }
+        if (peer.IsPhone && peer.Token.Length == 0)
+        {
+            TestResult.Text = $"{peer.Name}: phones collect items when Droprr opens.";
+            return;
+        }
+        TestButton.IsEnabled = false;
+        TestResult.Text = $"Testing {peer.Name}…";
+        try
+        {
+            var (_, text) = await Sender.TestAsync(peer);
+            TestResult.Text = $"{peer.Name}: {text}";
+        }
+        finally
+        {
+            TestButton.IsEnabled = true;
+        }
+    }
+
     void ShowNearby()
     {
         var nearby = _app.UnpairedNearby().Where(d => !_peers.Any(p => p.Id == d.Id)).ToList();

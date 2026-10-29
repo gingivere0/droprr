@@ -69,9 +69,22 @@ public sealed class Peer
 
     [JsonIgnore]
     public string Note => !IsPaired ? "Missing Token"
-        : !IsPhone ? Host
+        : !IsPhone ? Address
         : Waiting > 0 ? $"iPhone · {Waiting} waiting"
         : "iPhone";
+
+    // Where the device is: its Tailscale host, or for a device paired over Wi-Fi, its Wi-Fi address. Never an
+    // empty host.
+    [JsonIgnore]
+    public string Address => Host.Length > 0 ? Host : LanAddress ?? "Wi-Fi";
+
+    // The first LAN address without its port ("192.168.1.20" from "192.168.1.20:53319", "fe80::1" from
+    // "[fe80::1]:53319"), or null.
+    [JsonIgnore]
+    public string? LanAddress => Lan.Count == 0 ? null
+        : Lan[0].StartsWith('[') ? Lan[0][1..Math.Max(1, Lan[0].IndexOf(']'))]
+        : Lan[0].LastIndexOf(':') is var colon and > 0 ? Lan[0][..colon]
+        : Lan[0];
 }
 
 public sealed class AppSettings
