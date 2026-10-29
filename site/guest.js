@@ -141,6 +141,10 @@ function connect(target) {
   current.pc = pc;
   const channel = pc.createDataChannel("droprr", { ordered: true });
   pc.onicecandidate = (event) => current.relay?.send({ m: { t: "ice", c: event.candidate ? event.candidate.toJSON() : null } });
+  const pending = [];
+  const addCandidate = async (candidate) => {
+    try { await pc.addIceCandidate(candidate || null); } catch { /* a candidate this browser can't use */ }
+  };
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === "failed") fail(`Couldn't connect to ${name} directly. Both devices need to be on the same Wi-Fi.`);
   };
@@ -162,8 +166,11 @@ function connect(target) {
           return fail(`That isn't the computer whose code you scanned. Scan its code again.`);
         }
         await pc.setRemoteDescription({ type: "answer", sdp: m.sdp });
-      } else if (m.t === "ice" && pc.remoteDescription) {
-        try { await pc.addIceCandidate(m.c || null); } catch { /* a candidate this browser can't use */ }
+        for (const c of pending.splice(0)) await addCandidate(c);
+      } else if (m.t === "ice") {
+        // Candidates can arrive before the answer is applied; dropping them made first tries fail.
+        if (pc.remoteDescription) await addCandidate(m.c);
+        else pending.push(m.c);
       } else if (m.t === "error") {
         fail(String(m.e || "The computer refused the connection."));
       }

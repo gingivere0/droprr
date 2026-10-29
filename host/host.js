@@ -94,11 +94,14 @@ function connectRelay() {
 }
 
 function dropGuest(cid) {
+  // The relay only introduces: a browser leaves it as soon as its data channel opens, which can be before this
+  // side sees the channel, so leaving never closes the connection. A browser that never says hello is dropped by
+  // the hello timeout instead.
   const guest = guests.get(cid);
-  // The relay only introduces: a browser that's connected directly stays connected when it leaves the relay.
-  if (!guest || guest.link?.open) return;
-  guest.pc.close();
-  guests.delete(cid);
+  if (guest && !guest.pc.remoteDescription) {
+    guest.pc.close();
+    guests.delete(cid);
+  }
 }
 
 async function handleSignal(cid, m) {
@@ -106,7 +109,8 @@ async function handleSignal(cid, m) {
   if (m.t === "offer" && typeof m.sdp === "string" && m.sdp.length < 12000) {
     if (guest) guest.pc.close();
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, certificates: [certificate] });
-    guest = { pc, link: null, peer: null };
+    // Candidates that arrive while the offer is still being applied wait here; dropping them made first tries fail.
+    guest = { pc, link: null, peer: null, pending: [] };
     guests.set(cid, guest);
     pc.onicecandidate = (event) => relay.send({ t: "to", cid, m: { t: "ice", c: event.candidate ? event.candidate.toJSON() : null } });
     pc.onconnectionstatechange = () => {
@@ -121,11 +125,17 @@ async function handleSignal(cid, m) {
     // A browser that doesn't say hello soon is dropped.
     setTimeout(() => { if (!guest.peer) pc.close(); }, 30000);
     await pc.setRemoteDescription({ type: "offer", sdp: m.sdp });
+    for (const c of guest.pending.splice(0)) await addCandidate(pc, c);
     await pc.setLocalDescription(await pc.createAnswer());
     relay.send({ t: "to", cid, m: { t: "answer", sdp: pc.localDescription.sdp } });
-  } else if (m.t === "ice" && guest?.pc.remoteDescription) {
-    try { await guest.pc.addIceCandidate(m.c || null); } catch { /* unusable candidate */ }
+  } else if (m.t === "ice" && guest) {
+    if (guest.pc.remoteDescription) await addCandidate(guest.pc, m.c);
+    else guest.pending.push(m.c);
   }
+}
+
+async function addCandidate(pc, candidate) {
+  try { await pc.addIceCandidate(candidate || null); } catch { /* unusable candidate */ }
 }
 
 function accept(cid, guest, channel) {
