@@ -1,19 +1,20 @@
 #if DEBUG
 import SwiftUI
 
-/// Debug builds only: `DROPRR_SNAPSHOT=<dir>` renders the Send window and Settings to PNGs
+/// Debug builds only: `DROPRR_SNAPSHOT=<dir>` renders the Send window, Settings, the panel and Pair a phone to PNGs
 /// so layout can be checked without a screen, then quits.
 @MainActor
 enum SnapshotSupport {
     static func runIfRequested(model: MacModel) {
         dumpWindowsIfRequested()
         guard let dir = ProcessInfo.processInfo.environment["DROPRR_SNAPSHOT"] else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) {   // time for the host page, for the one code
             for scheme in [ColorScheme.light, .dark] {
                 let suffix = scheme == .light ? "light" : "dark"
                 render(SendView(model: model), to: "\(dir)/send-\(suffix).png", scheme: scheme)
                 render(MacSettingsView(model: model).content.frame(width: 580).lookRoot(), to: "\(dir)/settings-\(suffix).png", scheme: scheme)
                 render(PanelView(model: model), to: "\(dir)/panel-\(suffix).png", scheme: scheme)
+                render(PairView(model: model).lookRoot(), to: "\(dir)/pair-\(suffix).png", scheme: scheme)
             }
             NSApp.terminate(nil)
         }
@@ -34,7 +35,7 @@ extension SnapshotSupport {
     /// (class, frame, opacity, layer color) so window chrome can be checked without a screen.
     static func dumpWindowsIfRequested() {
         guard let file = ProcessInfo.processInfo.environment["DROPRR_WINDOW_DUMP"] else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) {   // time for the host page, for the one code
             NSApp.activate(ignoringOtherApps: true)
             NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             // Also open the menu bar popup, so its window shows up in the dump.

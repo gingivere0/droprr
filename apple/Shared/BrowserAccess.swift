@@ -41,6 +41,18 @@ final class BrowserAccess {
         return fresh
     }
 
+    /// Opens only the join secret (the one code in Pair a phone), without a typed code.
+    func openJoin() {
+        var secretBytes = [UInt8](repeating: 0, count: 16)
+        _ = SecRandomCopyBytes(kSecRandomDefault, secretBytes.count, &secretBytes)
+        lock.withLock {
+            code = nil
+            joinSecret = Data(secretBytes).base64URL
+            expires = Date().addingTimeInterval(Self.lifetime)
+            wrong = 0
+        }
+    }
+
     func close() {
         lock.withLock {
             code = nil

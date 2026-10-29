@@ -81,6 +81,15 @@ final class PhoneModel {
         }
         receiver?.startSecure()
         #if DEBUG
+        // Tests: DROPRR_JOIN=<one code link> pairs with it as if scanned.
+        if let code = ProcessInfo.processInfo.environment["DROPRR_JOIN"] {
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                pair(with: code)
+                while case .working = pairingStatus { try? await Task.sleep(for: .milliseconds(200)) }
+                NSLog("Droprr test: join %@", String(describing: pairingStatus))
+            }
+        }
         // Tests: DROPRR_AUTO_LAN_PAIR=<name> pairs with that nearby device once it's found.
         if let name = ProcessInfo.processInfo.environment["DROPRR_AUTO_LAN_PAIR"] {
             Task {
@@ -319,6 +328,7 @@ final class PhoneModel {
 
     func completePairing(_ info: PairingInfo) {
         pendingPairing = nil
+        if let secret = info.join { return join(info, secret: secret) }
         var peer = settings.apply(info)
         pairingStatus = .working("Pairing with \(peer.name)")
         Task {
@@ -351,6 +361,46 @@ final class PhoneModel {
                 await collectInbox()
             } catch {
                 pairingStatus = .failure("Added \(peer.name), but it didn't answer: \(error.localizedDescription) Check that both devices are on the same Wi-Fi or on Tailscale.")
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        }
+    }
+
+    /// The one code: pair with the computer's join secret (no token in the code). Nothing is saved until the computer
+    /// answers with this phone's device token.
+    private func join(_ info: PairingInfo, secret: String) {
+        pairingStatus = .working("Pairing with \(info.name)")
+        Task {
+            do {
+                let minted = DroprrSettings.generateToken()
+                let result = try await DroprrClient.join(info.peer, secret: secret, name: settings.deviceName,
+                                                         platform: DroprrSettings.platform, token: minted)
+                guard let token = result.token else { throw DroprrError.notPaired }
+                var paired = info
+                paired.token = token
+                paired.join = nil
+                var peer = settings.apply(paired)
+                if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) {
+                    settings.peers[i].acceptToken = minted
+                    peer = settings.peers[i]
+                }
+                settings.learn(peer.id, deviceID: result.deviceID, fingerprint: result.fingerprint, tlsPort: result.tlsPort,
+                               lan: result.lan, host: result.host, replacePin: result.fingerprint != nil)
+                pairingStatus = .success("Paired with \(result.name)")
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                Task {
+                    try? await Task.sleep(for: .seconds(2.5))
+                    if case .success = pairingStatus { pairingStatus = nil }
+                }
+                await collectInbox()
+            } catch DroprrError.server(409, let message) {
+                pairingStatus = .failure("\(info.name) says this iPhone is \(message).")
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            } catch DroprrError.server(401, _) {
+                pairingStatus = .failure("That code has expired. Open Pair a phone on \(info.name) again and scan the new code.")
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            } catch {
+                pairingStatus = .failure("Couldn't reach \(info.name): \(error.localizedDescription) Check that both devices are on the same Wi-Fi or on Tailscale.")
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
         }

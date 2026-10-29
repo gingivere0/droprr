@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct SendView: View {
     @Bindable var model: MacModel
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     @State private var selectedID: UUID?
     @State private var files: [URL] = []
     @State private var text = ""
@@ -110,7 +111,7 @@ struct SendView: View {
             // Atelier tabs scroll sideways when there are many; cards wrap onto more rows (at most 4 per row).
             let layout = Look.isAtelier
                 ? AnyLayout(HStackLayout(alignment: .top, spacing: 28))
-                : AnyLayout(GridFlowLayout(columns: min(max(model.settings.peers.count, 1), 4), spacing: Space.md))
+                : AnyLayout(GridFlowLayout(columns: min(model.settings.peers.count + 1, 4), spacing: Space.md))
             ScrollView(Look.isAtelier ? .horizontal : [], showsIndicators: false) {
             layout {
                 ForEach(Array(model.settings.peers.enumerated()), id: \.element.id) { index, peer in
@@ -128,6 +129,11 @@ struct SendView: View {
                                     .hidden()
                             }
                         }
+                }
+                // Add a device: opens Pair a phone (the one code). Never a send target.
+                AddDeviceTile {
+                    openWindow(id: "pair")
+                    bringToFront()
                 }
             }
             }
@@ -414,6 +420,62 @@ private struct DeviceTab: View {
             } else {
                 Text(Theme.platformName(peer.platform)).font(.system(size: 11)).foregroundStyle(Look.muted)
             }
+        }
+    }
+}
+
+/// The plus after the device tiles: opens Pair a phone, for a phone's browser or the Droprr app.
+private struct AddDeviceTile: View {
+    var action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Group {
+            if Look.isAtelier { tab } else { card }
+        }
+        .onHover { hovering = $0 }
+        .hoverHint("Add a phone or a browser with a QR code")
+        .accessibilityLabel("Add a device")
+        .motion(Motion.fast, value: hovering)
+    }
+
+    private var card: some View {
+        let shape = RoundedRectangle(cornerRadius: Look.style == .material ? 16 : 20, style: .continuous)
+        return Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                Image(systemName: "plus").font(.system(size: 18, weight: .medium))
+                Spacer(minLength: Space.xs)
+                Text("Add a device").font(.system(size: 14, weight: Look.style == .clay ? .bold : .semibold)).lineLimit(1)
+                Text("Phone or browser").font(.system(size: 11)).foregroundStyle(Look.muted)
+            }
+            .foregroundStyle(hovering ? Look.ink : Look.muted)
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
+            .background {
+                shape.fill(hovering ? Look.container : .clear)
+                    .overlay(shape.strokeBorder(Look.hairline, style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
+            }
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var tab: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button(action: action) {
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    HStack(spacing: Space.sm) {
+                        Image(systemName: "plus").font(.system(size: 13))
+                        Text("Add a device").font(Look.display(18)).lineLimit(1)
+                    }
+                    .foregroundStyle(hovering ? Look.ink : Look.muted)
+                    Rectangle().fill(hovering ? Look.hairline : .clear).frame(height: 2)
+                }
+                .fixedSize()
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Text("Phone or browser").font(.system(size: 11)).foregroundStyle(Look.muted)
         }
     }
 }

@@ -92,7 +92,7 @@ final class DroprrReceiver {
     /// plain listener over loopback only. The handler checks the page's own cookie, Host and Origin.
     var hostBridge: ((HTTPServer.Request) async -> HTTPServer.Response)?
     /// This device's MagicDNS name, if Tailscale has one: a Host a browser may use.
-    private var magicDNS: String?
+    private(set) var magicDNS: String?
     private let settings: DroprrSettings
     private let inbox: URL
 
@@ -224,6 +224,8 @@ final class DroprrReceiver {
            Route(request).segments.count == 2, Route(request).segments.first == "pair" {
             return request.secure && onPairRequest != nil ? nil : .json(404, ["ok": false, "error": "not found"])
         }
+        // The one code: POST /pair may use the open join secret instead of a token (docs/PROTOCOL.md, "One code").
+        if isJoin(request) { return onPair == nil ? .json(404, ["ok": false, "error": "not found"]) : nil }
         guard let auth = authorization(request) else {
             return .json(401, ["ok": false, "error": "unauthorized"])
         }
@@ -261,6 +263,13 @@ final class DroprrReceiver {
             segments = (components?.path ?? request.path).split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }
             for item in components?.queryItems ?? [] { query[item.name] = item.value ?? "" }
         }
+    }
+
+    /// POST /pair with the open join secret and no Authorization header.
+    private func isJoin(_ request: HTTPServer.Request) -> Bool {
+        let route = Route(request)
+        return request.method == "POST" && route.segments == ["pair"] && request.header("authorization") == nil
+            && browserAccess?.isSecret(request.header("x-droprr-join")) == true
     }
 
     /// Which token authorized the request: the main token or a paired device's token.
@@ -348,6 +357,19 @@ final class DroprrReceiver {
                 }
                 port = value
             }
+            // With the join secret, like LAN pairing: always a new peer, and a device that's already paired must be
+            // removed first, so a code shown to a guest can't take over another device's record.
+            let joined = isJoin(request)
+            let deviceID = Self.deviceID(json["id"])
+            let fingerprint = request.clientFingerprint ?? Self.fingerprint(json["fp"])
+            if joined, let conflict = DispatchQueue.main.sync(execute: { () -> String? in
+                settings.peers.first { peer in
+                    (deviceID != nil && peer.deviceID == deviceID)
+                        || (fingerprint != nil && peer.fingerprint?.lowercased() == fingerprint?.lowercased())
+                }.map { "already paired as \($0.name): remove it on \(settings.deviceName) to pair again" }
+            }) {
+                return .json(409, ["ok": false, "error": conflict])
+            }
             let callerToken = (json["token"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             let minted = DroprrSettings.generateToken()
             // Store before answering, so the caller's very next request with the new token is accepted.
@@ -356,8 +378,9 @@ final class DroprrReceiver {
             if case .device(let id) = authorization(request) { existing = id }
             let pair = PairRequest(name: name, platform: platform, host: host, port: port,
                                    token: callerToken, acceptToken: minted,
-                                   deviceID: Self.deviceID(json["id"]), fingerprint: Self.fingerprint(json["fp"]),
-                                   tlsPort: json["tlsPort"] as? Int, lan: json["lan"] as? [String], existingPeerID: existing)
+                                   deviceID: deviceID, fingerprint: fingerprint,
+                                   tlsPort: json["tlsPort"] as? Int, lan: json["lan"] as? [String], existingPeerID: existing,
+                                   viaLAN: joined)
             DispatchQueue.main.sync { onPair(pair) }
             return .json(200, responseFields(token: minted))
         }

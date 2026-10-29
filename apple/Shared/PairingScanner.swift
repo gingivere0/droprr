@@ -12,7 +12,7 @@ struct PairingScannerSheet: View {
             Group {
                 if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
                     QRScanner { code in
-                        guard code.lowercased().hasPrefix("droprr://pair") else { return }
+                        guard PairingInfo.isCode(code) else { return }
                         dismiss()
                         onCode(code)
                     }
@@ -61,7 +61,7 @@ private struct QRScanner: UIViewControllerRepresentable {
 
         func dataScanner(_ scanner: DataScannerViewController, didAdd items: [RecognizedItem], allItems: [RecognizedItem]) {
             for case .barcode(let barcode) in items {
-                guard !done, let value = barcode.payloadStringValue, value.lowercased().hasPrefix("droprr://pair") else { continue }
+                guard !done, let value = barcode.payloadStringValue, PairingInfo.isCode(value) else { continue }
                 done = true
                 scanner.stopScanning()
                 onCode(value)

@@ -239,6 +239,40 @@ struct DroprrClient {
     func pair(name: String, platform: String, host: String? = nil, port: Int? = nil, token: String? = nil) async throws -> PairResult {
         var request = try makeRequest(path: "/pair", method: "POST")
         request.timeoutInterval = 5
+        try Self.pairBody(&request, name: name, platform: platform, host: host, port: port, token: token)
+        let (data, response) = try await session.data(for: request)
+        try check(response, data)
+        return Self.pairResult(data, peer: peer)
+    }
+
+    /// The one code (docs/PROTOCOL.md, "One code"): POST /pair with the computer's open join secret and no token,
+    /// over the LAN pinned to the code's fingerprint first, then Tailscale. A device that answers decides: its
+    /// error (wrong secret, already paired) isn't retried on another path.
+    static func join(_ peer: Peer, secret: String, name: String, platform: String, token: String?) async throws -> PairResult {
+        var bases: [(URL, URLSession)] = []
+        if let fp = peer.fingerprint {
+            let pinned = URLSession(configuration: .ephemeral, delegate: PinnedTrust(fingerprint: fp), delegateQueue: nil)
+            bases += peer.lanURLs.map { ($0, pinned) }
+        }
+        if let base = peer.baseURL, let host = base.host, await resolvesInsideTailnet(host) { bases.append((base, session)) }
+        for (base, session) in bases {
+            guard let url = URL(string: base.absoluteString + "/pair") else { continue }
+            var request = URLRequest(url: url, timeoutInterval: base.scheme == "https" ? 3 : 6)
+            request.httpMethod = "POST"
+            request.setValue(secret, forHTTPHeaderField: "X-Droprr-Join")
+            try pairBody(&request, name: name, platform: platform, host: nil, port: nil, token: token)
+            guard let (data, response) = try? await session.data(for: request) else { continue }
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String ?? ""
+                throw DroprrError.server(http.statusCode, message)
+            }
+            return pairResult(data, peer: peer)
+        }
+        throw DroprrError.unreachable(peer.name)
+    }
+
+    private static func pairBody(_ request: inout URLRequest, name: String, platform: String, host: String?, port: Int?,
+                                 token: String?) throws {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         var body: [String: Any] = ["name": name, "platform": platform]
         if let host { body["host"] = host }
@@ -246,8 +280,9 @@ struct DroprrClient {
         if let token { body["token"] = token }
         body.merge(DroprrSettings.shared.ownIdentityFields) { a, _ in a }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await session.data(for: request)
-        try check(response, data)
+    }
+
+    private static func pairResult(_ data: Data, peer: Peer) -> PairResult {
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         return PairResult(name: json?["name"] as? String ?? peer.name,
                           token: (json?["token"] as? String).flatMap { $0.isEmpty ? nil : $0 },

@@ -54,10 +54,15 @@ final class BrowserHost: NSObject, WKNavigationDelegate {
         return Data(SHA256.hash(data: key)).base64URL
     }
 
-    /// The link in the QR code, while a code is open and the page is ready.
+    /// What the Droprr app needs to pair from the one code (docs/PROTOCOL.md, "One code"), as base64url JSON.
+    var appInfo: () -> String? = { nil }
+
+    /// The one code, while the Pair a phone window is open and the page is ready:
+    /// <site>#<room>.<secret>.<fp>.<app>.
     var joinLink: String? {
         guard let fingerprint, let secret = access.secret else { return nil }
-        return "\(Self.site)#\(room).\(secret).\(fingerprint)"
+        let app = appInfo().map { ".\($0)" } ?? ""
+        return "\(Self.site)#\(room).\(secret).\(fingerprint)\(app)"
     }
 
     private var origin: String { "http://localhost:\(settings.port)" }

@@ -132,14 +132,9 @@ struct PanelView: View {
                 try? FileManager.default.createDirectory(at: MacModel.inbox, withIntermediateDirectories: true)
                 NSWorkspace.shared.open(MacModel.inbox)
             }
-            FooterButton(title: "Pair", help: "Pair a phone with a QR code (⌘P)", key: "p") {
+            FooterButton(title: "Pair", help: "Pair a phone or a browser with a QR code (⌘P)", key: "p") {
                 closeMenuBarPanel()
                 openWindow(id: "pair")
-                bringToFront()
-            }
-            FooterButton(title: "Browser", help: "Open in a browser… (⌘B)", key: "b") {
-                closeMenuBarPanel()
-                openWindow(id: "browser")
                 bringToFront()
             }
             FooterButton(title: "Settings", help: "Settings (⌘,)", key: ",", action: showSettings)

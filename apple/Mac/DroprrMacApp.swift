@@ -28,12 +28,6 @@ struct DroprrMacApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
 
-        Window("Open in a Browser", id: "browser") {
-            BrowserAccessView(model: model)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
-
         Settings {
             MacSettingsView(model: model)
                 .onChange(of: model.settings.port) { model.restartIfNeeded() }
@@ -181,6 +175,7 @@ final class MacModel {
         receiver.hostBridge = { request in await host.handle(request) }
         host.onChange = { [weak self] in self?.browserHostVersion += 1 }
         host.onBrowserJoined = { [weak self] name in self?.connectedBrowser = name }
+        host.appInfo = { [weak self] in self?.appInfo }
         receiver.addBrowser = { [weak self] in self?.addBrowser($0) ?? "Browser" }
         receiver.onBrowserRemoved = { [weak self] id in
             guard let self, let peer = self.settings.peers.first(where: { $0.id == id }) else { return }
@@ -188,12 +183,9 @@ final class MacModel {
             self.settings.peers.removeAll { $0.id == id }
         }
         #if DEBUG
-        // Tests: DROPRR_BROWSER_CODE=1 opens a Browser access code at launch and logs it.
-        if ProcessInfo.processInfo.environment["DROPRR_BROWSER_CODE"] != nil { NSLog("Droprr test: browser code %@", browserAccess.open()) }
+        // Tests: DROPRR_BROWSER_CODE=1 opens the one code's join secret at launch (the link is logged once ready).
+        if ProcessInfo.processInfo.environment["DROPRR_BROWSER_CODE"] != nil { browserAccess.openJoin() }
         #endif
-        browserAccess.onEnded = { [weak self] used in
-            DispatchQueue.main.async { if !used { self?.browserCodeClosed = true } }
-        }
         outbox.onChange = { [weak self] in
             self?.outboxVersion += 1
             self?.browserHost.outboxChanged()
@@ -337,16 +329,40 @@ final class MacModel {
 
     // MARK: Browser access
 
-    /// The "Open in a browser" code; only open while that window is.
+    /// The one code's join secret; only open while Pair a phone is.
     @ObservationIgnored let browserAccess = BrowserAccess()
     /// Browser access over the internet: the hidden host page (website, relay and WebRTC).
     @ObservationIgnored private(set) var browserHost: BrowserHost!
     /// Bumped when the host page reports its fingerprint or who's connected.
     var browserHostVersion = 0
-    /// The browser that just connected (the window says so, then closes).
+    /// The browser that just connected (Pair a phone says so, then closes).
     var connectedBrowser: String?
-    /// Five wrong codes closed the current one.
-    var browserCodeClosed = false
+
+    /// The one code's <app> part: what the Droprr app needs to pair, and never a token.
+    var appInfo: String? {
+        var info: [String: Any] = ["v": 1, "n": settings.deviceName, "p": DroprrSettings.platform, "port": settings.port,
+                                   "id": settings.deviceID,
+                                   "l": settings.localNetwork ? LocalAddresses.lan(port: settings.tlsPort) : []]
+        if let fp = settings.identity?.fingerprint { info["f"] = fp }
+        if let tailscale = PairingInfo.tailscaleAddress() {
+            info["h"] = tailscale
+            if let dns = receiver.magicDNS { info["d"] = dns }
+        }
+        return (try? JSONSerialization.data(withJSONObject: info, options: [.sortedKeys, .withoutEscapingSlashes]))?.base64URL
+    }
+
+    /// Opens the one code (Pair a phone): the join secret for browsers and the app.
+    func openOneCode() {
+        connectedBrowser = nil
+        lastPaired = nil
+        browserAccess.openJoin()
+        browserHost.configChanged()   // the host page learns the new join secret
+    }
+
+    func closeOneCode() {
+        browserAccess.close()
+        browserHost.configChanged()
+    }
 
     private func addBrowser(_ request: PairRequest) -> String {
         let peer = Peer(name: settings.uniqueName(request.name), host: "", port: request.port, platform: "web",

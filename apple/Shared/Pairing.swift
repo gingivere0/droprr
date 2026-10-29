@@ -16,6 +16,9 @@ struct PairingInfo: Equatable {
     var id: String?
     var fp: String?
     var lan: [String] = []
+    /// The one code's join secret (docs/PROTOCOL.md, "One code"): pair with it in place of a token, which the code
+    /// never carries.
+    var join: String?
 
     static let version = 1
 
@@ -33,7 +36,8 @@ struct PairingInfo: Equatable {
     }
 
     init(name: String, host: String, port: Int, token: String, platform: String?, dns: String? = nil,
-         id: String? = nil, fp: String? = nil, lan: [String] = []) {
+         id: String? = nil, fp: String? = nil, lan: [String] = [], join: String? = nil) {
+        self.join = join
         self.name = name
         self.host = host
         self.port = port
@@ -53,6 +57,7 @@ struct PairingInfo: Equatable {
     }
 
     static func parse(_ string: String) -> Result<PairingInfo, ParseError> {
+        if let code = oneCodeFragment(string) { return parseOneCode(code) }
         guard let components = URLComponents(string: string.trimmingCharacters(in: .whitespacesAndNewlines)),
               components.scheme?.lowercased() == "droprr", components.host?.lowercased() == "pair" else {
             return .failure(.notDroprr)
@@ -72,6 +77,51 @@ struct PairingInfo: Equatable {
                                     id: query["id"].flatMap { $0.isEmpty ? nil : $0 },
                                     fp: query["fp"].flatMap { $0.count == 64 ? $0.lowercased() : nil },
                                     lan: (query["lan"] ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty }))
+    }
+
+    /// Whether a scanned or opened string is one of Droprr's codes: the pairing QR, droprr://join, or the website's
+    /// one code (any https link whose fragment is <room>.<secret>.<fp>.<app>).
+    static func isCode(_ string: String) -> Bool {
+        string.lowercased().hasPrefix("droprr://pair") || oneCodeFragment(string) != nil
+    }
+
+    /// "<room>.<secret>.<fp>.<app>" from droprr://join?code=… or from the website link's fragment.
+    private static func oneCodeFragment(_ string: String) -> String? {
+        guard let components = URLComponents(string: string.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+        let scheme = components.scheme?.lowercased()
+        let code: String?
+        if scheme == "droprr", components.host?.lowercased() == "join" {
+            code = components.queryItems?.first { $0.name == "code" }?.value
+        } else if scheme == "https" {
+            code = components.fragment.map { $0.removingPercentEncoding ?? $0 }
+        } else {
+            code = nil
+        }
+        guard let code, code.split(separator: ".", omittingEmptySubsequences: false).count == 4 else { return nil }
+        return code
+    }
+
+    private static func parseOneCode(_ code: String) -> Result<PairingInfo, ParseError> {
+        let parts = code.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+        guard let data = Data(base64URL: parts[3]),
+              let app = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return .failure(.notDroprr) }
+        if let v = app["v"] as? Int, v > version { return .failure(.newerVersion) }
+        let secret = parts[1]
+        guard secret.count >= 16, secret.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }) else {
+            return .failure(.notDroprr)
+        }
+        let lan = (app["l"] as? [String] ?? []).filter { !$0.isEmpty }
+        let tailscale = (app["h"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let dns = (app["d"] as? String).flatMap { $0.isEmpty ? nil : $0.trimmingCharacters(in: CharacterSet(charactersIn: ".")) }
+        let fp = (app["f"] as? String).flatMap { $0.count == 64 ? $0.lowercased() : nil }
+        // Over the LAN only, the first LAN address stands in for the host (HTTPS, pinned to fp).
+        guard let host = tailscale ?? (fp != nil ? lan.first.map(hostPart) : nil) else { return .failure(.notDroprr) }
+        let name = (app["n"] as? String).map(PairRequest.displayName).flatMap { $0.isEmpty ? nil : $0 } ?? dns ?? host
+        return .success(PairingInfo(name: name, host: host, port: app["port"] as? Int ?? DroprrDefaults.port, token: "",
+                                    platform: (app["p"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                                    dns: tailscale == nil ? nil : dns,
+                                    id: (app["id"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                                    fp: fp, lan: lan, join: secret))
     }
 
     /// Where to connect: the MagicDNS name when known, since the IP can change.
@@ -128,7 +178,8 @@ struct PairingInfo: Equatable {
     var tailnetHost: String { Self.isTailscaleHost(connectHost) ? connectHost : "" }
 
     var peer: Peer {
-        var peer = Peer(name: name, host: tailnetHost, port: port, platform: platform, remoteName: name, token: token)
+        var peer = Peer(name: name, host: tailnetHost, port: port, platform: platform, remoteName: name,
+                        token: token.isEmpty ? nil : token)
         peer.deviceID = id
         peer.fingerprint = fp
         peer.tlsPort = port + 1
