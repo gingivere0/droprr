@@ -454,6 +454,8 @@ A computer serves its own web page, so any phone's browser can send to it and re
 
 Plain HTTP stays Tailscale and loopback only, as everywhere else. The HTTPS port asks for a client certificate but doesn't require one, so browsers continue without one.
 
+**A receiver that can't make client certificates optional** (the Mac, whose Network.framework listener either requires them or never asks) serves the page on a third listener instead, at the HTTP port + 2 (**`53320`**). It uses the same certificate and the same allowed addresses as the HTTPS port, asks for no client certificate, and serves only the page, `/web/session`, `/web/signout`, and the endpoints the cookie works on (below); everything else is `404` there. Its Wi-Fi address is then `https://<private LAN address>:53320/web`. The QR code always carries the full address, so a browser never needs to know which port a receiver uses. Windows keeps serving the page on `53319`, which avoids a second firewall rule.
+
 ### Connecting a browser
 
 1. On the computer, the person chooses **Open in a browser**. It shows a QR code of `<address>#<code>` and, to type by hand, the address and the code.
