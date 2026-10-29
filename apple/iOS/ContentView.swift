@@ -196,13 +196,6 @@ private struct SendTab: View {
         .sensoryFeedback(.selection, trigger: peerID)
         .background(backdrop)
         .toolbar(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { typing = false }
-                    .fontWeight(.semibold)
-            }
-        }
         .motion(Motion.standard, value: model.lastSendResult)
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }
