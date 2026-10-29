@@ -115,15 +115,19 @@ async function handleSignal(cid, m) {
     pc.onicecandidate = (event) => relay.send({ t: "to", cid, m: { t: "ice", c: event.candidate ? event.candidate.toJSON() : null } });
     pc.onconnectionstatechange = () => {
       if (["failed", "closed"].includes(pc.connectionState)) {
-        guests.delete(cid);
+        if (guests.get(cid) === guest) guests.delete(cid);
         reportStatus();
       }
     };
     pc.ondatachannel = (event) => {
-      if (event.channel.label === "droprr") accept(cid, guest, event.channel);
+      if (event.channel.label === "droprr" && !guest.link) accept(cid, guest, event.channel);
     };
     // A browser that doesn't say hello soon is dropped.
-    setTimeout(() => { if (!guest.peer) pc.close(); }, 30000);
+    setTimeout(() => {
+      if (guest.peer) return;
+      pc.close();
+      if (guests.get(cid) === guest) guests.delete(cid);
+    }, 30000);
     await pc.setRemoteDescription({ type: "offer", sdp: m.sdp });
     for (const c of guest.pending.splice(0)) await addCandidate(pc, c);
     await pc.setLocalDescription(await pc.createAnswer());
@@ -141,7 +145,9 @@ async function addCandidate(pc, candidate) {
 function accept(cid, guest, channel) {
   guest.link = new Link(channel, {
     onControl: async (message) => {
-      if (message.t !== "hello" || guest.peer) return;
+      // One hello per connection.
+      if (message.t !== "hello" || guest.hello) return;
+      guest.hello = true;
       let answer;
       try {
         answer = await (await postJson("/api/hello", {
@@ -166,9 +172,11 @@ function accept(cid, guest, channel) {
     onItem: (item) => save(guest, item),
     onClose: () => {
       guest.pc.close();
-      guests.delete(cid);
+      if (guests.get(cid) === guest) guests.delete(cid);
       reportStatus();
     },
+    // Nothing is taken from a browser until its hello was accepted.
+    accepting: () => !!guest.peer,
   });
 }
 

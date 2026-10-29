@@ -93,14 +93,16 @@
   //   text:  { t: "text", id, kind: "text" | "url", content }
   //   file:  { t: "file", id, name, size, type }, then binary chunks of at most 16 KB totaling size, then { t: "done", id }
   //   reply: { t: "saved", id } or { t: "failed", id, e }
-  // Anything else (hello, welcome, …) goes to onControl.
+  // Anything else (hello, welcome, …) goes to onControl. Until accepting() is true (the computer side: until the
+  // browser's hello was accepted), items and file chunks are ignored, so nothing piles up in memory unasked.
   class Link {
-    constructor(channel, { onControl, onItem, onProgress, onClose } = {}) {
+    constructor(channel, { onControl, onItem, onProgress, onClose, accepting = () => true } = {}) {
       this.channel = channel;
       this.onControl = onControl;
       this.onItem = onItem;
       this.onProgress = onProgress;
       this.onClose = onClose;
+      this.accepting = accepting;
       this.incoming = null;
       this.waiting = new Map();
       this.queue = Promise.resolve();
@@ -125,7 +127,13 @@
     async receive(data) {
       if (typeof data !== "string") {
         const item = this.incoming;
-        if (!item) return;
+        if (!item || !this.accepting()) return;
+        // More than the file said it was: refuse it rather than keep collecting.
+        if (item.received + data.byteLength > item.size) {
+          this.incoming = null;
+          this.control({ t: "failed", id: item.id, e: "too large" });
+          return;
+        }
         item.parts.push(data);
         item.received += data.byteLength;
         this.onProgress?.({ direction: "in", id: item.id, name: item.name, done: item.received, total: item.size });
@@ -133,6 +141,8 @@
       }
       let message;
       try { message = JSON.parse(data); } catch { return; }
+      if (!message || typeof message !== "object") return;
+      if (["text", "file", "done"].includes(message.t) && !this.accepting()) return;
       switch (message.t) {
         case "text":
           this.deliver({ id: message.id, kind: message.kind === "url" ? "url" : "text", content: String(message.content ?? "") });

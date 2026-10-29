@@ -171,8 +171,6 @@ function connect(target) {
         // Candidates can arrive before the answer is applied; dropping them made first tries fail.
         if (pc.remoteDescription) await addCandidate(m.c);
         else pending.push(m.c);
-      } else if (m.t === "error") {
-        fail(String(m.e || "The computer refused the connection."));
       }
     },
     onClose: (code) => {
@@ -323,7 +321,7 @@ async function startScan() {
       connect(code);
       return;
     }
-    if (text) setStatus($("start-status"), "That's not a Droprr code. Choose Open in a browser on the computer.", "error");
+    if (text) setStatus($("start-status"), "That's not a Droprr code. Choose Add a device on the computer.", "error");
     scanTimer = setTimeout(tick, 150);
   };
   tick();

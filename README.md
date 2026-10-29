@@ -4,6 +4,18 @@ Droprr pushes files, photos, text, and links to a specific device of your own: a
 
 https://github.com/user-attachments/assets/ffdede5f-c8e2-46f5-a341-a4838f963e42
 
+## Install
+
+Download everything from the [latest release](https://github.com/gingivere0/droprr/releases/latest). Every platform uses the same version number.
+
+| Platform | What to get | First run |
+| --- | --- | --- |
+| **Windows 10 or 11** | `DroprrSetup-<version>.exe` | It isn't code-signed yet, so SmartScreen says "Windows protected your PC". Choose **More info**, then **Run anyway**. It installs just for you, with no administrator rights and no separate .NET install. |
+| **Mac** (macOS 14 or later, Apple silicon or Intel) | `Droprr-<version>-unsigned.dmg` | Open the disk image and drag Droprr to Applications. It isn't notarized yet, so macOS blocks it the first time: open **System Settings › Privacy & Security**, scroll down, and choose **Open Anyway** (or right-click Droprr in Applications and choose **Open**). |
+| **iPhone** | Nothing to install | The iPhone app is waiting for App Store approval. Until then, use the [Droprr website](https://gingivere0.github.io/droprr/) in Safari, as shown in [In a browser](#in-a-browser). You can also send from the share sheet with the optional [Shortcuts](#iphone-shortcuts-optional). |
+
+Then, on the computer, choose **Add a device** (the plus after the device tiles in the Send window) and scan the code with your phone's camera.
+
 ## How it works
 
 - **Wi-Fi first, then Tailscale.** On the same Wi-Fi or wired network, devices find each other with Bonjour and talk over HTTPS on port `53319`. Each device has its own certificate, and each pins the other's, so the connection is encrypted and can't be impersonated, with no Tailscale needed. Anywhere else, Droprr falls back to Tailscale, which encrypts the traffic itself; computers accept those plain connections only from Tailscale addresses (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) and from the device itself, and Droprr never sends anything unencrypted to an address outside Tailscale. The status says which path each send took.
@@ -30,6 +42,8 @@ https://github.com/user-attachments/assets/ffdede5f-c8e2-46f5-a341-a4838f963e42
 - **Safer receiving.** Received files are marked as coming from another computer (Mark of the Web on Windows, quarantine on the Mac). On Windows, only common media, document, and text files open with a click, and anything else is shown in Explorer instead. Only `http` and `https` links ever open, and any other "link" is received as text.
 
 ## Setup
+
+The [Install](#install) steps above are all most people need. This section covers Tailscale, the details of each app, and building from source.
 
 For use away from home, install Tailscale on every device and sign in to the same tailnet. On one Wi-Fi network, Droprr works without it.
 
@@ -70,6 +84,8 @@ To build without deploying, run `dotnet build` in the repo root.
 
 ### Mac and iPhone
 
+**Install the Mac app** from the release's `.dmg` (see [Install](#install)). To build both apps from source instead:
+
 1. Copy `apple/Config/Local.xcconfig.example` to `apple/Config/Local.xcconfig` (gitignored) and set your Apple team ID and a bundle ID prefix.
 2. Open `apple/Droprr.xcodeproj` in Xcode, then run the `DroprrMac` target on the Mac and the `DroprriOS` target on the iPhone. The share extensions (`DroprrMacShare` and `DroprrShare`) come along with them.
 
@@ -81,23 +97,31 @@ See [apple/README.md](apple/README.md) for details.
 
 ## Pairing
 
-1. On a computer, open **Pair a phone**: in Settings on Windows, or with the QR button in the Mac's menu bar panel.
-2. On the iPhone, scan the code with the Camera app or with Droprr's scanner in Settings.
+1. On a computer, choose **Add a device** (the plus after the device tiles in the Send window), or **Pair a phone** from the tray icon on Windows or the menu bar panel on the Mac.
+2. Click the code to unblur it, then scan it with the phone's Camera app, or with the scanner in the Droprr app or on the website.
 
-The phone saves that computer's address and token, and the computer adds the phone to its devices, so each can send to the other. The QR code contains the token, so show it only to your own phone.
+There's one code for everything: a phone's browser connects through the website, and the Droprr app pairs from the same code. The code never contains a token. It works only while that window is open, for at most 10 minutes. Each device gets its own token when it pairs, so removing one in Settings cuts off only that device.
 
 To send between two computers, add the other one in Settings with its Tailscale name (for example, `<pc-name>` or `<mac-name>`) and the token from its Settings. When you save, the two introduce themselves: each side gets its own token for the other, so each can send to the other and either can revoke the other.
 
 ## In a browser
 
-Any phone (or another computer) can use Droprr in its browser, with no app. On Windows, right-click the tray icon and choose **Open in a browser**, then scan the code with the phone's camera. The page lets you send photos, files, text, and links to the computer, and shows what the computer sends to that browser, which appears as a device in the Send window.
+Any phone (or another computer) can use Droprr in its browser, with no app to install. This is how to use Droprr on an iPhone until the App Store app is approved.
 
-- **Website** (the default) works for anyone's phone on the same Wi-Fi as the computer, with no warning and no login. It's a page on GitHub Pages that connects the phone straight to the computer over the Wi-Fi with WebRTC, encrypted end to end; a small introduction server only helps the two find each other. A phone that connected once can come back later from the website's Recent computers, without scanning.
-- **Wi-Fi** is the computer's own page, with no internet needed. The browser warns once that the connection isn't private, because Droprr uses its own certificate: in Safari, tap **Show Details**, then **visit this website**. Type the code shown, or scan it.
-- **Tailscale** is the computer's own page over Tailscale, with no warning.
+<p>
+  <img src="docs/images/web-scan.png" alt="The Droprr website before connecting, with a Scan code button" width="300">
+  &nbsp;
+  <img src="docs/images/web-connected.png" alt="The Droprr website connected to a PC, with a send area and items received from the PC" width="300">
+</p>
 
-Each code works once, for 10 minutes, while the window is open. A connected browser stays connected until it's unused for 30 days, it taps **Disconnect**, or you remove it in Settings. See [Browser access](docs/PROTOCOL.md#browser-access) for how it's secured.
+1. On the computer, choose **Add a device** in the Send window and click the code to unblur it.
+2. Point the phone's camera at the code and tap the link. The [Droprr website](https://gingivere0.github.io/droprr/) opens and connects to the computer. You can also open the website first and tap **Scan code**.
+3. Choose photos or files, or type text or a link, and tap **Send**. They're saved on the computer like anything else it receives.
+4. To send to the phone, pick it in the computer's Send window: the browser shows up there as a device. Items appear under **From <computer>** with **Save** (the share sheet, for Save Image or Save to Files), **Copy**, and **Open** for links. Items sent while the page is closed wait on the computer and arrive the next time it connects.
 
+Next time, open the website and choose your computer under **Recent computers**, with no scanning. A browser stays paired until it's unused for 30 days, or until you remove it in the computer's Settings.
+
+**How it connects.** The website connects the phone straight to the computer with WebRTC, encrypted end to end. Files and text never pass through a server. A small introduction server only helps the two find each other, and the phone checks the computer's key from the code, so nobody in between can pose as the computer. Both devices need to be on the same network (or both on Tailscale). See [Browser access over the internet](docs/PROTOCOL.md#browser-access-over-the-internet) for the details.
 ## iPhone shortcuts (optional)
 
 Without the iPhone app, you can still send to a computer from the share sheet, and collect queued items, with two Shortcuts. See [docs/ios-shortcut.md](docs/ios-shortcut.md).
