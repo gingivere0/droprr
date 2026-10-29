@@ -278,7 +278,7 @@ private struct SendTab: View {
             .overlay(alignment: .topTrailing) {
                 if !photos.isEmpty { ClearBadge { photos = [] } }
             }
-            VStack(spacing: Space.lg) {
+            VStack(spacing: 22) {
                 ActionCard(title: "Clipboard", symbol: "doc.on.clipboard.fill",
                            detail: clipboard.map(\.label), selected: clipboard != nil,
                            onClear: { clipboard = nil }) {
@@ -290,13 +290,13 @@ private struct SendTab: View {
                         model.lastSendResult = "The clipboard is empty."
                     }
                 }
-                .frame(height: 112)
+                .frame(height: 109)
                 ActionCard(title: "Files", symbol: "folder.fill",
                            detail: files.isEmpty ? nil : "\(files.count) selected", selected: !files.isEmpty,
                            onClear: { files = [] }) {
                     importing = true
                 }
-                .frame(height: 112)
+                .frame(height: 109)
             }
         }
         .frame(height: 240)
