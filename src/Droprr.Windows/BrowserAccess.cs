@@ -27,14 +27,36 @@ sealed class BrowserAccess
     // Raised on a server thread when the code stops working: used, or closed after too many wrong tries.
     public event Action<bool>? Ended;
 
+    // The website's code (Browser access over the internet): 16 random bytes, base64url, in the QR's link. Unlike
+    // the typed code it works for any number of browsers, but only while the window is open, for at most 10 minutes.
+    string? _secret;
+
+    public string? Secret
+    {
+        get
+        {
+            lock (_gate)
+                return _secret is not null && DateTime.UtcNow < _expires ? _secret : null;
+        }
+    }
+
+    public bool IsSecret(string? given)
+    {
+        var secret = Secret;
+        return secret is not null && given is not null
+            && CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(given), Encoding.ASCII.GetBytes(secret));
+    }
+
     // A fresh code, replacing any earlier one.
     public string Open()
     {
         var bytes = RandomNumberGenerator.GetBytes(Length);
         var code = new string(bytes.Select(b => Alphabet[b % Alphabet.Length]).ToArray());
+        var secret = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         lock (_gate)
         {
             _code = code;
+            _secret = secret;
             _expires = DateTime.UtcNow + Lifetime;
             _wrong = 0;
         }
@@ -44,7 +66,10 @@ sealed class BrowserAccess
     public void Close()
     {
         lock (_gate)
+        {
             _code = null;
+            _secret = null;
+        }
     }
 
     // "XXXX-XXXX", for showing and typing.

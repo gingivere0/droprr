@@ -1,0 +1,1 @@
+﻿{ "name": "Droprr", "short_name": "Droprr", "start_url": "./", "display": "standalone", "background_color": "#FBFAF6", "theme_color": "#557A5C", "icons": [{ "src": "icon.png", "sizes": "180x180", "type": "image/png" }] }

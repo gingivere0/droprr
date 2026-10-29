@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' wss: ws://localhost:* ws://127.0.0.1:*; img-src 'self' blob: data:; media-src 'self' blob: mediastream:; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="description" content="Send photos, files, text, and links between this browser and a computer running Droprr, directly over your Wi-Fi.">
+  <title>Droprr</title>
+  <link rel="icon" href="icon.png">
+  <link rel="apple-touch-icon" href="icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="app.css">
+  <script src="config.js" defer></script>
+  <script src="vendor/jsQR.js" defer></script>
+  <script src="rtc.js" defer></script>
+  <script src="guest.js" defer></script>
+</head>
+<body>
+  <main>
+    <header class="top">
+      <img class="logo" src="icon.png" alt="" width="40" height="40">
+      <div>
+        <h1>Droprr</h1>
+        <p class="caption" id="where">Send between this browser and your computer</p>
+      </div>
+      <button class="link" id="disconnect" type="button" hidden>Disconnect</button>
+    </header>
+
+    <!-- Not connected: scan a computer's code, or pick one this browser connected to before. -->
+    <section id="start">
+      <h2>Connect to a computer</h2>
+      <p class="caption">On the computer, open Droprr's menu and choose <strong>Open in a browser</strong>. Then scan its code here, or with your camera app.</p>
+      <button class="primary wide" id="scan" type="button">Scan code</button>
+      <div class="scanner" id="scanner" hidden>
+        <video id="camera" playsinline muted></video>
+        <button class="secondary" id="stop-scan" type="button">Cancel</button>
+      </div>
+      <p class="status" id="start-status" role="status"></p>
+      <div id="known" hidden>
+        <h2 class="spaced">Recent computers</h2>
+        <ul class="items" id="computers"></ul>
+      </div>
+      <p class="caption spaced">Files go straight from this browser to the computer over your network, encrypted. They never pass through a server. <a href="https://github.com/gingivere0/droprr" rel="noopener">About Droprr</a></p>
+    </section>
+
+    <div id="app" hidden>
+      <section id="send">
+        <h2 id="send-title">Send</h2>
+        <label class="drop" id="drop" for="files">
+          <span class="drop-title">Choose photos or files</span>
+          <span class="caption" id="drop-hint">Photos, videos, or any file</span>
+          <input id="files" type="file" multiple>
+        </label>
+        <ul class="chosen" id="chosen"></ul>
+        <label for="text" class="sr-only">Text or a link</label>
+        <textarea id="text" rows="3" placeholder="Text or a link"></textarea>
+        <div class="row">
+          <button class="secondary" id="clear" type="button">Clear</button>
+          <button class="primary" id="send-button" type="button">Send</button>
+        </div>
+        <progress id="progress" max="1" value="0" hidden></progress>
+        <p class="status" id="send-status" role="status"></p>
+      </section>
+
+      <section id="inbox">
+        <h2 id="inbox-title">Received</h2>
+        <p class="caption" id="inbox-empty">Nothing yet. What the computer sends to this browser shows up here while this page is open.</p>
+        <ul class="items" id="items"></ul>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

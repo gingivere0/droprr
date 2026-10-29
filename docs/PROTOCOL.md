@@ -498,6 +498,82 @@ Never on `/pair` or the LAN pairing endpoints. `GET /inbox/<id>?inline=1` serves
 - **The page** (`/web`, `/web/app.js`, `/web/app.css`, `/web/icon.png`) needs no token and holds no secrets. It's served with `Content-Security-Policy: default-src 'self'; …; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer`, and shows everything from the network as text, never HTML.
 - **Wi-Fi certificate warning.** A browser can't pin the computer's certificate the way the apps do, so the first visit trusts whichever certificate answers. Someone actively intercepting the Wi-Fi at that moment could read the code and pose as the computer. On a home network that's unlikely; on any network you don't trust, use the Tailscale address, which has no warning and no such gap.
 
+## Browser access over the internet
+
+The page above needs a certificate warning on Wi-Fi. This variant has none, works for anyone's phone on the same Wi-Fi as the computer, and needs no login: a static website with a real certificate (`site/`, on GitHub Pages), a tiny relay that only introduces devices (`relay/`, a Cloudflare Worker), and a direct WebRTC data channel between the browser and the computer. Files and text never pass through either service.
+
+### Pieces
+
+| Piece | Where | Does |
+| --- | --- | --- |
+| Website | `site/`, published by `.github/workflows/pages.yml` | The browser side: scanning, sending, and receiving. `site/config.js` names the relay. |
+| Relay | `relay/` | Passes signaling messages between a computer and the browsers in its room. Stores nothing. |
+| Host page | `host/host.html` and `host/host.js`, with `site/rtc.js` | The computer side. The app runs it hidden in its built-in browser engine (WebView2 on Windows), so both computers share one WebRTC implementation. |
+
+`site/rtc.js` is shared by the website and the host page.
+
+### Identity and the code
+
+- **Host key:** each computer makes 32 random bytes once and keeps them secret (encrypted like its tokens). Its **room** is `base64url(SHA-256(host key))`. Base64url is always without padding.
+- **DTLS certificate:** the host page makes one ECDSA P-256 certificate with `RTCPeerConnection.generateCertificate` and keeps it in its own storage, so its fingerprint stays the same across restarts and updates. Browsers limit certificates to a year, so it's replaced a month before it expires; browsers that knew the old one must scan again. Its **fp** is the SHA-256 fingerprint's 32 bytes, base64url.
+- **Join secret:** 16 random bytes, base64url, made when **Open in a browser** opens, and valid for any number of browsers while that window is open, for at most 10 minutes. Never saved or logged.
+- **The code:** the QR code is `<website>#<room>.<secret>.<fp>`. Scanning it with a phone's camera opens the website, which reads and then removes the fragment. The website can also scan it with its own camera button.
+
+### Relay
+
+WebSockets, JSON text messages, at most 16 KB each, and at most 300 per socket per 10 seconds (past either limit, the relay closes that socket):
+
+| Who | Connects to | Sends | Receives |
+| --- | --- | --- | --- |
+| Computer | `wss://<relay>/host/<host key>` | `{ "t": "to", "cid", "m" }`, `{ "t": "drop", "cid" }`, and the text `ping` every 30 seconds (answered with `pong`) | `{ "t": "join", "cid" }`, `{ "t": "from", "cid", "m" }`, `{ "t": "leave", "cid" }` |
+| Browser | `wss://<relay>/join/<room>` | `{ "m" }` | `{ "t": "msg", "m" }`, `{ "t": "offline" }` (no computer in the room), `{ "t": "refused" }` (dropped) |
+
+The relay hashes the host key itself, so only the computer holding the key can host its room; someone who knows only the room ends up hosting a different, empty one. A newer host connection replaces an older one (close code `4000`). At most 16 browsers per room.
+
+### Signaling (inside `m`)
+
+The browser makes the offer, with one ordered, reliable data channel labeled `droprr`. Both sides trickle ICE candidates, with `null` meaning the end, and use `stun:stun.cloudflare.com:3478`; no TURN server, so both devices must be able to reach each other directly (the same Wi-Fi).
+
+- browser → computer: `{ "t": "offer", "sdp" }` (under 12,000 characters) and `{ "t": "ice", "c" }`
+- computer → browser: `{ "t": "answer", "sdp" }` and `{ "t": "ice", "c" }`
+
+**The browser checks the computer:** the `a=fingerprint:sha-256` in the answer must equal the code's `fp`, or it closes the connection and says it isn't the computer that was scanned. DTLS then guarantees the data channel ends at the computer that holds that certificate, so the relay can't read or change anything on it.
+
+### Data channel
+
+Text frames are JSON. Binary frames are file chunks.
+
+1. **Hello:** the browser sends `{ "t": "hello", "v": 1, "id", "name", "secret" | "token" }` first. `id` is a random 16-byte id the browser keeps (base64url). `secret` is the code's join secret, sent on a scan. `token` is from an earlier `welcome`, sent when reconnecting to a remembered computer.
+2. The computer accepts a `token` that matches the `"web"` peer with that `id`. It accepts a `secret` that matches its open join secret, and then adds a `"web"` peer with that `id` (a unique name from `name`) or, for an `id` it knows, keeps the peer and gives it a new token. It answers `{ "t": "welcome", "name": "<computer name>", "token": "<device token>" }`. The browser remembers `{ room, fp, name, token }` so it can reconnect later without scanning. Otherwise it answers `{ "t": "denied", "e" }` and closes. A browser that hasn't said hello within 30 seconds is dropped.
+3. **Items**, in either direction, one at a time each way:
+   - text: `{ "t": "text", "id", "kind": "text" | "url", "content" }`
+   - file: `{ "t": "file", "id", "name", "size", "type" }`, then binary chunks of at most 16 KB totaling `size`, then `{ "t": "done", "id" }`
+   - the receiver answers `{ "t": "saved", "id" }`, or `{ "t": "failed", "id", "e" }`.
+   Senders keep the channel's `bufferedAmount` under 1 MB.
+
+On the computer, items from a browser are saved, announced, and checked exactly like a `POST /send` from that browser's peer. Items for a `"web"` peer wait in its [inbox](#inbox-phone-pull) and go out over the data channel while it's connected, each removed once the browser answers `saved`. The browser offers each received file to save (the share sheet on phones) and each text to copy.
+
+### The host page's bridge
+
+The host page reaches its app with same-origin requests that the app answers itself (the Windows app intercepts them in WebView2; they never reach a network):
+
+| Request | Answer |
+| --- | --- |
+| `GET /api/config` | `{ relay, key, name, secret }`, where `secret` is the open join secret or `null` |
+| `POST /api/ready { fp }` | The page's fingerprint, for the code |
+| `POST /api/hello { id, name, secret, token }` | `{ ok: true, peer, token }` (`peer` is the browser's id) or `{ ok: false, error }` |
+| `POST /api/p/<peer>/send` | An item from that browser, with a body as in `POST /send` (a raw file with `X-Droprr-Filename`, or JSON text) |
+| `GET /api/p/<peer>/inbox`, `GET` and `DELETE /api/p/<peer>/inbox/<id>` | That browser's queue, as in the inbox endpoints |
+| `POST /api/status { browsers }` | The browser peers connected right now |
+
+The app posts the page `{ "t": "config" }` when the join secret changes, and `{ "t": "outbox" }` when something was queued.
+
+### Security notes
+
+- The relay learns only metadata: that devices met, their addresses, and ICE candidates.
+- Whoever controls the website could change its code. That's the trust any web app needs; the repository is public, and the website is published only from `main`.
+- The join secret only lets a browser add itself while the person has the window open; it's 128 bits, so it can't be guessed. Removing a browser in Settings revokes its token.
+
 ## Implementation notes
 
 - **Binding:** a listener may bind to all interfaces (`0.0.0.0` or `::`) instead of specific addresses, as long as it immediately drops any connection whose source address isn't loopback, in `100.64.0.0/10` (Tailscale IPv4), or in `fd7a:115c:a1e0::/48` (Tailscale IPv6). This helps on platforms where the Tailscale address is hard to find or changes often.

@@ -13,8 +13,9 @@
             <TextBlock Style="{StaticResource Caption}" Margin="0,0,0,16"
                        Text="Send to and from this PC in any phone's browser, without the Droprr app." />
 
-            <!-- Wi-Fi or Tailscale, when both are available. -->
+            <!-- The website (no warning, any phone on this Wi-Fi), or this PC's own page over Wi-Fi or Tailscale. -->
             <StackPanel x:Name="PathPanel" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,12">
+                <RadioButton x:Name="WebsiteChoice" Content="Website" GroupName="BrowserPath" Margin="0,0,16,0" Checked="OnPathChanged" />
                 <RadioButton x:Name="WifiChoice" Content="Wi-Fi" GroupName="BrowserPath" Margin="0,0,16,0" Checked="OnPathChanged" />
                 <RadioButton x:Name="TailscaleChoice" Content="Tailscale" GroupName="BrowserPath" Checked="OnPathChanged" />
             </StackPanel>
@@ -33,13 +34,13 @@
 
             <StackPanel x:Name="CodeDetails">
                 <TextBlock Text="Scan with your phone's camera" Style="{StaticResource SubtitleText}" HorizontalAlignment="Center" Margin="0,16,0,4" />
-                <TextBlock Style="{StaticResource Caption}" HorizontalAlignment="Center" TextAlignment="Center" Text="Or open this address and type the code:" />
+                <TextBlock x:Name="AddressHint" Style="{StaticResource Caption}" HorizontalAlignment="Center" TextAlignment="Center" Text="Or open this address and type the code:" />
                 <TextBox x:Name="Address" IsReadOnly="True" FontFamily="{StaticResource MonoFont}" HorizontalAlignment="Center" Margin="0,8,0,0"
                          BorderThickness="0" Background="Transparent" AutomationProperties.Name="Address" />
                 <TextBlock x:Name="CodeText" FontFamily="{StaticResource MonoFont}" FontSize="{StaticResource FontSizeSubtitle}" FontWeight="SemiBold"
                            HorizontalAlignment="Center" Margin="0,8,0,0" AutomationProperties.Name="Access code" />
                 <TextBlock x:Name="Expiry" Style="{StaticResource Caption}" HorizontalAlignment="Center" TextAlignment="Center" Margin="0,4,0,0"
-                           Text="Works once, while this window is open, for 10 minutes." />
+                           TextWrapping="Wrap" Text="Works once, while this window is open, for 10 minutes." />
                 <ui:InfoBar x:Name="CertificateNote" Margin="0,16,0,0" IsOpen="False" IsClosable="False" Severity="Informational"
                             Title="Expect one warning on Wi-Fi"
                             Message="Your browser says the connection isn't private, because Droprr uses its own certificate instead of one from a public authority. In Safari, tap Show Details, then visit this website. Tailscale has no warning." />

@@ -21,11 +21,16 @@ public partial class BrowserWindow : Wpf.Ui.Controls.FluentWindow
         _app = app;
         app.BrowserConnected += OnConnected;
         app.BrowserAccess.Ended += OnCodeEnded;
+        if (app.BrowserHost is { } host)
+            host.Ready += OnHostReady;
         Closed += (_, _) =>
         {
             app.BrowserConnected -= OnConnected;
             app.BrowserAccess.Ended -= OnCodeEnded;
+            if (app.BrowserHost is { } host)
+                host.Ready -= OnHostReady;
             app.BrowserAccess.Close();
+            app.BrowserHost?.ConfigChanged();
         };
         Loaded += async (_, _) => await FindHostsAsync();
     }
@@ -52,21 +57,85 @@ public partial class BrowserWindow : Wpf.Ui.Controls.FluentWindow
             WifiPanel.Visibility = Visibility.Visible;
         }
 
-        PathPanel.Visibility = _wifiHost is not null && _tailscaleHost is not null ? Visibility.Visible : Visibility.Collapsed;
-        if (_wifiHost is not null)
-            WifiChoice.IsChecked = true;
-        else if (_tailscaleHost is not null)
-            TailscaleChoice.IsChecked = true;
+        // The website comes first: any phone on the same Wi-Fi, with no app and no certificate warning.
+        var website = _app.BrowserHost is not null;
+        WebsiteChoice.Visibility = website ? Visibility.Visible : Visibility.Collapsed;
+        WifiChoice.Visibility = _wifiHost is not null ? Visibility.Visible : Visibility.Collapsed;
+        TailscaleChoice.Visibility = _tailscaleHost is not null ? Visibility.Visible : Visibility.Collapsed;
+        var choices = (website ? 1 : 0) + (_wifiHost is not null ? 1 : 0) + (_tailscaleHost is not null ? 1 : 0);
+        PathPanel.Visibility = choices > 1 ? Visibility.Visible : Visibility.Collapsed;
+        if (WebsiteChoice.IsChecked != true && WifiChoice.IsChecked != true && TailscaleChoice.IsChecked != true)
+        {
+            if (website)
+                WebsiteChoice.IsChecked = true;
+            else if (_wifiHost is not null)
+                WifiChoice.IsChecked = true;
+            else if (_tailscaleHost is not null)
+                TailscaleChoice.IsChecked = true;
+        }
+        if (website && WebsiteChoice.IsChecked == true)
+            WifiPanel.Visibility = Visibility.Collapsed;
         ShowCode();
     }
 
-    void OnPathChanged(object sender, RoutedEventArgs e) => ShowCode();
+    void OnPathChanged(object sender, RoutedEventArgs e)
+    {
+        if (IsLoaded)
+            ShowCode();
+    }
+
+    void OnHostReady() => Dispatcher.BeginInvoke(() =>
+    {
+        if (WebsiteChoice.IsChecked == true)
+            ShowCode();
+    });
+
+    // The website's QR: a link to the site with this PC's room, the code, and the page's key. Browsers that use it
+    // are added once they connect; they can come back later without it.
+    bool ShowWebsiteCode()
+    {
+        if (_app.BrowserHost is not { } host)
+            return false;
+        Error.IsOpen = false;
+        if (_app.BrowserAccess.Secret is null)
+        {
+            _app.BrowserAccess.Open();
+            host.ConfigChanged();
+        }
+        AddressHint.Text = "Or open this website on the phone and tap Scan code:";
+        Address.Text = BrowserHost.Site(_app.Settings).Replace("https://", "");
+        CodeText.Visibility = Visibility.Collapsed;
+        Expiry.Text = "Works on any phone on the same Wi-Fi as this PC, with no app and no warning. The code works while this window is open, for 10 minutes; phones that connect can come back later without it.";
+        CertificateNote.IsOpen = false;
+        NewCodeButton.Visibility = Visibility.Collapsed;
+        CodeDetails.Visibility = Visibility.Visible;
+        if (host.JoinLink() is { } link)
+        {
+            Code.Source = PairWindow.Render(link);
+            CodePanel.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            // The page hasn't reported its key yet (WebView2 is still starting).
+            Code.Source = null;
+            CodePanel.Visibility = Visibility.Collapsed;
+            Error.Message = "Getting ready… This takes a few seconds after Droprr starts.";
+            Error.IsOpen = true;
+        }
+        return true;
+    }
 
     void OnNewCode(object sender, RoutedEventArgs e) => ShowCode();
 
     // A fresh code for the chosen path. Each one replaces the last.
     void ShowCode()
     {
+        ConnectedPanel.Visibility = Visibility.Collapsed;
+        if (WebsiteChoice.IsChecked == true && ShowWebsiteCode())
+            return;
+        AddressHint.Text = "Or open this address and type the code:";
+        CodeText.Visibility = Visibility.Visible;
+        Expiry.Text = "Works once, while this window is open, for 10 minutes.";
         var wifi = WifiChoice.IsChecked == true && _wifiHost is not null;
         var host = wifi ? _wifiHost : _tailscaleHost;
         ConnectedPanel.Visibility = Visibility.Collapsed;
@@ -89,6 +158,7 @@ public partial class BrowserWindow : Wpf.Ui.Controls.FluentWindow
         var port = _app.Settings.Port;
         var address = wifi ? $"https://{host}:{LanNetwork.TlsPort(port)}/web" : $"http://{host}:{port}/web";
         var code = _app.BrowserAccess.Open();
+        _app.BrowserHost?.ConfigChanged();
         Code.Source = PairWindow.Render($"{address}#{code}");
         Address.Text = address;
         CodeText.Text = BrowserAccess.Format(code);

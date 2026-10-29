@@ -90,10 +90,11 @@ To send between two computers, add the other one in Settings with its Tailscale 
 
 ## In a browser
 
-Any phone (or another computer) can use Droprr in its browser, with no app. On Windows, right-click the tray icon and choose **Open in a browser**, then scan the code with the phone's camera, or open the address shown and type the code. The page lets you send photos, files, text, and links to the computer, and shows what the computer sends to that browser, which appears as a device in the Send window.
+Any phone (or another computer) can use Droprr in its browser, with no app. On Windows, right-click the tray icon and choose **Open in a browser**, then scan the code with the phone's camera. The page lets you send photos, files, text, and links to the computer, and shows what the computer sends to that browser, which appears as a device in the Send window.
 
-- **Wi-Fi** works for any phone on your network. The browser warns once that the connection isn't private, because Droprr uses its own certificate: in Safari, tap **Show Details**, then **visit this website**.
-- **Tailscale** has no warning, for a phone with Tailscale connected.
+- **Website** (the default) works for anyone's phone on the same Wi-Fi as the computer, with no warning and no login. It's a page on GitHub Pages that connects the phone straight to the computer over the Wi-Fi with WebRTC, encrypted end to end; a small introduction server only helps the two find each other. A phone that connected once can come back later from the website's Recent computers, without scanning.
+- **Wi-Fi** is the computer's own page, with no internet needed. The browser warns once that the connection isn't private, because Droprr uses its own certificate: in Safari, tap **Show Details**, then **visit this website**. Type the code shown, or scan it.
+- **Tailscale** is the computer's own page over Tailscale, with no warning.
 
 Each code works once, for 10 minutes, while the window is open. A connected browser stays connected until it's unused for 30 days, it taps **Disconnect**, or you remove it in Settings. See [Browser access](docs/PROTOCOL.md#browser-access) for how it's secured.
 
@@ -119,6 +120,7 @@ Without the iPhone app, you can still send to a computer from the share sheet, a
 | `src/Droprr.Windows/` | The Windows app (WPF on .NET 10, styled with [WPF UI](https://github.com/lepoco/wpfui)) |
 | `apple/` | The Mac and iPhone apps and their share extensions (SwiftUI, Xcode project) |
 | `web/` | The browser page both computer apps serve (see [In a browser](#in-a-browser)) |
+| `site/`, `relay/`, `host/` | The Droprr website, its introduction server (a Cloudflare Worker), and the page the computer apps run to answer it |
 | `design-system/droprr/` | The shared design system: colors, themes, type, spacing, and contrast rules |
 | `docs/PROTOCOL.md` | The HTTP protocol every Droprr app speaks |
 | `docs/ios-shortcut.md` | Optional iPhone Shortcuts |

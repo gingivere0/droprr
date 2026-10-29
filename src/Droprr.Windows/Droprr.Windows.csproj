@@ -39,17 +39,22 @@
     <EmbeddedResource Include="..\..\web\app.js" LogicalName="Droprr.web.app.js" />
     <EmbeddedResource Include="..\..\web\app.css" LogicalName="Droprr.web.app.css" />
     <EmbeddedResource Include="..\..\web\icon.png" LogicalName="Droprr.web.icon.png" />
+    <!-- Browser access over the internet: the page the hidden WebView2 runs (BrowserHost), with the website's shared
+         WebRTC code. -->
+    <EmbeddedResource Include="..\..\host\host.html" LogicalName="Droprr.host.host.html" />
+    <EmbeddedResource Include="..\..\host\host.js" LogicalName="Droprr.host.host.js" />
+    <EmbeddedResource Include="..\..\site\rtc.js" LogicalName="Droprr.host.rtc.js" />
     <None Include="settings.example.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <PackageReference Include="QRCoder" Version="1.8.1" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
 
   <!-- Rebuilds obj\Droprr.ico when the logo or the script changes. -->
-  <Target Name="MakeAppIcon" BeforeTargets="PrepareForBuild"
-          Inputs="$(AppIconSource);..\..\scripts\make-app-icon.ps1" Outputs="$(ApplicationIcon)">
+  <Target Name="MakeAppIcon" BeforeTargets="PrepareForBuild" Inputs="$(AppIconSource);..\..\scripts\make-app-icon.ps1" Outputs="$(ApplicationIcon)">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;..\..\scripts\make-app-icon.ps1&quot; -Source &quot;$(AppIconSource)&quot; -Output &quot;$(ApplicationIcon)&quot;" />
   </Target>
 

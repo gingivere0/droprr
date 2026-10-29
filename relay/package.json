@@ -1,0 +1,12 @@
+{
+  "name": "droprr-relay",
+  "private": true,
+  "description": "Droprr's introduction server: passes WebRTC connection details between a computer and browsers.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.40.0"
+  }
+}

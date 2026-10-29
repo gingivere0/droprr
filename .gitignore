@@ -35,3 +35,6 @@ Thumbs.db
 
 # Installer builds (scripts/build-installer.ps1)
 dist/
+
+node_modules/
+.wrangler/

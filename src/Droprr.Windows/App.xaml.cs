@@ -147,6 +147,7 @@ public partial class App : Application
         _updateCheck = new DispatcherTimer(TimeSpan.FromSeconds(5), DispatcherPriority.Background, (_, _) => CheckForUpdate(), Dispatcher);
         await StartReceiverAsync();
         NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
+        await StartBrowserHostAsync();
 
         foreach (var window in LiveUpdate.WindowsToReopen(e.Args))
         {
@@ -194,6 +195,7 @@ public partial class App : Application
         _outboxWatcher = new FileSystemWatcher(Outbox.Root, "*.json") { IncludeSubdirectories = true, EnableRaisingEvents = true };
         FileSystemEventHandler changed = (_, _) => Dispatcher.BeginInvoke(() =>
         {
+            BrowserHost?.OutboxChanged();
             _outboxRefresh.Stop();
             _outboxRefresh.Start();
         });
@@ -329,6 +331,59 @@ public partial class App : Application
             _browserWindow.Show();
         }
         BringToFront(_browserWindow);
+    }
+
+    // Browser access over the internet: the hidden page that connects browsers through the relay. Null when
+    // WebView2 isn't available, in which case only the PC's own page works.
+    internal BrowserHost? BrowserHost { get; private set; }
+
+    async Task StartBrowserHostAsync()
+    {
+        var host = new BrowserHost(() => Settings, BrowserAccess, OnBrowserHello);
+        try
+        {
+            await host.StartAsync();
+            BrowserHost = host;
+        }
+        catch (Exception ex)
+        {
+            host.Dispose();
+            RequestLog.Note($"browser host: couldn't start WebView2 ({ex.Message.ReplaceLineEndings(" ")})");
+        }
+    }
+
+    // A browser on the website introduced itself over its data channel. With a token from an earlier visit, it's the
+    // browser peer it was given to; with the code from the open "Open in a browser" window, it's added (or, for a
+    // browser seen before, given a new token). Anything else is refused.
+    BrowserHelloResult OnBrowserHello(BrowserHello hello)
+    {
+        if (hello.Id.Length != 22 || !hello.Id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
+            return new BrowserHelloResult(false, Error: "bad browser id");
+        var existing = Settings.Peers.Find(p => p.IsBrowser && p.Id == hello.Id);
+        if (hello.Token is { Length: > 0 } token && existing is { AcceptToken.Length: > 0 }
+            && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.UTF8.GetBytes(token), System.Text.Encoding.UTF8.GetBytes(existing.AcceptToken)))
+            return new BrowserHelloResult(true, existing.Id, existing.AcceptToken);
+        if (!BrowserAccess.IsSecret(hello.Secret))
+            return new BrowserHelloResult(false, Error: existing is null ? "scan the code on the computer" : "this browser was removed: scan the code again");
+
+        var minted = SettingsStore.NewToken();
+        var name = FileNames.Printable(hello.Name, 64);
+        Settings = SettingsStore.Update(s =>
+        {
+            var peer = s.Peers.Find(p => p.IsBrowser && p.Id == hello.Id);
+            if (peer is null)
+            {
+                peer = new Peer { Name = s.UniqueName(name.Length > 0 ? name : "Browser"), Platform = "web", Id = hello.Id };
+                s.Peers.Add(peer);
+            }
+            peer.AcceptToken = minted;
+        });
+        SettingsSaved?.Invoke();
+        var saved = Settings.Peers.Find(p => p.IsBrowser && p.Id == hello.Id)!;
+        _tray?.Notify($"{saved.Name} connected", "It can send to this PC, and what you send to it goes to its Droprr page.");
+        BrowserConnected?.Invoke(saved);
+        return new BrowserHelloResult(true, saved.Id, minted);
     }
 
     // A browser used the access code: it's a new queue-only peer.
@@ -643,6 +698,7 @@ public partial class App : Application
         _tray?.Dispose();
         _tray = null;
         LanDiscovery.Stop();
+        BrowserHost?.Dispose();
         if (_receiver is not null)
             await _receiver.DisposeAsync();
         Shutdown();

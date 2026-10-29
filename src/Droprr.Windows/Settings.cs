@@ -128,6 +128,12 @@ public sealed class AppSettings
     public string DeviceId { get; set; } = "";
     public string Identity { get; set; } = "";
 
+    // Browser access over the internet: this PC's secret key for its room on the relay (stored encrypted), and the
+    // relay and website to use, when not the defaults (BrowserHost).
+    public string HostKey { get; set; } = "";
+    public string? RelayUrl { get; set; }
+    public string? SiteUrl { get; set; }
+
     public List<Peer> Peers { get; set; } = new();
 
     // `name`, or "name (2)", "name (3)", and so on if a peer already has it.
@@ -180,6 +186,11 @@ static class SettingsStore
             settings.DeviceId = DeviceIdentity.NewId();
             changed = true;
         }
+        if (string.IsNullOrWhiteSpace(settings.HostKey))
+        {
+            settings.HostKey = BrowserHost.NewHostKey();
+            changed = true;
+        }
         if (string.IsNullOrWhiteSpace(settings.Identity))
         {
             settings.Identity = DeviceIdentity.NewCertificate(settings.DeviceId);
@@ -196,6 +207,7 @@ static class SettingsStore
         var stored = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings, Options), Options)!;
         stored.Token = Hide(stored.Token);
         stored.Identity = Hide(stored.Identity);
+        stored.HostKey = Hide(stored.HostKey);
         foreach (var peer in stored.Peers)
         {
             peer.Token = Hide(peer.Token);
@@ -261,6 +273,7 @@ static class SettingsStore
         var plain = false;
         settings.Token = Reveal(settings.Token, ref plain);
         settings.Identity = Reveal(settings.Identity, ref plain);
+        settings.HostKey = Reveal(settings.HostKey, ref plain);
         foreach (var peer in settings.Peers)
         {
             peer.Token = Reveal(peer.Token, ref plain);
