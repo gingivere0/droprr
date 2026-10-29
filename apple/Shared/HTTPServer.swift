@@ -276,7 +276,8 @@ private final class HTTPConnection {
                 return
             }
             chunked = req.header("transfer-encoding")?.lowercased().contains("chunked") == true
-            remaining = max(0, Int(req.header("content-length") ?? "") ?? 0)
+            // Chunked framing wins over any Content-Length (RFC 9112).
+            remaining = chunked ? 0 : max(0, Int(req.header("content-length") ?? "") ?? 0)
             limit = server.bodyLimit(req)
             if remaining > limit {
                 respond(.json(413, ["ok": false, "error": "request too large"]))
@@ -284,7 +285,8 @@ private final class HTTPConnection {
             }
             // A multipart body is copied out of its temp file, so it briefly needs twice its size.
             let copies: Int64 = req.header("content-type")?.lowercased().hasPrefix("multipart/") == true ? 2 : 1
-            if (chunked || remaining > 0), let free = freeSpace(), free - copies * Int64(remaining) < Self.minimumFreeSpace {
+            let (needed, overflow) = Int64(remaining).multipliedReportingOverflow(by: copies)
+            if (chunked || remaining > 0), let free = freeSpace(), overflow || free - needed < Self.minimumFreeSpace {
                 respond(.json(507, ["ok": false, "error": "not enough disk space"]))
                 return
             }
@@ -343,9 +345,10 @@ private final class HTTPConnection {
                 return buffer.count > 1024 ? malformedBody() : false   // no size line in sight
             }
             let line = String(decoding: buffer[buffer.startIndex..<lineEnd.lowerBound], as: UTF8.self)
-            let sizeText = line.split(separator: ";").first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
-            // Malformed or absurd sizes stop reading (at most 15 hex digits keeps the arithmetic safe).
-            guard sizeText.count <= 15, let size = Int(sizeText, radix: 16), size >= 0 else { return malformedBody() }
+            let sizeText = (line.firstIndex(of: ";").map { String(line[..<$0]) } ?? line).trimmingCharacters(in: .whitespaces)
+            // Only hex digits, at most 15 of them (keeps the arithmetic safe); anything else stops reading.
+            guard (1...15).contains(sizeText.count), sizeText.allSatisfy(\.isHexDigit),
+                  let size = Int(sizeText, radix: 16) else { return malformedBody() }
             buffer = Data(buffer[lineEnd.upperBound...])
             if size == 0 { return true }   // trailers ignored
             remaining = size

@@ -244,7 +244,10 @@ enum LANPairing {
 
         let name = PairRequest.displayName(json["name"] as? String ?? device.name)
         // Only the device discovery found (its id or certificate); never a name match.
-        let match = settings.peers.firstIndex { $0.deviceID == device.id || $0.fingerprint == fpServer }
+        // An id alone (from unauthenticated Bonjour data) only matches a peer with no pin yet; a pinned peer
+        // must have this exact certificate. Otherwise it's a new entry, never an overwrite.
+        let match = settings.peers.firstIndex { $0.fingerprint == fpServer }
+            ?? settings.peers.firstIndex { $0.deviceID == device.id && $0.fingerprint == nil }
         let peerID: UUID
         if let i = match {
             settings.peers[i].remoteName = name

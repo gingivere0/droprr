@@ -61,7 +61,8 @@ final class TokenStore {
         guard let value, !value.isEmpty else { return remove(key) }
         guard usingKeychain else { return fallback.set(value, forKey: "keychain." + key) }
         let data = Data(value.utf8)
-        var status = SecItemUpdate(query(key) as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        var status = SecItemUpdate(query(key) as CFDictionary, [kSecValueData as String: data,
+                                                               kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly] as CFDictionary)
         if status == errSecItemNotFound {
             var add = query(key)
             add[kSecValueData as String] = data

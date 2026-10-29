@@ -128,7 +128,10 @@ final class DroprrReceiver {
         if Route(request).segments.first == "pair" { return 64 << 10 }
         let mime = (request.header("content-type") ?? "").split(separator: ";").first
             .map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? ""
-        let named = request.header("x-droprr-filename") != nil || request.header("content-disposition") != nil
+        // The same rule receive() uses: only a non-empty name makes it a file.
+        let suppliedName = request.header("x-droprr-filename").map { $0.removingPercentEncoding ?? $0 }
+            ?? request.header("content-disposition").flatMap(Self.filename(in:)) ?? ""
+        let named = !suppliedName.isEmpty
         if mime == "application/json" || mime == "application/x-www-form-urlencoded" || (mime == "text/plain" && !named) {
             return 16 << 20
         }
@@ -545,10 +548,10 @@ final class DroprrReceiver {
             guard Links.isWeb(url) else { return try textItem(type: "text", content: content, into: dir) }
             let plist: [String: Any] = ["URL": url.absoluteString]
             let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
-            _ = try saveUnique("Link \(Self.stamp()).webloc", in: dir) { try data.write(to: $0, options: .withoutOverwriting) }
+            Links.quarantine(try saveUnique("Link \(Self.stamp()).webloc", in: dir) { try data.write(to: $0, options: .withoutOverwriting) })
             return ReceivedItem(kind: .url(url))
         }
-        _ = try saveUnique("Text \(Self.stamp()).txt", in: dir) { try Data(content.utf8).write(to: $0, options: .withoutOverwriting) }
+        Links.quarantine(try saveUnique("Text \(Self.stamp()).txt", in: dir) { try Data(content.utf8).write(to: $0, options: .withoutOverwriting) })
         return ReceivedItem(kind: .text(content))
     }
 

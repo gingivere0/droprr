@@ -106,18 +106,30 @@ final class PhoneModel {
 
     /// Going to the background: keep listening a little longer so a transfer in progress can finish.
     func enterBackground() {
-        let task = UIApplication.shared.beginBackgroundTask(withName: "Droprr receive")
+        var task = UIBackgroundTaskIdentifier.invalid
+        task = UIApplication.shared.beginBackgroundTask(withName: "Droprr receive") { [weak self] in
+            self?.stopLocalNetwork()
+            UIApplication.shared.endBackgroundTask(task)
+            task = .invalid
+        }
         Task {
             try? await Task.sleep(for: .seconds(20))
             if UIApplication.shared.applicationState == .background { stopLocalNetwork() }
-            UIApplication.shared.endBackgroundTask(task)
+            if task != .invalid { UIApplication.shared.endBackgroundTask(task) }
+            task = .invalid
         }
     }
 
     /// Runs `work` with background time, so leaving the app doesn't cut a send or collection short.
     func withBackgroundTime<T>(_ name: String, _ work: () async -> T) async -> T {
-        let task = UIApplication.shared.beginBackgroundTask(withName: name)
-        defer { UIApplication.shared.endBackgroundTask(task) }
+        // When the time runs out, cancel the send (the expiration handler must end the task, or iOS kills the app).
+        var task = UIBackgroundTaskIdentifier.invalid
+        task = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+            self?.sendTask?.cancel()
+            UIApplication.shared.endBackgroundTask(task)
+            task = .invalid
+        }
+        defer { if task != .invalid { UIApplication.shared.endBackgroundTask(task) } }
         return await work()
     }
 
