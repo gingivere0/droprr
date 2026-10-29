@@ -10,7 +10,7 @@ struct DroprrPhoneApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(model: model)
-                .tint(Theme.accentText)
+                .tint(Look.accentText)
                 // Scanning the pairing QR code with the Camera app opens droprr://pair?…
                 .onOpenURL { url in model.pair(with: url.absoluteString, confirm: true) }
         }

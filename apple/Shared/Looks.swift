@@ -90,9 +90,11 @@ enum Look {
     static var muted: Color {
         switch style {
         case .material: return Color.adaptive(hex: 0x5C5E55, dark: 0xA9AAA1)
-        case .clay: return Color.adaptive(hex: 0x7A7495, dark: 0xA7A1C2)
-        case .spatial: return Color.white.opacity(0.62)
-        case .atelier: return Color.adaptive(hex: 0x7D776B, dark: 0xA29C90)
+        // Light Clay and Atelier are nudged to 4.5:1 on their tiles; Spatial's is opaque for the
+        // same reason (on its glass at the room's lightest corner). Windows uses the same values.
+        case .clay: return Color.adaptive(hex: 0x756F8F, dark: 0xA7A1C2)
+        case .spatial: return Color(hex: 0xDAD9D7)
+        case .atelier: return Color.adaptive(hex: 0x787266, dark: 0xA29C90)
         }
     }
 
@@ -106,6 +108,21 @@ enum Look {
     }
 
     static let stripe = Color.adaptive(hex: 0xF4F1EA, dark: 0x201F1B)
+
+    /// The theme's accent text, lightened in Spatial until it reads at 4.5:1 on the glass.
+    static var accentText: Color {
+        guard forcesDark, drawsGlass else { return Theme.accentText }
+        return Color(hex: Contrast.ensure(Theme.palette.dark.accentText, on: Contrast.spatialTile))
+    }
+
+    /// The iPhone share sheet keeps the plain look, so it doesn't need Spatial's lighter text.
+    private static var drawsGlass: Bool {
+        #if os(iOS)
+        return Bundle.main.bundleURL.pathExtension != "appex"
+        #else
+        return true
+        #endif
+    }
 
     /// Fill and text for a selected device card.
     static var selectedFill: Color { style == .spatial ? Color.white.opacity(0.9) : Theme.secondaryTint }
@@ -616,5 +633,40 @@ private struct StyleSwatch: View {
             }
         }
         .accessibilityHidden(true)
+    }
+}
+
+/// WCAG contrast helpers, matching the Windows app's LookDef.EnsureContrast step for step.
+enum Contrast {
+    /// Spatial's glass card over the room's lightest corner, flattened.
+    static let spatialTile: UInt32 = 0x645E56
+
+    /// `color` moved toward black or white in 4% steps until it has `ratio` contrast with `background`.
+    static func ensure(_ color: UInt32, on background: UInt32, ratio: Double = 4.5) -> UInt32 {
+        var c = rgb(color)
+        let bg = rgb(background)
+        let target: (Int, Int, Int) = luminance(bg) > 0.18 ? (0, 0, 0) : (255, 255, 255)
+        var i = 0
+        while i < 50 && contrast(c, bg) < ratio {
+            c = (blend(c.0, target.0), blend(c.1, target.1), blend(c.2, target.2))
+            i += 1
+        }
+        return UInt32(c.0) << 16 | UInt32(c.1) << 8 | UInt32(c.2)
+    }
+
+    private static func blend(_ a: Int, _ b: Int) -> Int { Int(Double(a) + Double(b - a) * 0.04) }
+    private static func rgb(_ v: UInt32) -> (Int, Int, Int) { (Int(v >> 16 & 0xFF), Int(v >> 8 & 0xFF), Int(v & 0xFF)) }
+
+    private static func luminance(_ c: (Int, Int, Int)) -> Double {
+        func channel(_ v: Int) -> Double {
+            let x = Double(v) / 255
+            return x <= 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(c.0) + 0.7152 * channel(c.1) + 0.0722 * channel(c.2)
+    }
+
+    private static func contrast(_ a: (Int, Int, Int), _ b: (Int, Int, Int)) -> Double {
+        let (x, y) = (luminance(a), luminance(b))
+        return (max(x, y) + 0.05) / (min(x, y) + 0.05)
     }
 }

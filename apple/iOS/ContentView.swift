@@ -38,7 +38,7 @@ struct ContentView: View {
             .tabItem { Label("Settings", systemImage: "gearshape.fill") }
             .tag(2)
         }
-        .tint(Theme.accentText)
+        .tint(Look.accentText)
         .foregroundStyle(Look.ink)
         .fontDesign(Look.style == .clay ? .rounded : .default)
         .preferredColorScheme(Look.colorScheme)
@@ -261,7 +261,7 @@ private struct SendTab: View {
                                 .overlay {
                                     Image(systemName: selected ? "checkmark" : Theme.symbol(for: device))
                                         .font(.system(size: 16, weight: .semibold))
-                                        .foregroundStyle(selected ? Look.selectedInk : Theme.accentText)
+                                        .foregroundStyle(selected ? Look.selectedInk : Look.accentText)
                                 }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(device.name).font(.subheadline.weight(.semibold))
@@ -464,7 +464,7 @@ private struct ActionCardLabel: View {
                     .frame(width: 46, height: 46)
                 Image(systemName: selected ? "checkmark" : symbol)
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(selected ? Look.selectedInk : Theme.accentText)
+                    .foregroundStyle(selected ? Look.selectedInk : Look.accentText)
             }
             Text(title).font(.subheadline.weight(.semibold))
             Text(detail ?? " ")
@@ -610,7 +610,7 @@ private struct ReceivedTab: View {
                     .background { LookTile(selected: false) }
             }
             .buttonStyle(.plain)
-            .foregroundStyle(Theme.accentText)
+            .foregroundStyle(Look.accentText)
             .padding(.horizontal, Space.lg)
             .padding(.vertical, Space.sm)
             .background { LookBackground().ignoresSafeArea(edges: .bottom) }   // a solid band, so list rows don't show through
@@ -796,7 +796,7 @@ private struct RowIconButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Theme.accentText)
+                .foregroundStyle(Look.accentText)
                 .frame(width: 36, height: 44)
                 .contentShape(Rectangle())
         }

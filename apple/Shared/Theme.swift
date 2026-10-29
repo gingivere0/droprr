@@ -203,7 +203,7 @@ struct GlyphCircle: View {
             .overlay {
                 Image(systemName: symbol)
                     .font(.system(size: size * 0.45, weight: .medium))
-                    .foregroundStyle(filled ? Theme.onAccent : Theme.accentText)
+                    .foregroundStyle(filled ? Theme.onAccent : Look.accentText)
             }
     }
 }
@@ -254,7 +254,7 @@ struct SendStatusView: View {
         case .working: ProgressView().controlSize(.small)
         case .success: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .failure: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-        case .info: Image(systemName: "info.circle.fill").foregroundStyle(Theme.accentText)
+        case .info: Image(systemName: "info.circle.fill").foregroundStyle(Look.accentText)
         }
     }
 
