@@ -25,6 +25,10 @@ settings.json
 .env.*
 local/
 
+# Demo video production: raw captures hold private details; only the
+# finished, sanitized video in docs/media is tracked
+demo-production/
+
 # OS
 Thumbs.db
 .DS_Store

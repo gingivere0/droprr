@@ -2,6 +2,10 @@
 
 Droprr pushes files, photos, text, and links to a specific device of your own: a Windows PC, a Mac, or an iPhone. It works over your private [Tailscale](https://tailscale.com) network. You pick the device and send, and devices reach each other by their Tailscale names, so it works the same at home or away.
 
+[![Droprr on Windows, Mac, and iPhone](docs/media/droprr-demo-poster.jpg)](docs/media/droprr-demo.mp4)
+
+▶ [Watch the 60-second demo](docs/media/droprr-demo.mp4) of all three apps.
+
 ## How it works
 
 - **Tailscale only.** Every device runs Tailscale on the same tailnet. Computers accept connections only from Tailscale addresses (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) and from the device itself, never from your LAN or the internet. Tailscale encrypts the traffic.
