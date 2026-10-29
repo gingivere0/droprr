@@ -74,14 +74,15 @@ public sealed class AppSettings
     // Also copies received files (and images as pictures).
     public bool CopyFilesToClipboard { get; set; }
 
-    // The color theme's id (ThemeCatalog); Graphite & Lime unless chosen otherwise.
+    // The color theme's id (ThemeCatalog); the default theme in tokens.json (Sage) unless chosen otherwise.
     public string Theme { get; set; } = ThemeCatalog.DefaultId;
 
     // The window style's id (LookCatalog): "material", "clay", "spatial", or "atelier", as on the Mac and iPhone.
+    // Atelier unless chosen otherwise.
     public string Style { get; set; } = LookCatalog.DefaultId;
 
-    // "system" follows Windows' light or dark setting; "light" or "dark" overrides it.
-    public string Mode { get; set; } = AppTheme.SystemMode;
+    // "system" follows Windows' light or dark setting; "light" or "dark" overrides it. Light unless chosen otherwise.
+    public string Mode { get; set; } = AppTheme.LightMode;
 
     // A Start menu shortcut, which is what makes Droprr show up in Windows Search.
     public bool AddToStartMenu { get; set; } = true;

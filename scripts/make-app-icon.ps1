@@ -1,5 +1,5 @@
 # Builds a multi-size Windows icon (.ico) from a 1024 px logo PNG. The Windows build runs this to make the exe's
-# embedded icon from file-swap-icon-pack/themes/graphiteLime/logo-1024.png, the default theme's logo.
+# embedded icon from file-swap-icon-pack/themes/sage/logo-1024.png, the default theme's logo.
 # Usage: powershell -ExecutionPolicy Bypass -File scripts\make-app-icon.ps1 -Source <logo.png> -Output <app.ico>
 param(
     [Parameter(Mandatory)] [string] $Source,

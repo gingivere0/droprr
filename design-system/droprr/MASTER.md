@@ -51,7 +51,7 @@ Use the platform's own values. Don't hard-code grays.
 
 ## Bento themes
 
-Droprr's layout is the **Bento Grid**: the window or screen is a plain surface, and everything sits on tiles of mixed sizes with a 12-pt gap. The user picks a window style (see [Styles](#styles)) and one of six color themes in Settings (Appearance); **Graphite & Lime** (`graphiteLime`) is the default theme. Every theme has a light and a dark variant. The mode follows the OS unless Settings picks Light or Dark, and the Spatial style is always dark. Exact values for every role are in [`tokens.json`](tokens.json) under `themes`.
+Droprr's layout is the **Bento Grid**: the window or screen is a plain surface, and everything sits on tiles of mixed sizes with a 12-pt gap. The user picks a window style (see [Styles](#styles)) and one of six color themes in Settings (Appearance). The default look is **Light Atelier Sage**: the Atelier style, the Sage (`sage`) theme, and Light mode. Every theme has a light and a dark variant. The mode can follow the OS or be set to Light or Dark, and the Spatial style is always dark. Exact values for every role are in [`tokens.json`](tokens.json) under `themes`.
 
 Contrast: every text pair is at least 4.5:1 and every control or icon well at least 3:1 in both light and dark (checked against `tile` and `surface`).
 
@@ -91,10 +91,10 @@ Four window styles, the same on every platform (`apple/Shared/Looks.swift` and `
 
 | ID | Name | Look |
 | --- | --- | --- |
-| `material` | Material You (default) | Tonal surfaces with a 3% accent wash, 24-pt card corners, a rounded main button, an outlined secondary button |
+| `material` | Material You | Tonal surfaces with a 3% accent wash, 24-pt card corners, a rounded main button, an outlined secondary button |
 | `clay` | Clay | Soft lavender surfaces, 22-pt corners, soft shadows, heavy titles, pill buttons |
 | `spatial` | Spatial | Dark frosted glass, always dark, pill buttons with the main one in the theme's secondary color |
-| `atelier` | Atelier | Ivory paper, no cards (rules between sections), serif titles, square buttons |
+| `atelier` | Atelier (default) | Ivory paper, no cards (rules between sections), serif titles, square buttons |
 
 Each style's muted and accent text must still reach 4.5:1 on its tiles; adjust a value rather than ship a failing pair.
 

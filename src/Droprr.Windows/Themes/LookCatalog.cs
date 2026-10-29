@@ -198,7 +198,7 @@ public static class LookCatalog
         new("atelier", "Atelier", "Ivory paper, serif titles"),
     ];
 
-    public const string DefaultId = "material";
+    public const string DefaultId = "atelier";
 
-    public static LookDef Find(string? id) => All.FirstOrDefault(l => l.Id == id) ?? All[0];
+    public static LookDef Find(string? id) => All.FirstOrDefault(l => l.Id == id) ?? All.First(l => l.Id == DefaultId);
 }

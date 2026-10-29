@@ -12,7 +12,7 @@
     <Version>0.2.0</Version>
     <!-- The exe's icon (Explorer, Start menu, Alt+Tab before the app runs) is made from the default theme's logo
          by the MakeAppIcon target below. -->
-    <AppIconSource>..\..\file-swap-icon-pack\themes\graphiteLime\logo-1024.png</AppIconSource>
+    <AppIconSource>..\..\file-swap-icon-pack\themes\sage\logo-1024.png</AppIconSource>
     <ApplicationIcon>$(BaseIntermediateOutputPath)Droprr.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- WFO0003 suggests WinForms' ApplicationHighDpiMode instead of the manifest, but that only applies through
@@ -28,7 +28,7 @@
     <!-- The design system's tokens; ThemeCatalog reads the Bento themes from it. -->
     <EmbeddedResource Include="..\..\design-system\droprr\tokens.json" LogicalName="Droprr.tokens.json" />
     <!-- Each theme's logo, for the taskbar, title bar, and tray icons (AppIcon). -->
-    <EmbeddedResource Include="$(AppIconSource)" LogicalName="Droprr.logo.graphiteLime.png" />
+    <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\graphiteLime\logo-1024.png" LogicalName="Droprr.logo.graphiteLime.png" />
     <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\sunset\logo-1024.png" LogicalName="Droprr.logo.sunset.png" />
     <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\cherry\logo-1024.png" LogicalName="Droprr.logo.cherry.png" />
     <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\roseGold\logo-1024.png" LogicalName="Droprr.logo.roseGold.png" />

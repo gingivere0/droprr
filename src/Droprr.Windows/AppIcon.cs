@@ -11,11 +11,11 @@ namespace Droprr;
 
 // The app icon for the taskbar, title bars, and tray, in the current theme's colors: each theme's logo from
 // file-swap-icon-pack/themes/<theme id>/logo-1024.png, the same art the Mac uses, scaled down to icon sizes
-// once and cached. The exe's own icon (Explorer, Start menu) is Graphite & Lime's, made at build time by
+// once and cached. The exe's own icon (Explorer, Start menu) is the default theme's (Sage), made at build time by
 // scripts/make-app-icon.ps1.
 static class AppIcon
 {
-    const string DefaultTheme = "graphiteLime";
+    static readonly string DefaultTheme = ThemeCatalog.DefaultId;
     static readonly int[] Sizes = [16, 20, 24, 32, 48, 64, 256];
 
     static readonly Dictionary<string, byte[]> Icons = new();
@@ -49,7 +49,7 @@ static class AppIcon
         Changed?.Invoke();
     }
 
-    // A theme without a logo uses Graphite & Lime's.
+    // A theme without a logo uses the default theme's.
     static byte[] Load(string themeId)
     {
         if (!Icons.TryGetValue(themeId, out var ico))
