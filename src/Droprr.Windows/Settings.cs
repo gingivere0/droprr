@@ -52,7 +52,7 @@ public sealed class Peer
     public bool IsPaired => IsPhone || Token.Length > 0;
 
     [JsonIgnore]
-    public string Note => !IsPaired ? "Not paired: scan its code or enter its token"
+    public string Note => !IsPaired ? "Missing Token"
         : !IsPhone ? Host
         : Waiting > 0 ? $"iPhone · {Waiting} waiting"
         : "iPhone";

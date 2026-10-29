@@ -5,7 +5,10 @@ using System.Diagnostics;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Win32;
 
 namespace Droprr;
@@ -123,8 +126,70 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
     {
         var peer = new Peer { Name = "New device" };
         _peers.Add(peer);
+        EditCell(peer, NameColumn);
+    }
+
+    // Peer tokens show as dots until revealed here.
+    public static readonly DependencyProperty PeerTokensVisibleProperty =
+        DependencyProperty.Register(nameof(PeerTokensVisible), typeof(bool), typeof(SettingsWindow));
+
+    public bool PeerTokensVisible
+    {
+        get => (bool)GetValue(PeerTokensVisibleProperty);
+        set => SetValue(PeerTokensVisibleProperty, value);
+    }
+
+    void OnShowPeerTokens(object sender, RoutedEventArgs e)
+    {
+        PeerTokensVisible = !PeerTokensVisible;
+        ShowPeerTokensButton.Content = PeerTokensVisible ? "Hide tokens" : "Show tokens";
+        ShowPeerTokensButton.Icon = new Wpf.Ui.Controls.SymbolIcon(PeerTokensVisible ? Wpf.Ui.Controls.SymbolRegular.EyeOff24 : Wpf.Ui.Controls.SymbolRegular.Eye24);
+    }
+
+    // From the Send window's "Missing Token" tile: start editing that device's token.
+    internal void FocusPeerToken(string name)
+    {
+        if (!IsLoaded)
+        {
+            void OnLoaded(object s, RoutedEventArgs e)
+            {
+                Loaded -= OnLoaded;
+                FocusPeerToken(name);
+            }
+            Loaded += OnLoaded;
+            return;
+        }
+        if (_peers.FirstOrDefault(p => p.Name.Trim().Equals(name.Trim(), StringComparison.OrdinalIgnoreCase)) is { } peer)
+            EditCell(peer, TokenColumn);
+    }
+
+    // Selects the cell, starts editing it, and puts the cursor in its text box with the text selected.
+    void EditCell(Peer peer, DataGridColumn column)
+    {
         PeerGrid.SelectedItem = peer;
-        PeerGrid.ScrollIntoView(peer);
+        PeerGrid.ScrollIntoView(peer, column);
+        PeerGrid.UpdateLayout();
+        PeerGrid.CurrentCell = new DataGridCellInfo(peer, column);
+        PeerGrid.Focus();
+        PeerGrid.BeginEdit();
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            if (FindTextBox(column.GetCellContent(peer)) is not { } box)
+                return;
+            box.Focus();
+            box.SelectAll();
+            box.BringIntoView();
+        });
+    }
+
+    static System.Windows.Controls.TextBox? FindTextBox(DependencyObject? element)
+    {
+        if (element is System.Windows.Controls.TextBox box)
+            return box;
+        for (var i = 0; element is not null && i < VisualTreeHelper.GetChildrenCount(element); i++)
+            if (FindTextBox(VisualTreeHelper.GetChild(element, i)) is { } found)
+                return found;
+        return null;
     }
 
     // Uses the saved settings, so the code carries the token and port this PC is actually using.

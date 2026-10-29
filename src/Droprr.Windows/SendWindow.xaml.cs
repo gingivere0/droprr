@@ -191,6 +191,13 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
 
     void OnSettings(object sender, RoutedEventArgs e) => ((App)Application.Current).ShowSettings();
 
+    // A "Missing Token" tile opens Settings at that device's token.
+    void OnPeerTileClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: Peer { IsPaired: false } peer })
+            ((App)Application.Current).ShowSettings(peer.Name);
+    }
+
     // Ask desktops what they are, so phones (which never answer) are the only ones queued.
     async System.Threading.Tasks.Task LearnPlatformsAsync()
     {

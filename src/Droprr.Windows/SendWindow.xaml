@@ -52,6 +52,7 @@
                         <Setter Property="Margin" Value="0,0,12,12" />
                         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
                         <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                        <EventSetter Event="PreviewMouseLeftButtonUp" Handler="OnPeerTileClick" />
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">

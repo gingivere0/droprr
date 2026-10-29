@@ -54,7 +54,7 @@ sealed class TrayIcon : IDisposable
         _menu.Items.Add(_recentMenu);
         _menu.Items.Add(MenuEntry("Open Droprr folder", SymbolRegular.FolderOpen24, () => OpenFolder(app.Settings.ResolveSaveFolder())));
         _menu.Items.Add(new Separator());
-        _menu.Items.Add(MenuEntry("Settings…", SymbolRegular.Settings24, app.ShowSettings));
+        _menu.Items.Add(MenuEntry("Settings…", SymbolRegular.Settings24, () => app.ShowSettings()));
         _menu.Items.Add(MenuEntry("Exit", SymbolRegular.Power24, app.ExitApp));
         _menu.Placement = PlacementMode.MousePoint;
         _menu.PlacementTarget = _anchor;

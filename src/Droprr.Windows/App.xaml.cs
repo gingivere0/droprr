@@ -218,7 +218,8 @@ public partial class App : Application
         window.Update(progress);
     }
 
-    internal void ShowSettings()
+    // focusPeerToken: a device whose token field should be ready to type into.
+    internal void ShowSettings(string? focusPeerToken = null)
     {
         if (_settingsWindow is not { IsLoaded: true })
         {
@@ -226,6 +227,8 @@ public partial class App : Application
             _settingsWindow.Show();
         }
         BringToFront(_settingsWindow);
+        if (focusPeerToken is not null)
+            _settingsWindow.FocusPeerToken(focusPeerToken);
     }
 
     // Fallback for phones that never called POST /pair: one that checks its inbox under an unknown name
