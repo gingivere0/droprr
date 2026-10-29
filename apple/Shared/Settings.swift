@@ -66,6 +66,8 @@ final class DroprrSettings {
     var style: String { didSet { defaults.set(style, forKey: "style") } }
     /// Mac: copy received text and links to the clipboard. On by default.
     var copyTextAndLinks: Bool { didSet { defaults.set(copyTextAndLinks, forKey: "copyTextAndLinks") } }
+    /// "system", "light" or "dark". Spatial is always dark regardless.
+    var colorMode: String { didSet { defaults.set(colorMode, forKey: "colorMode") } }
     /// Not saved: a device whose token Settings should open for editing ("Missing Token").
     var tokenRequest: UUID?
 
@@ -124,6 +126,7 @@ final class DroprrSettings {
         copyTextAndLinks = defaults.object(forKey: "copyTextAndLinks") as? Bool ?? true
         theme = defaults.string(forKey: "theme") ?? ThemePalette.defaultID
         style = defaults.string(forKey: "style") ?? "material"
+        colorMode = defaults.string(forKey: "colorMode") ?? "system"
 
         if legacyMain != nil { defaults.removeObject(forKey: "token") }
         savePeers(old: [])   // rewrites the peer list without tokens

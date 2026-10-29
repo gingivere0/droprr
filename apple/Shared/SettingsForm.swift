@@ -492,6 +492,13 @@ struct AppearanceSettings: View {
     var body: some View {
         Form {
             Section {
+                ColorModePicker(settings: settings)
+            } header: {
+                Text("Light or dark")
+            } footer: {
+                Text(Look.forcesDark ? "Spatial is always dark." : "System follows your iPhone.")
+            }
+            Section {
                 StylePicker(settings: settings)
                     .listRowInsets(EdgeInsets(top: Space.md, leading: Space.md, bottom: Space.md, trailing: Space.md))
             } header: {
@@ -505,7 +512,7 @@ struct AppearanceSettings: View {
             } header: {
                 Text("Colors")
             } footer: {
-                Text("Light and dark follow your iPhone.")
+                Text("Each theme has light and dark colors.")
             }
         }
         .scrollContentBackground(.hidden)

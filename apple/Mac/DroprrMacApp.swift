@@ -63,6 +63,7 @@ private struct MenuBarLabel: View {
 /// Opening Droprr again from Finder, Spotlight or the Dock while it's running shows the Send window.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Look.applyAppAppearance()
         // No title bar strip on any Droprr window (Settings included): content runs to the top edge,
         // with just the window buttons in the corner.
         for name in [NSWindow.didBecomeKeyNotification, NSWindow.didBecomeMainNotification, NSWindow.didUpdateNotification] {

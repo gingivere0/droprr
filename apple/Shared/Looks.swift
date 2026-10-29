@@ -37,6 +37,28 @@ enum Look {
     /// Spatial is always dark glass.
     static var forcesDark: Bool { style == .spatial }
 
+    /// The color scheme to show: Spatial's dark, the user's Light/Dark choice, or nil to follow the system.
+    static var colorScheme: ColorScheme? {
+        if forcesDark { return .dark }
+        switch DroprrSettings.shared.colorMode {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
+    }
+
+    #if os(macOS)
+    /// Applies the Light/Dark choice to every Droprr window, the menu bar panel included.
+    @MainActor
+    static func applyAppAppearance() {
+        switch DroprrSettings.shared.colorMode {
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: NSApp.appearance = nil
+        }
+    }
+    #endif
+
     static var background: Color {
         switch style {
         case .material: return Color.adaptive(hex: 0xF8F8F3, dark: 0x131411)
@@ -511,6 +533,22 @@ struct Stripes: View {
         }
         .clipped()
         .accessibilityHidden(true)
+    }
+}
+
+/// System / Light / Dark. Spatial is always dark, so the choice waits until another style is picked.
+struct ColorModePicker: View {
+    @Bindable var settings: DroprrSettings
+
+    var body: some View {
+        Picker("Mode", selection: $settings.colorMode) {
+            Text("System").tag("system")
+            Text("Light").tag("light")
+            Text("Dark").tag("dark")
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .disabled(Look.forcesDark)
     }
 }
 

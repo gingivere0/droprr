@@ -25,6 +25,10 @@ struct MacSettingsView: View {
                 .keyboardShortcut("[", modifiers: .command)
                 .padding(.bottom, -Space.md)
                 pageTitle("Appearance")
+                VStack(alignment: .leading, spacing: Space.md) {
+                    SectionHeader(title: "Light or dark", detail: Look.forcesDark ? "Spatial is always dark." : "System follows your Mac.")
+                    ColorModePicker(settings: settings).frame(maxWidth: 320)
+                }
                 style
                 appearance
             } else {
@@ -52,6 +56,7 @@ struct MacSettingsView: View {
         .lookRoot()
         .onAppear(perform: takeTokenRequest)
         .onChange(of: settings.tokenRequest) { takeTokenRequest() }
+        .onChange(of: settings.colorMode) { Look.applyAppAppearance() }
         .onChange(of: settings.style) {
             // Window chrome (background, opacity, dark glass) follows the style too.
             for window in NSApp.windows { AppDelegate.hideTitleBar(window) }
@@ -182,7 +187,7 @@ struct MacSettingsView: View {
 
     private var appearance: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            SectionHeader(title: "Colors", detail: Look.forcesDark ? "Spatial is always dark." : "Light and dark follow your Mac.")
+            SectionHeader(title: "Colors", detail: "Each theme has light and dark colors.")
             ThemePicker(settings: settings)
         }
     }

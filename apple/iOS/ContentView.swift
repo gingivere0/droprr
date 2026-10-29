@@ -41,7 +41,7 @@ struct ContentView: View {
         .tint(Theme.accentText)
         .foregroundStyle(Look.ink)
         .fontDesign(Look.style == .clay ? .rounded : .default)
-        .preferredColorScheme(Look.forcesDark ? .dark : nil)
+        .preferredColorScheme(Look.colorScheme)
         // The home-screen icon follows the theme too (alternate app icons).
         .onAppear { AppIconSwitcher.apply(model.settings.theme) }
         .onChange(of: model.settings.theme) { _, theme in AppIconSwitcher.apply(theme) }
