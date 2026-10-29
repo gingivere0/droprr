@@ -102,6 +102,9 @@ public partial class App : Application
         // Conveniences: Droprr keeps running without them.
         try { Shortcuts.RegisterSendTo(); } catch { }
         try { Shortcuts.SyncStartMenu(Settings.AddToStartMenu); } catch { }
+        // Shortcuts show the saved theme's logo: at startup and after each save (not during Settings' live preview).
+        SyncShortcutIcons();
+        SettingsSaved += SyncShortcutIcons;
         // Keep the sign-in entry pointing at this exe if Droprr was moved or rebuilt elsewhere.
         try { if (StartWithWindows.IsEnabled) StartWithWindows.Set(true); } catch { /* not fatal */ }
 
@@ -219,6 +222,16 @@ public partial class App : Application
     }
 
     // focusPeerToken: a device whose token field should be ready to type into.
+    void SyncShortcutIcons()
+    {
+        var (theme, ico) = (AppTheme.Current.Id, AppIcon.IcoFile);
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try { Shortcuts.ApplyThemeIcon(theme, ico); }
+            catch (Exception ex) { RequestLog.Note($"theme icon {theme} failed: {ex.Message.ReplaceLineEndings(" ")}"); }
+        });
+    }
+
     internal void ShowSettings(string? focusPeerToken = null)
     {
         if (_settingsWindow is not { IsLoaded: true })

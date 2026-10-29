@@ -28,6 +28,9 @@ static class AppIcon
 
     public static ImageSource ImageSource => _imageSource ??= Decode(_current);
 
+    // The current theme's icon as a multi-size .ico file (16 to 256 px).
+    public static byte[] IcoFile => _current;
+
     // The current icon at the small-icon size for the current DPI.
     public static Icon CreateTrayIcon()
     {

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
@@ -36,6 +38,140 @@ static class Shortcuts
         if (CurrentExe() is { } exe && !PointsAt(StartMenuPath, exe))
             Write(StartMenuPath, exe, "", "Send files, text, and links between your devices", AppUserModelId);
     }
+
+    // Pinned shortcuts Explorer keeps for the taskbar and the Start menu.
+    static string PinnedFolder(string name) => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Microsoft", "Internet Explorer", "Quick Launch", "User Pinned", name);
+
+    static string IconFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Droprr", "icons");
+
+    // Gives Droprr's shortcuts (Start menu, Send To, and anything pinned to the taskbar or Start) the theme's
+    // logo: writes it to %LOCALAPPDATA%\Droprr\icons\<theme>.ico and points each shortcut's icon there. Pinned
+    // shortcuts that still target an older build in the same deploy folder are moved to this one, since old
+    // builds are deleted. Each change is logged to requests.log. Returns quietly on any failure.
+    public static void ApplyThemeIcon(string themeId, byte[] ico)
+    {
+        if (CurrentExe() is not { } exe)
+            return;
+        Directory.CreateDirectory(IconFolder);
+        var iconPath = Path.Combine(IconFolder, themeId + ".ico");
+        if (!File.Exists(iconPath) || !File.ReadAllBytes(iconPath).AsSpan().SequenceEqual(ico))
+            File.WriteAllBytes(iconPath, ico);
+
+        var links = new List<string> { StartMenuPath, SendToPath };
+        foreach (var folder in new[] { PinnedFolder("TaskBar"), PinnedFolder("StartMenu") })
+            if (Directory.Exists(folder))
+                links.AddRange(Directory.EnumerateFiles(folder, "*.lnk"));
+
+        var changed = 0;
+        foreach (var linkPath in links.Where(File.Exists))
+        {
+            try
+            {
+                if (UpdateLink(linkPath, exe, iconPath) is { } what)
+                {
+                    SHChangeNotify(ShcneUpdateItem, ShcnfPathW, linkPath, null);
+                    RequestLog.Note($"shortcut {Path.GetFileName(Path.GetDirectoryName(linkPath))}\\{Path.GetFileName(linkPath)}: {what}");
+                    changed++;
+                }
+            }
+            catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException)
+            {
+                RequestLog.Note($"shortcut {Path.GetFileName(linkPath)} not updated: {ex.Message.ReplaceLineEndings(" ")}");
+            }
+        }
+        if (changed > 0)
+            SHChangeNotify(ShcneAssocChanged, ShcnfIdList, null, null);
+        RequestLog.Note($"theme icon {themeId}: {changed} shortcut(s) updated");
+    }
+
+    // Null when the shortcut isn't Droprr's or already has this icon; otherwise what changed.
+    static string? UpdateLink(string linkPath, string exe, string iconPath)
+    {
+        var link = (IShellLinkW)new CShellLink();
+        try
+        {
+            ((IPersistFile)link).Load(linkPath, 2 /* STGM_READWRITE */);
+            var buffer = new StringBuilder(1024);
+            link.GetPath(buffer, buffer.Capacity, IntPtr.Zero, 0x4 /* SLGP_RAWPATH */);
+            var target = buffer.ToString();
+            var appId = ReadAppId(link);
+            var isDroprr = string.Equals(appId, AppUserModelId, StringComparison.Ordinal)
+                || Path.GetFileName(target).Equals(Path.GetFileName(exe), StringComparison.OrdinalIgnoreCase);
+            if (!isDroprr)
+                return null;
+
+            var changes = new List<string>();
+            // An older build in the same deploy folder (deploy\<build>\Droprr.exe): follow this one.
+            var deployRoot = Path.GetDirectoryName(Path.GetDirectoryName(exe));
+            if (!string.Equals(target, exe, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(Path.GetDirectoryName(Path.GetDirectoryName(target)), deployRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                link.SetPath(exe);
+                link.SetWorkingDirectory(Path.GetDirectoryName(exe)!);
+                changes.Add("now opens the current build");
+            }
+            buffer.Clear();
+            link.GetIconLocation(buffer, buffer.Capacity, out var index);
+            if (!string.Equals(buffer.ToString(), iconPath, StringComparison.OrdinalIgnoreCase) || index != 0)
+            {
+                link.SetIconLocation(iconPath, 0);
+                changes.Add($"icon {Path.GetFileName(iconPath)}");
+            }
+            // The same app ID as the running process, so a pinned button and the open windows group together.
+            if (appId != AppUserModelId && !linkPath.Equals(SendToPath, StringComparison.OrdinalIgnoreCase))
+            {
+                WriteAppId(link, AppUserModelId);
+                changes.Add("app ID set");
+            }
+            if (changes.Count == 0)
+                return null;
+            ((IPersistFile)link).Save(linkPath, true);
+            return string.Join(", ", changes);
+        }
+        finally
+        {
+            Marshal.FinalReleaseComObject(link);
+        }
+    }
+
+    static string? ReadAppId(IShellLinkW link)
+    {
+        var key = AppUserModelIdKey;
+        ((IPropertyStore)link).GetValue(ref key, out var value);
+        try
+        {
+            return value.Type == 31 /* VT_LPWSTR */ ? Marshal.PtrToStringUni(value.Pointer) : null;
+        }
+        finally
+        {
+            PropVariantClear(ref value);
+        }
+    }
+
+    static void WriteAppId(IShellLinkW link, string appId)
+    {
+        var store = (IPropertyStore)link;
+        var key = AppUserModelIdKey;
+        var value = new PropVariant { Type = 31 /* VT_LPWSTR */, Pointer = Marshal.StringToCoTaskMemUni(appId) };
+        try
+        {
+            store.SetValue(ref key, ref value);
+            store.Commit();
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(value.Pointer);
+        }
+    }
+
+    const uint ShcneUpdateItem = 0x00002000, ShcneAssocChanged = 0x08000000, ShcnfIdList = 0x0000, ShcnfPathW = 0x0005;
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    static extern void SHChangeNotify(uint eventId, uint flags, string? item1, string? item2);
+
+    [DllImport("ole32.dll")]
+    static extern int PropVariantClear(ref PropVariant value);
 
     // Null when running under dotnet.exe (dotnet run), where a shortcut to the host would be wrong.
     static string? CurrentExe()
@@ -77,20 +213,7 @@ static class Shortcuts
             link.SetDescription(description);
             link.SetIconLocation(exe, 0);
             if (appId is not null)
-            {
-                var store = (IPropertyStore)link;
-                var key = AppUserModelIdKey;
-                var value = new PropVariant { Type = 31 /* VT_LPWSTR */, Pointer = Marshal.StringToCoTaskMemUni(appId) };
-                try
-                {
-                    store.SetValue(ref key, ref value);
-                    store.Commit();
-                }
-                finally
-                {
-                    Marshal.FreeCoTaskMem(value.Pointer);
-                }
-            }
+                WriteAppId(link, appId);
             ((IPersistFile)link).Save(linkPath, true);
         }
         finally

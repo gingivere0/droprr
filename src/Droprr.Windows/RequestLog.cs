@@ -27,6 +27,9 @@ static class RequestLog
         Append($"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {context.Request.Method} {context.Request.Path} failed: " +
                $"{error.GetType().Name}: {error.Message.ReplaceLineEndings(" ")}{Environment.NewLine}");
 
+    // Something Droprr did on its own, such as updating its shortcuts' icons.
+    public static void Note(string message) => Append($"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}");
+
     static void Append(string line)
     {
         try
