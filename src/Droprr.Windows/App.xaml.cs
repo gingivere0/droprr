@@ -60,6 +60,7 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        CrashLog.Install(this);
         try { Shortcuts.SetProcessAppId(); } catch { /* only affects taskbar grouping and notification branding */ }
         try
         {
@@ -408,7 +409,23 @@ public partial class App : Application
         await StartReceiverAsync();
     }
 
+    // One restart at a time: network changes can come in quick succession.
+    readonly SemaphoreSlim _receiverGate = new(1, 1);
+
     internal async Task StartReceiverAsync()
+    {
+        await _receiverGate.WaitAsync();
+        try
+        {
+            await RestartReceiverAsync();
+        }
+        finally
+        {
+            _receiverGate.Release();
+        }
+    }
+
+    async Task RestartReceiverAsync()
     {
         if (_receiver is not null)
         {
@@ -500,6 +517,8 @@ public partial class App : Application
         var bound = _receiver?.TailscaleAddresses ?? [];
         if (_receiver is null || !current.OrderBy(a => a.ToString()).SequenceEqual(bound.OrderBy(a => a.ToString())))
             await StartReceiverAsync();
+        else if (_receiver is { } receiver)
+            RefreshLocalNetwork(receiver);
     }
 
     internal async void ExitApp()

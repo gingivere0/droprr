@@ -16,9 +16,21 @@ public partial class App
     internal event Action? NearbyChanged;
 
     bool _discoveryHooked;
+    string _advertisedOn = "";
+
+    // After a network change that didn't need the receiver restarted: re-advertise if this PC's Wi-Fi or
+    // Ethernet addresses changed.
+    void RefreshLocalNetwork(ReceiverServer receiver)
+    {
+        if (CurrentLanAddresses() != _advertisedOn)
+            StartLocalNetwork(receiver);
+    }
+
+    static string CurrentLanAddresses() => string.Join(",", LanNetwork.LocalAddresses().Select(a => $"{a.Address}%{a.InterfaceIndex}"));
 
     void StartLocalNetwork(ReceiverServer receiver)
     {
+        _advertisedOn = CurrentLanAddresses();
         Sender.LocalNetworkEnabled = Settings.LocalNetwork;
         if (!_discoveryHooked)
         {

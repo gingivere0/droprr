@@ -11,6 +11,11 @@ namespace Droprr;
 
 // DNS-SD (mDNS) through Windows' own dnsapi.dll (Windows 10 1809 and later): register a service instance, browse
 // for instances of a type, and resolve one to its addresses, port, and TXT record. Works in an unpackaged app.
+//
+// dnsapi keeps using a request (and the cancel handle and strings it points to) after the call returns, and calls
+// back on its own threads, sometimes after a network change has already ended the operation. So every request,
+// cancel handle, and string lives in unmanaged memory that's freed only well after the operation is over, an
+// operation is cancelled only while it's still running, and callbacks never touch freed state.
 static class Dnssd
 {
     public sealed record Instance(string FullName, IReadOnlyList<IPAddress> Addresses, int Port, IReadOnlyDictionary<string, string> Txt);
@@ -19,22 +24,30 @@ static class Dnssd
     const int RequestPending = 9506; // DNS_REQUEST_PENDING
     const ushort TypePtr = 12;
 
-    // One registration: keep it to unregister. Dispose unregisters.
+    // How long freed-looking memory is kept after an operation ends, in case dnsapi still has a callback in flight.
+    static readonly TimeSpan Linger = TimeSpan.FromSeconds(30);
+
+    // One registration: keep it to unregister. Dispose unregisters. Its request and instance are never freed:
+    // dnsapi may hold them until deregistration completes, and there's one per network interface per restart.
     public sealed class Registration : IDisposable
     {
-        internal IntPtr Instance;
-        internal RegisterRequest Request;
-        bool _disposed;
+        internal IntPtr Request;
+        int _disposed;
 
         public void Dispose()
         {
-            if (_disposed)
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
                 return;
-            _disposed = true;
-            var request = Request;
-            try { DnsServiceDeRegister(ref request, IntPtr.Zero); } catch (Exception) { /* best effort */ }
-            // dnsapi may still reference the instance until deregistration completes; leaking one small
-            // allocation per registration is safer than freeing it early.
+            try
+            {
+                var status = DnsServiceDeRegister(Request, IntPtr.Zero);
+                if (status != RequestPending && status != 0)
+                    RequestLog.Note($"local network: DnsServiceDeRegister failed ({status})");
+            }
+            catch (Exception)
+            {
+                // Best effort.
+            }
         }
     }
 
@@ -45,118 +58,135 @@ static class Dnssd
         var keys = txt.Keys.ToArray();
         var values = keys.Select(k => txt[k]).ToArray();
         var host = Dns.GetHostName() + ".local";
-        var addressPointer = IntPtr.Zero;
+        var address = IntPtr.Zero;
         if (ipv4 is not null)
         {
-            addressPointer = Marshal.AllocHGlobal(4);
-            Marshal.Copy(ipv4.GetAddressBytes(), 0, addressPointer, 4);
+            address = Marshal.AllocHGlobal(4);
+            Marshal.Copy(ipv4.GetAddressBytes(), 0, address, 4);
         }
-        var instance = DnsServiceConstructInstance($"{Escape(name)}.{type}.local", host, addressPointer, IntPtr.Zero,
+        var instance = DnsServiceConstructInstance($"{Escape(name)}.{type}.local", host, address, IntPtr.Zero,
             (ushort)port, 0, 0, (uint)keys.Length, keys, values);
         if (instance == IntPtr.Zero)
             return null;
-        var request = new RegisterRequest
+        var request = Alloc(new RegisterRequest
         {
             Version = QueryRequestVersion1,
             InterfaceIndex = interfaceIndex,
             ServiceInstance = instance,
             Callback = Marshal.GetFunctionPointerForDelegate(RegisterDone),
-        };
-        var status = DnsServiceRegister(ref request, IntPtr.Zero);
+        });
+        var status = DnsServiceRegister(request, IntPtr.Zero);
         if (status != RequestPending)
         {
-            DnsServiceFreeInstance(instance);
             RequestLog.Note($"local network: DnsServiceRegister failed ({status})");
             return null;
         }
-        return new Registration { Instance = instance, Request = request };
+        return new Registration { Request = request };
     }
 
     // Instance names ("." and "\" escaped) can't hold a raw dot.
     static string Escape(string name) => name.Replace("\\", "\\\\").Replace(".", "\\.");
 
+    sealed class BrowseState
+    {
+        public readonly ConcurrentDictionary<string, byte> Names = new(StringComparer.OrdinalIgnoreCase);
+        // Set by dnsapi's final callback (an error, or the cancel completing): the browse is over.
+        public volatile bool Ended;
+    }
+
     // Browses for `type` for `duration`, then resolves every instance found. Results don't include instances
     // that didn't resolve within the timeout.
     public static async Task<IReadOnlyList<Instance>> BrowseAsync(string type, TimeSpan duration, CancellationToken cancel)
     {
-        var names = new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
-        var context = GCHandle.Alloc(names);
+        var state = new BrowseState();
+        var context = GCHandle.Alloc(state);
         var query = Marshal.StringToHGlobalUni(type + ".local");
+        var request = Alloc(new BrowseRequest
+        {
+            Version = QueryRequestVersion1,
+            QueryName = query,
+            Callback = Marshal.GetFunctionPointerForDelegate(BrowseFound),
+            Context = GCHandle.ToIntPtr(context),
+        });
+        var cancelHandle = Alloc(new CancelHandle());
+        var started = DnsServiceBrowse(request, cancelHandle) == RequestPending;
         try
         {
-            var request = new BrowseRequest
-            {
-                Version = QueryRequestVersion1,
-                QueryName = query,
-                Callback = Marshal.GetFunctionPointerForDelegate(BrowseFound),
-                Context = GCHandle.ToIntPtr(context),
-            };
-            var cancelHandle = new CancelHandle();
-            var status = DnsServiceBrowse(ref request, ref cancelHandle);
-            if (status != RequestPending)
-            {
-                RequestLog.Note($"local network: DnsServiceBrowse failed ({status})");
+            if (!started)
                 return [];
-            }
             try
             {
                 await Task.Delay(duration, cancel);
             }
-            finally
+            catch (OperationCanceledException)
             {
-                DnsServiceBrowseCancel(ref cancelHandle);
+                return [];
             }
-        }
-        catch (OperationCanceledException)
-        {
-            return [];
         }
         finally
         {
-            // Give a callback already in flight time to finish before the handle goes away.
-            await Task.Delay(200, CancellationToken.None);
-            context.Free();
-            Marshal.FreeHGlobal(query);
+            // Only a browse that's still running can be cancelled; one a network change ended already can't.
+            if (started && !state.Ended)
+                DnsServiceBrowseCancel(cancelHandle);
+            FreeLater(context, query, request, cancelHandle);
         }
 
-        var resolved = await Task.WhenAll(names.Keys.Select(name => ResolveAsync(name, TimeSpan.FromSeconds(3))));
+        var resolved = await Task.WhenAll(state.Names.Keys.Select(name => ResolveAsync(name, TimeSpan.FromSeconds(3))));
         return resolved.OfType<Instance>().ToList();
+    }
+
+    sealed class ResolveState
+    {
+        public readonly TaskCompletionSource<Instance?> Result = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     static async Task<Instance?> ResolveAsync(string fullName, TimeSpan timeout)
     {
-        var result = new TaskCompletionSource<Instance?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var context = GCHandle.Alloc(result);
+        var state = new ResolveState();
+        var context = GCHandle.Alloc(state);
         var query = Marshal.StringToHGlobalUni(fullName);
-        var cancelHandle = new CancelHandle();
+        var request = Alloc(new ResolveRequest
+        {
+            Version = QueryRequestVersion1,
+            QueryName = query,
+            Callback = Marshal.GetFunctionPointerForDelegate(ResolveDone),
+            Context = GCHandle.ToIntPtr(context),
+        });
+        var cancelHandle = Alloc(new CancelHandle());
         try
         {
-            var request = new ResolveRequest
-            {
-                Version = QueryRequestVersion1,
-                QueryName = query,
-                Callback = Marshal.GetFunctionPointerForDelegate(ResolveDone),
-                Context = GCHandle.ToIntPtr(context),
-            };
-            if (DnsServiceResolve(ref request, ref cancelHandle) != RequestPending)
+            if (DnsServiceResolve(request, cancelHandle) != RequestPending)
                 return null;
-            var done = await Task.WhenAny(result.Task, Task.Delay(timeout));
-            if (done != result.Task)
+            if (await Task.WhenAny(state.Result.Task, Task.Delay(timeout)) != state.Result.Task && !state.Result.Task.IsCompleted)
             {
-                DnsServiceResolveCancel(ref cancelHandle);
-                await Task.WhenAny(result.Task, Task.Delay(500));
+                DnsServiceResolveCancel(cancelHandle);
+                await Task.WhenAny(state.Result.Task, Task.Delay(500));
             }
-            return result.Task.IsCompletedSuccessfully ? result.Task.Result : null;
+            return state.Result.Task.IsCompletedSuccessfully ? state.Result.Task.Result : null;
         }
         finally
         {
-            context.Free();
-            Marshal.FreeHGlobal(query);
+            FreeLater(context, query, request, cancelHandle);
         }
     }
 
-    // Callbacks: static delegates, so the garbage collector never frees one dnsapi still holds.
-    static readonly RegisterCallback RegisterDone = (status, _, instance) =>
+    static IntPtr Alloc<T>(T value) where T : struct
+    {
+        var memory = Marshal.AllocHGlobal(Marshal.SizeOf<T>());
+        Marshal.StructureToPtr(value, memory, false);
+        return memory;
+    }
+
+    // Frees an operation's memory once dnsapi can't be using it any more.
+    static void FreeLater(GCHandle context, params IntPtr[] memory) => _ = Task.Delay(Linger).ContinueWith(_ =>
+    {
+        foreach (var block in memory)
+            Marshal.FreeHGlobal(block);
+        context.Free();
+    }, TaskScheduler.Default);
+
+    // Callbacks: static delegates, so the garbage collector never frees one dnsapi still holds. They never throw.
+    static readonly RegisterCallback RegisterDone = (status, _, _) =>
     {
         if (status != 0)
             RequestLog.Note($"local network: registration finished with status {status}");
@@ -166,18 +196,21 @@ static class Dnssd
     {
         try
         {
-            if (status != 0 || context == IntPtr.Zero || GCHandle.FromIntPtr(context).Target is not ConcurrentDictionary<string, byte> names)
-                return;
-            // DNS_RECORD: pNext at 0, pName at 8, wType at 16, Data (PTR: pNameHost) at 32.
-            for (var record = records; record != IntPtr.Zero; record = Marshal.ReadIntPtr(record, 0))
+            if (context != IntPtr.Zero && GCHandle.FromIntPtr(context).Target is BrowseState state)
             {
-                if ((ushort)Marshal.ReadInt16(record, 16) == TypePtr && Marshal.PtrToStringUni(Marshal.ReadIntPtr(record, 32)) is { Length: > 0 } name)
-                    names.TryAdd(name, 0);
+                if (status != 0)
+                    state.Ended = true;
+                // DNS_RECORD: pNext at 0, pName at 8, wType at 16, Data (PTR: pNameHost) at 32.
+                for (var record = records; record != IntPtr.Zero; record = Marshal.ReadIntPtr(record, 0))
+                {
+                    if ((ushort)Marshal.ReadInt16(record, 16) == TypePtr && Marshal.PtrToStringUni(Marshal.ReadIntPtr(record, 32)) is { Length: > 0 } name)
+                        state.Names.TryAdd(name, 0);
+                }
             }
         }
-        catch (InvalidOperationException)
+        catch (Exception)
         {
-            // The browse already finished and its handle was freed.
+            // Never let an exception unwind into dnsapi.
         }
         finally
         {
@@ -188,13 +221,13 @@ static class Dnssd
 
     static readonly ResolveCallback ResolveDone = (status, context, instance) =>
     {
-        TaskCompletionSource<Instance?>? result = null;
+        ResolveState? state = null;
         try
         {
-            result = GCHandle.FromIntPtr(context).Target as TaskCompletionSource<Instance?>;
+            state = GCHandle.FromIntPtr(context).Target as ResolveState;
             if (status != 0 || instance == IntPtr.Zero)
             {
-                result?.TrySetResult(null);
+                state?.Result.TrySetResult(null);
                 return;
             }
             // DNS_SERVICE_INSTANCE: pszInstanceName 0, pszHostName 8, ip4Address 16, ip6Address 24, wPort 32,
@@ -213,7 +246,7 @@ static class Dnssd
             var keys = Marshal.ReadIntPtr(instance, 48);
             var values = Marshal.ReadIntPtr(instance, 56);
             var txt = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < count; i++)
+            for (var i = 0; i < count && keys != IntPtr.Zero; i++)
             {
                 var key = Marshal.PtrToStringUni(Marshal.ReadIntPtr(keys, i * IntPtr.Size));
                 var value = values == IntPtr.Zero ? null : Marshal.PtrToStringUni(Marshal.ReadIntPtr(values, i * IntPtr.Size));
@@ -221,11 +254,11 @@ static class Dnssd
                     txt[key] = value ?? "";
             }
             var name = Marshal.PtrToStringUni(Marshal.ReadIntPtr(instance, 0)) ?? "";
-            result?.TrySetResult(new Instance(name, addresses, port, txt));
+            state?.Result.TrySetResult(new Instance(name, addresses, port, txt));
         }
         catch (Exception)
         {
-            result?.TrySetResult(null);
+            state?.Result.TrySetResult(null);
         }
         finally
         {
@@ -244,7 +277,7 @@ static class Dnssd
     delegate void ResolveCallback(int status, IntPtr context, IntPtr instance);
 
     [StructLayout(LayoutKind.Sequential)]
-    internal struct RegisterRequest
+    struct RegisterRequest
     {
         public uint Version;
         public uint InterfaceIndex;
@@ -291,22 +324,22 @@ static class Dnssd
     static extern void DnsServiceFreeInstance(IntPtr instance);
 
     [DllImport("dnsapi.dll")]
-    static extern int DnsServiceRegister(ref RegisterRequest request, IntPtr cancel);
+    static extern int DnsServiceRegister(IntPtr request, IntPtr cancel);
 
     [DllImport("dnsapi.dll")]
-    static extern int DnsServiceDeRegister(ref RegisterRequest request, IntPtr cancel);
+    static extern int DnsServiceDeRegister(IntPtr request, IntPtr cancel);
 
     [DllImport("dnsapi.dll")]
-    static extern int DnsServiceBrowse(ref BrowseRequest request, ref CancelHandle cancel);
+    static extern int DnsServiceBrowse(IntPtr request, IntPtr cancel);
 
     [DllImport("dnsapi.dll")]
-    static extern int DnsServiceBrowseCancel(ref CancelHandle cancel);
+    static extern int DnsServiceBrowseCancel(IntPtr cancel);
 
     [DllImport("dnsapi.dll")]
-    static extern int DnsServiceResolve(ref ResolveRequest request, ref CancelHandle cancel);
+    static extern int DnsServiceResolve(IntPtr request, IntPtr cancel);
 
     [DllImport("dnsapi.dll")]
-    static extern int DnsServiceResolveCancel(ref CancelHandle cancel);
+    static extern int DnsServiceResolveCancel(IntPtr cancel);
 
     [DllImport("dnsapi.dll")]
     static extern void DnsRecordListFree(IntPtr records, int freeType);
