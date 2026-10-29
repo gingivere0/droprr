@@ -205,32 +205,15 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             ((App)Application.Current).ShowSettings(peer.Name);
     }
 
-    // Ask desktops what they are, so phones (which never answer) are the only ones queued. Over Tailscale,
-    // which authenticates the device, a protocol 2 peer's id and certificate fingerprint are pinned too, so it
-    // can be reached over Wi-Fi without pairing again.
+    // Ask desktops what they are (so phones, which never answer, are the only ones queued), learn their device
+    // ids and certificates over Tailscale, and merge a device paired both over Tailscale and over Wi-Fi.
     async System.Threading.Tasks.Task LearnPlatformsAsync()
     {
-        foreach (var peer in _settings.Peers.Where(p => (p.Platform.Length == 0 || p.Fingerprint.Length == 0)
-                     && p.Host.Length > 0 && p.Token.Length > 0 && !p.IsPhone).ToList())
-        {
-            if (await Sender.PingAsync(peer, peer.Token) is not { } info)
-                continue;
-            SettingsStore.Update(s =>
-            {
-                if (s.FindPeer(peer.Name) is not { } saved)
-                    return;
-                if (!string.IsNullOrEmpty(info.Platform))
-                    saved.Platform = peer.Platform = info.Platform;
-                if (saved.Fingerprint.Length == 0 && info.Fingerprint is { Length: 64 } fp && info.Id is { Length: > 0 } id)
-                {
-                    saved.Fingerprint = peer.Fingerprint = fp;
-                    saved.Id = peer.Id = id;
-                    if (info.TlsPort is { } tlsPort)
-                        saved.TlsPort = peer.TlsPort = tlsPort;
-                }
-            });
-        }
-        PeerBox.Items.Refresh();
+        if (Application.Current is not App app)
+            return;
+        await app.LearnAndMergePeersAsync();
+        _settings = SettingsStore.Load();
+        ShowPeers();
     }
 
     internal void AddPaths(IEnumerable<string> paths)

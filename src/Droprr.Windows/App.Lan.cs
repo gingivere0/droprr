@@ -50,12 +50,103 @@ public partial class App
                         peer.Lan = lan;
             });
         }
+        // A nearby device this PC doesn't recognize may be one paired over Tailscale whose id isn't known yet.
+        if (LanDiscovery.Devices.Any(d => !Settings.Peers.Any(p => p.Id == d.Id))
+            && Settings.Peers.Any(p => !p.IsPhone && p.Id.Length == 0 && p.Host.Length > 0)
+            && DateTime.UtcNow - _lastLearned > TimeSpan.FromMinutes(2))
+            _ = LearnAndMergePeersAsync();
         NearbyChanged?.Invoke();
     }
 
-    // Devices found nearby that aren't paired with this PC yet.
-    internal System.Collections.Generic.IReadOnlyList<LanDevice> UnpairedNearby() =>
-        LanDiscovery.Devices.Where(d => !Settings.Peers.Any(p => p.Id == d.Id)).ToList();
+    // Devices found nearby: unpaired ones (which can be paired) and ones already paired under another name
+    // ("Paired as MacBook"). A device paired under the same name isn't listed.
+    internal System.Collections.Generic.IReadOnlyList<NearbyDevice> NearbyDevices()
+    {
+        var list = new System.Collections.Generic.List<NearbyDevice>();
+        foreach (var device in LanDiscovery.Devices)
+        {
+            var paired = Settings.Peers.Find(p => p.Id == device.Id
+                || (p.Fingerprint.Length > 0 && p.Fingerprint.Equals(device.Fingerprint, StringComparison.OrdinalIgnoreCase)));
+            if (paired is null)
+                list.Add(new NearbyDevice(device, null));
+            else if (!paired.Name.Equals(device.Name, StringComparison.OrdinalIgnoreCase))
+                list.Add(new NearbyDevice(device, paired.Name));
+        }
+        return list;
+    }
+
+    bool _learning;
+    DateTime _lastLearned;
+
+    // Learns each Tailscale-paired computer's platform, device id, and certificate over Tailscale (which
+    // authenticates it, so the certificate can be pinned), then merges any two records that turn out to be the
+    // same device: one paired over Tailscale and one over Wi-Fi. When their tokens differ, the one that works
+    // is kept (the newer pairing's if both or neither do). Each merge is logged.
+    internal async Task LearnAndMergePeersAsync()
+    {
+        if (_learning)
+            return;
+        _learning = true;
+        _lastLearned = DateTime.UtcNow;
+        try
+        {
+            foreach (var peer in Settings.Peers.Where(p => !p.IsPhone && p.Host.Length > 0 && p.Token.Length > 0
+                         && (p.Platform.Length == 0 || p.Fingerprint.Length == 0 || p.Id.Length == 0)).ToList())
+            {
+                if (await Sender.PingAsync(peer, peer.Token) is not { } info)
+                    continue;
+                Settings = SettingsStore.Update(s =>
+                {
+                    if (s.FindPeer(peer.Name) is not { } saved)
+                        return;
+                    if (!string.IsNullOrEmpty(info.Platform))
+                        saved.Platform = info.Platform;
+                    if (saved.Id.Length == 0 && info.Id is { Length: > 0 } id)
+                        saved.Id = id;
+                    if (saved.Fingerprint.Length == 0 && info.Fingerprint is { Length: 64 } fp)
+                    {
+                        saved.Fingerprint = fp;
+                        if (info.TlsPort is { } tlsPort)
+                            saved.TlsPort = tlsPort;
+                    }
+                });
+            }
+
+            var merged = false;
+            // At most one merge per peer; stops if a merge didn't take (for example, settings changed meanwhile).
+            for (var round = Settings.Peers.Count; round > 0 && PeerMerge.Duplicates(Settings).FirstOrDefault() is ({ } older, { } newer); round--)
+            {
+                var keepOlderTokens = false;
+                if (older.Token.Length > 0 && newer.Token.Length > 0 && older.Token != newer.Token)
+                {
+                    Peer Probe(string token) => new()
+                    {
+                        Name = older.Name, Host = older.Host.Length > 0 ? older.Host : newer.Host, Port = older.Port,
+                        Platform = older.Platform.Length > 0 ? older.Platform : newer.Platform,
+                        Id = newer.Id.Length > 0 ? newer.Id : older.Id,
+                        Fingerprint = newer.Fingerprint.Length > 0 ? newer.Fingerprint : older.Fingerprint,
+                        TlsPort = newer.TlsPort, Lan = newer.Lan, Token = token,
+                    };
+                    keepOlderTokens = !(await Sender.TestAsync(Probe(newer.Token))).Ok && (await Sender.TestAsync(Probe(older.Token))).Ok;
+                }
+                var (olderIndex, newerIndex) = (Settings.Peers.IndexOf(older), Settings.Peers.IndexOf(newer));
+                Settings = SettingsStore.Update(s =>
+                {
+                    if (olderIndex < s.Peers.Count && newerIndex < s.Peers.Count && PeerMerge.SameDevice(s.Peers[olderIndex], s.Peers[newerIndex]))
+                        PeerMerge.Merge(s, s.Peers[olderIndex], s.Peers[newerIndex], keepOlderTokens);
+                });
+                RequestLog.Note($"merged device \"{newer.Name}\" into \"{older.Name}\" (same device; kept {(keepOlderTokens ? "the older" : "the newer")} tokens)");
+                merged = true;
+            }
+            if (merged)
+                SettingsSaved?.Invoke();
+            NearbyChanged?.Invoke();
+        }
+        finally
+        {
+            _learning = false;
+        }
+    }
 
     // Someone nearby asked to pair (POST /pair/request): ask the person here, showing the code.
     Task<bool> ConfirmLanPairAsync(LanPairPrompt prompt, CancellationToken cancel) =>
@@ -88,11 +179,13 @@ public partial class App
         }
 
         var minted = SettingsStore.NewToken();
-        var existed = Settings.Peers.Any(p => p.Id == device.Id);
+        // The same device may already be paired over Tailscale under another name: update that one.
+        bool Matches(Peer p) => p.Id == device.Id || (p.Fingerprint.Length > 0 && p.Fingerprint == fingerprint);
+        var existed = Settings.Peers.Any(Matches);
         // Accept the new token before asking, since the device may call back right away.
         Settings = SettingsStore.Update(s =>
         {
-            var peer = s.Peers.Find(p => p.Id == device.Id) ?? s.FindPeer(device.Name);
+            var peer = s.Peers.Find(Matches) ?? s.FindPeer(device.Name);
             if (peer is null)
             {
                 peer = new Peer { Name = device.Name, Platform = device.Platform };
@@ -101,7 +194,7 @@ public partial class App
             peer.Id = device.Id;
             peer.AcceptToken = minted;
         });
-        var name = Settings.Peers.Find(p => p.Id == device.Id)!.Name;
+        var name = Settings.Peers.Find(Matches)!.Name;
 
         var code = DeviceIdentity.PairingCode(fingerprint, DeviceIdentity.Fingerprint(Settings));
         using var cancel = new CancellationTokenSource();

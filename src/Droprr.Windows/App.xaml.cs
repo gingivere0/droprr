@@ -267,6 +267,8 @@ public partial class App : Application
     void OnPairRequested(PairRequest request)
     {
         var peer = SavePeer(request);
+        // It may be the same device as one paired over Tailscale whose id this PC hadn't learned yet.
+        Dispatcher.BeginInvoke(async () => await LearnAndMergePeersAsync());
         _tray?.Notify($"{peer.Name} paired", peer.IsPhone
             ? "Items you send to it wait here until it checks in."
             : "You can now send to it from this PC.");
@@ -283,6 +285,7 @@ public partial class App : Application
         {
             var peer = (request.ExistingPeer is { } existing ? s.FindPeer(existing) : null)
                 ?? (request.Id is { } id ? s.Peers.Find(p => p.Id == id) : null)
+                ?? (request.Fingerprint is { } fp ? s.Peers.Find(p => p.Fingerprint == fp) : null)
                 ?? s.FindPeer(request.Name);
             if (peer is null)
             {
@@ -429,6 +432,7 @@ public partial class App : Application
                 : $"Tailscale not found; localhost only (port {Settings.Port})")
                 + (receiver.LanListening ? " and Wi-Fi" : ""));
             StartLocalNetwork(receiver);
+            _ = LearnAndMergePeersAsync();
         }
         catch (Exception ex)
         {

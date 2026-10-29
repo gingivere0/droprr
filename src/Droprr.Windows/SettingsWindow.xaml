@@ -150,13 +150,16 @@
                         <StackPanel x:Name="NearbyPanel" Visibility="Collapsed" Margin="0,16,0,0">
                             <TextBlock Text="Nearby on this network" Style="{StaticResource BodyStrongText}" Margin="0,0,0,4" />
                             <TextBlock Style="{StaticResource Caption}" Margin="0,0,0,8"
-                                       Text="Droprr devices on this Wi-Fi that aren't paired yet. Pairing shows the same code on both screens." />
+                                       Text="Droprr devices on this Wi-Fi. Pairing shows the same code on both screens." />
                             <ItemsControl x:Name="NearbyList" AutomationProperties.Name="Nearby devices">
                                 <ItemsControl.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type local:LanDevice}">
+                                    <DataTemplate DataType="{x:Type local:NearbyDevice}">
                                         <DockPanel Margin="0,0,0,8">
                                             <ui:Button DockPanel.Dock="Right" Content="Pair" Icon="{ui:SymbolIcon Link24}" Style="{StaticResource TonalButton}"
+                                                       Visibility="{Binding PairVisibility}"
                                                        AutomationProperties.Name="{Binding Name, StringFormat='Pair with {0}'}" Click="OnPairNearby" />
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding PairedLabel}" Style="{StaticResource Caption}"
+                                                       VerticalAlignment="Center" Visibility="{Binding LabelVisibility}" />
                                             <ui:SymbolIcon Symbol="{Binding Platform, Converter={StaticResource PlatformSymbol}}" FontSize="20"
                                                            Margin="0,0,12,0" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                                             <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />

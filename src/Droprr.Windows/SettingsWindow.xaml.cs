@@ -114,14 +114,16 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
 
     void ShowNearby()
     {
-        var nearby = _app.UnpairedNearby().Where(d => !_peers.Any(p => p.Id == d.Id)).ToList();
+        var nearby = _app.NearbyDevices()
+            .Where(d => d.PairedAs is not null || !_peers.Any(p => p.Id == d.Device.Id))
+            .ToList();
         NearbyList.ItemsSource = nearby;
         NearbyPanel.Visibility = nearby.Count > 0 && LocalNetworkBox.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
     }
 
     async void OnPairNearby(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: LanDevice device })
+        if (sender is not FrameworkElement { DataContext: NearbyDevice { Device: var device, PairedAs: null } })
             return;
         ((UIElement)sender).IsEnabled = false;
         try
