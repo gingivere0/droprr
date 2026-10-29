@@ -8,25 +8,32 @@ struct MacSettingsView: View {
     @State private var removing: Peer?
     @State private var pingResults: [UUID: PingResult] = [:]
     @State private var showToken = false
+    @State private var showingAppearance = false
 
     private var settings: DroprrSettings { model.settings }
 
     /// The cards without the scroll view (also used for debug snapshots).
     var content: some View {
         VStack(alignment: .leading, spacing: Look.isAtelier ? 30 : Space.xl) {
-            VStack(alignment: .leading, spacing: Space.lg) {
-                VStack(alignment: .leading, spacing: 6) {
-                    if Look.isAtelier { Kicker("Droprr") }
-                    Text("Settings").font(Look.display(Look.isAtelier ? 38 : 32))
+            if showingAppearance {
+                Button { Motion.perform { showingAppearance = false } } label: {
+                    Label("Settings", systemImage: "chevron.left").font(.system(size: 13, weight: .medium))
                 }
-                Hairline()
+                .buttonStyle(HoverButtonStyle(.plain))
+                .foregroundStyle(Look.muted)
+                .keyboardShortcut("[", modifiers: .command)
+                .padding(.bottom, -Space.md)
+                pageTitle("Appearance")
+                style
+                appearance
+            } else {
+                pageTitle("Settings")
+                thisMac
+                appearanceLink
+                devices
+                receiving
+                security
             }
-            thisMac
-            style
-            appearance
-            devices
-            receiving
-            security
         }
         .padding(.horizontal, Look.isAtelier ? 36 : 28)
         .padding(.top, Space.lg)
@@ -110,6 +117,40 @@ struct MacSettingsView: View {
             .hoverHint("Show a QR code for your iPhone to scan")
         }
         .lookCard()
+    }
+
+    private func pageTitle(_ title: String) -> some View {
+        VStack(alignment: .leading, spacing: Space.lg) {
+            VStack(alignment: .leading, spacing: 6) {
+                if Look.isAtelier { Kicker("Droprr") }
+                Text(title).font(Look.display(Look.isAtelier ? 38 : 32))
+            }
+            Hairline()
+        }
+    }
+
+    /// Opens the Appearance page (style and colors).
+    private var appearanceLink: some View {
+        Button { Motion.perform { showingAppearance = true } } label: {
+            VStack(spacing: 0) {
+                HStack(spacing: Space.md) {
+                    Image(systemName: "paintpalette").font(.system(size: 17)).frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Appearance").font(.system(size: 14, weight: .semibold))
+                        Text("\(Look.style.name) · \(ThemePalette.named(settings.theme).name)")
+                            .font(.system(size: 12)).foregroundStyle(Look.muted)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Look.muted)
+                }
+                .padding(.vertical, Look.isAtelier ? Space.md : 0)
+                Hairline()
+            }
+            .lookCard(padding: 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverHint("Style and colors")
     }
 
     private var style: some View {

@@ -79,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.backgroundColor = Look.windowColor
         window.isOpaque = !Look.forcesDark
         window.appearance = Look.forcesDark ? NSAppearance(named: .darkAqua) : nil
+        applyGlass(window)
         if window.titlebarAppearsTransparent && window.titleVisibility == .hidden
             && window.styleMask.contains(.fullSizeContentView) && window.toolbar == nil { return }
         window.titlebarAppearsTransparent = true
@@ -89,6 +90,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.isMovableByWindowBackground = true
         // Match the theme surface so nothing of the default window color peeks out at the edges.
         window.backgroundColor = Look.windowColor
+    }
+
+    /// Spatial: frosted glass behind the whole window, title bar strip included, so nothing
+    /// behind the window shows through unblurred where the SwiftUI content doesn't reach.
+    @MainActor
+    private static func applyGlass(_ window: NSWindow) {
+        let id = NSUserInterfaceItemIdentifier("droprr.glass")
+        guard let content = window.contentView, let frame = content.superview else { return }
+        let existing = frame.subviews.first { $0.identifier == id }
+        if Look.forcesDark {
+            guard existing == nil else { return }
+            let glass = NSVisualEffectView(frame: frame.bounds)
+            glass.identifier = id
+            glass.material = .hudWindow
+            glass.blendingMode = .behindWindow
+            glass.state = .active
+            glass.autoresizingMask = [.width, .height]
+            frame.addSubview(glass, positioned: .below, relativeTo: content)
+        } else {
+            existing?.removeFromSuperview()
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
