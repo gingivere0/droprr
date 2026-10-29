@@ -55,6 +55,7 @@ enum Theme {
         case "ios": return "iphone"
         case "macos": return "laptopcomputer"
         case "windows": return "pc"
+        case "web": return "globe"
         default: return "desktopcomputer"
         }
     }
@@ -64,6 +65,7 @@ enum Theme {
         case "ios": return "iPhone"
         case "macos": return "Mac"
         case "windows": return "Windows"
+        case "web": return "Browser"
         default: return "Computer"
         }
     }

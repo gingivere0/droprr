@@ -7,8 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		75BC4D956D59C80F82309E75 /* DroprrShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 04499D89D0CA81339943290D /* DroprrShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		381D88ADDE4140F90F98E55F /* DroprrMacShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3952C4AEEE1A3B6CD77A0A6F /* DroprrMacShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		75BC4D956D59C80F82309E75 /* DroprrShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 04499D89D0CA81339943290D /* DroprrShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -54,31 +54,36 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		8B58E4A57330C1E4BB64AE0C /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
-		2690B6FB7F788D47811147AB /* Mac-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Mac-Info.plist; sourceTree = "<group>"; };
-		8DE8A07B0A3261F14C149A77 /* iOS-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = iOS-Info.plist; sourceTree = "<group>"; };
-		6D8B31369AF1AE0064770230 /* Share-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Share-Info.plist; sourceTree = "<group>"; };
-		27DD6AB17F609D59337C87EB /* MacShare-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = MacShare-Info.plist; sourceTree = "<group>"; };
-		DEEDDF578BD2EB8E70E23CBD /* Mac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Mac.entitlements; sourceTree = "<group>"; };
-		F83AB8ECBB0F33CD719D39E7 /* iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iOS.entitlements; sourceTree = "<group>"; };
-		B6BDCDEE22870FEC9CF6622D /* Share.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Share.entitlements; sourceTree = "<group>"; };
+		04499D89D0CA81339943290D /* DroprrShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DroprrShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		07300136B33DCDF7AF0A17F8 /* Droprr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Droprr.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2690B6FB7F788D47811147AB /* Mac-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Mac-Info.plist"; sourceTree = "<group>"; };
+		27DD6AB17F609D59337C87EB /* MacShare-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "MacShare-Info.plist"; sourceTree = "<group>"; };
+		3952C4AEEE1A3B6CD77A0A6F /* DroprrMacShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DroprrMacShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		47B12F209F8BD9A40C6C3D68 /* MacShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MacShare.entitlements; sourceTree = "<group>"; };
 		65F51FB8EEEE81FA81F12B03 /* Local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Local.xcconfig.example; sourceTree = "<group>"; };
+		6D8B31369AF1AE0064770230 /* Share-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Share-Info.plist"; sourceTree = "<group>"; };
+		8B58E4A57330C1E4BB64AE0C /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		8DE8A07B0A3261F14C149A77 /* iOS-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "iOS-Info.plist"; sourceTree = "<group>"; };
+		B6BDCDEE22870FEC9CF6622D /* Share.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Share.entitlements; sourceTree = "<group>"; };
+		DEEDDF578BD2EB8E70E23CBD /* Mac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Mac.entitlements; sourceTree = "<group>"; };
 		F4EC33B737B324A096D05CDE /* Droprr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Droprr.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		07300136B33DCDF7AF0A17F8 /* Droprr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Droprr.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		04499D89D0CA81339943290D /* DroprrShare.appex */ = {isa = PBXFileReference; explicitFileType = wrapper.app-extension; includeInIndex = 0; path = DroprrShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		3952C4AEEE1A3B6CD77A0A6F /* DroprrMacShare.appex */ = {isa = PBXFileReference; explicitFileType = wrapper.app-extension; includeInIndex = 0; path = DroprrMacShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		F83AB8ECBB0F33CD719D39E7 /* iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iOS.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		28FE0AA51FDF854E48082BB3 /* Mac */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Mac;
+			sourceTree = "<group>";
+		};
 		2CAAAAB80B903BE3ED26246B /* Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Shared;
 			sourceTree = "<group>";
 		};
-		28FE0AA51FDF854E48082BB3 /* Mac */ = {
+		5B8629E347D5B9201276EAB2 /* MacShareExtension */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Mac;
+			path = MacShareExtension;
 			sourceTree = "<group>";
 		};
 		71DDF9B7B33990B3EDB97276 /* iOS */ = {
@@ -91,22 +96,10 @@
 			path = ShareExtension;
 			sourceTree = "<group>";
 		};
-		5B8629E347D5B9201276EAB2 /* MacShareExtension */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = MacShareExtension;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		465FEF455DEDFAB326AF6807 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		C083CAF926B423255BDF0476 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -121,6 +114,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		ABBEBF72A1C57142920E3D2A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C083CAF926B423255BDF0476 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -190,8 +190,8 @@
 				76827205F8FBA0E7C2661D8F /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				2CAAAAB80B903BE3ED26246B /* Shared */,
 				28FE0AA51FDF854E48082BB3 /* Mac */,
+				2CAAAAB80B903BE3ED26246B /* Shared */,
 			);
 			name = DroprrMac;
 			packageProductDependencies = (
@@ -199,6 +199,29 @@
 			productName = DroprrMac;
 			productReference = F4EC33B737B324A096D05CDE /* Droprr.app */;
 			productType = "com.apple.product-type.application";
+		};
+		8506AE41766A5D89B64BD326 /* DroprrMacShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FEAE4D5C9B9E57A6EEA9B3C2 /* Build configuration list for PBXNativeTarget "DroprrMacShare" */;
+			buildPhases = (
+				F3B5EDB22458A11536D86A5A /* Sources */,
+				ABBEBF72A1C57142920E3D2A /* Frameworks */,
+				F08EEE676A629E0FB5ECA1BE /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				2CAAAAB80B903BE3ED26246B /* Shared */,
+				5B8629E347D5B9201276EAB2 /* MacShareExtension */,
+			);
+			name = DroprrMacShare;
+			packageProductDependencies = (
+			);
+			productName = DroprrMacShare;
+			productReference = 3952C4AEEE1A3B6CD77A0A6F /* DroprrMacShare.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 		AB0B0784B66B733B2775DDA3 /* DroprriOS */ = {
 			isa = PBXNativeTarget;
@@ -248,29 +271,6 @@
 			productReference = 04499D89D0CA81339943290D /* DroprrShare.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		8506AE41766A5D89B64BD326 /* DroprrMacShare */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = FEAE4D5C9B9E57A6EEA9B3C2 /* Build configuration list for PBXNativeTarget "DroprrMacShare" */;
-			buildPhases = (
-				F3B5EDB22458A11536D86A5A /* Sources */,
-				ABBEBF72A1C57142920E3D2A /* Frameworks */,
-				F08EEE676A629E0FB5ECA1BE /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				2CAAAAB80B903BE3ED26246B /* Shared */,
-				5B8629E347D5B9201276EAB2 /* MacShareExtension */,
-			);
-			name = DroprrMacShare;
-			packageProductDependencies = (
-			);
-			productName = DroprrMacShare;
-			productReference = 3952C4AEEE1A3B6CD77A0A6F /* DroprrMacShare.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -284,13 +284,13 @@
 					79C1B30FBEF49249D7636B4F = {
 						CreatedOnToolsVersion = 26.0;
 					};
+					8506AE41766A5D89B64BD326 = {
+						CreatedOnToolsVersion = 26.0;
+					};
 					AB0B0784B66B733B2775DDA3 = {
 						CreatedOnToolsVersion = 26.0;
 					};
 					EB2D224FF4598D1810189A69 = {
-						CreatedOnToolsVersion = 26.0;
-					};
-					8506AE41766A5D89B64BD326 = {
 						CreatedOnToolsVersion = 26.0;
 					};
 				};
@@ -325,7 +325,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		FE6A4BB845F0AE66918D1244 /* Resources */ = {
+		F08EEE676A629E0FB5ECA1BE /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -339,7 +339,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		F08EEE676A629E0FB5ECA1BE /* Resources */ = {
+		FE6A4BB845F0AE66918D1244 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -422,6 +422,101 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		054DCED4864CCAB02D9E964D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Config/Mac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Mac-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.mac";
+				PRODUCT_NAME = Droprr;
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		2B645610CD3D8D67581A2E9D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8B58E4A57330C1E4BB64AE0C /* Base.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		451056732067D69511C0F813 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-sunset AppIcon-cherry AppIcon-roseGold AppIcon-graphiteLime AppIcon-oliveMustard";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Config/iOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/iOS-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				MARKETING_VERSION = 0.2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr";
+				PRODUCT_NAME = Droprr;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		57A42D3A43CD47E1F50FEE51 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Config/MacShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/MacShare-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.mac.share";
+				PRODUCT_NAME = DroprrMacShare;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
 		638A1DC68E43C0A57EEF0228 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 8B58E4A57330C1E4BB64AE0C /* Base.xcconfig */;
@@ -441,22 +536,6 @@
 			};
 			name = Debug;
 		};
-		2B645610CD3D8D67581A2E9D /* Release */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 8B58E4A57330C1E4BB64AE0C /* Base.xcconfig */;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				CLANG_ENABLE_MODULES = YES;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
-				SWIFT_COMPILATION_MODE = wholemodule;
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
 		7938382F52A7A1A394E0E725 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -468,7 +547,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Config/Mac-Info.plist;
+				INFOPLIST_FILE = "Config/Mac-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
@@ -481,31 +560,6 @@
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
-		};
-		054DCED4864CCAB02D9E964D /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Config/Mac.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Config/Mac-Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.2.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.mac";
-				PRODUCT_NAME = Droprr;
-				SDKROOT = macosx;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
 		};
 		963A352B97748B18405A3620 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -517,7 +571,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Config/iOS-Info.plist;
+				INFOPLIST_FILE = "Config/iOS-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -533,33 +587,6 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
-		};
-		451056732067D69511C0F813 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-sunset AppIcon-cherry AppIcon-roseGold AppIcon-graphiteLime AppIcon-oliveMustard";
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Config/iOS.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Config/iOS-Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 0.2.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr";
-				PRODUCT_NAME = Droprr;
-				SDKROOT = iphoneos;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Release;
 		};
 		98B2982575565DF4C39005D8 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -570,10 +597,13 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Config/Share-Info.plist;
+				INFOPLIST_FILE = "Config/Share-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks @executable_path/../../Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
 				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.share";
 				PRODUCT_NAME = DroprrShare;
@@ -582,54 +612,6 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		C541694B6E469B4FC6700EF8 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = Config/Share.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Config/Share-Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks @executable_path/../../Frameworks";
-				MARKETING_VERSION = 0.2.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.share";
-				PRODUCT_NAME = DroprrShare;
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Release;
-		};
-		57A42D3A43CD47E1F50FEE51 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = Config/MacShare.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Config/MacShare-Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks @executable_path/../../../../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.2.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.mac.share";
-				PRODUCT_NAME = DroprrMacShare;
-				SDKROOT = macosx;
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
@@ -643,9 +625,12 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Config/MacShare-Info.plist;
+				INFOPLIST_FILE = "Config/MacShare-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks @executable_path/../../../../Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.mac.share";
@@ -654,6 +639,33 @@
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		C541694B6E469B4FC6700EF8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Config/Share.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Share-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Droprr;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(DROPRR_BUNDLE_PREFIX).droprr.share";
+				PRODUCT_NAME = DroprrShare;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -669,20 +681,20 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B865E32F4EBD318589051BC8 /* Build configuration list for PBXNativeTarget "DroprrMac" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				7938382F52A7A1A394E0E725 /* Debug */,
-				054DCED4864CCAB02D9E964D /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		5C1AFC2A13C5743C4E634824 /* Build configuration list for PBXNativeTarget "DroprriOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				963A352B97748B18405A3620 /* Debug */,
 				451056732067D69511C0F813 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B865E32F4EBD318589051BC8 /* Build configuration list for PBXNativeTarget "DroprrMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7938382F52A7A1A394E0E725 /* Debug */,
+				054DCED4864CCAB02D9E964D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

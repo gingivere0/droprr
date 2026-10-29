@@ -137,6 +137,11 @@ struct PanelView: View {
                 openWindow(id: "pair")
                 bringToFront()
             }
+            FooterButton(title: "Browser", help: "Open in a browser… (⌘B)", key: "b") {
+                closeMenuBarPanel()
+                openWindow(id: "browser")
+                bringToFront()
+            }
             FooterButton(title: "Settings", help: "Settings (⌘,)", key: ",", action: showSettings)
             Spacer()
             FooterButton(title: "Quit", help: "Quit Droprr (⌘Q)", key: "q") { NSApp.terminate(nil) }

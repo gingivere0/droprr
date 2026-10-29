@@ -28,6 +28,12 @@ struct DroprrMacApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
 
+        Window("Open in a Browser", id: "browser") {
+            BrowserAccessView(model: model)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+
         Settings {
             MacSettingsView(model: model)
                 .onChange(of: model.settings.port) { model.restartIfNeeded() }
@@ -169,6 +175,20 @@ final class MacModel {
             self?.isListening = state.hasPrefix("Listening")
         }
         receiver.onItem = { [weak self] in self?.received($0) }
+        receiver.browserAccess = browserAccess
+        receiver.addBrowser = { [weak self] in self?.addBrowser($0) ?? "Browser" }
+        receiver.onBrowserRemoved = { [weak self] id in
+            guard let self, let peer = self.settings.peers.first(where: { $0.id == id }) else { return }
+            self.outbox.clear(for: peer)
+            self.settings.peers.removeAll { $0.id == id }
+        }
+        #if DEBUG
+        // Tests: DROPRR_BROWSER_CODE=1 opens a Browser access code at launch and logs it.
+        if ProcessInfo.processInfo.environment["DROPRR_BROWSER_CODE"] != nil { NSLog("Droprr test: browser code %@", browserAccess.open()) }
+        #endif
+        browserAccess.onEnded = { [weak self] used in
+            DispatchQueue.main.async { if !used { self?.browserCodeClosed = true } }
+        }
         outbox.onChange = { [weak self] in self?.outboxVersion += 1 }
         Notifier.shared.onOpen = { url in
             if url.isFileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) } else { Links.open(url) }
@@ -301,7 +321,24 @@ final class MacModel {
 
     func waiting(for peer: Peer) -> Int {
         _ = outboxVersion
-        return peer.isPhone ? outbox.count(for: peer) : 0
+        return peer.isPhone || peer.isBrowser ? outbox.count(for: peer) : 0
+    }
+
+    // MARK: Browser access
+
+    /// The "Open in a browser" code; only open while that window is.
+    @ObservationIgnored let browserAccess = BrowserAccess()
+    /// The browser that just connected (the window says so, then closes).
+    var connectedBrowser: String?
+    /// Five wrong codes closed the current one.
+    var browserCodeClosed = false
+
+    private func addBrowser(_ request: PairRequest) -> String {
+        let peer = Peer(name: settings.uniqueName(request.name), host: "", port: request.port, platform: "web",
+                        remoteName: request.name, token: nil, acceptToken: request.acceptToken)
+        settings.peers.append(peer)
+        connectedBrowser = peer.name
+        return peer.name
     }
 
     func clearWaiting(for peer: Peer) {
@@ -391,7 +428,7 @@ final class MacModel {
         settings.lastPeerID = peer.id
         // Phones can't receive in the background, so their items wait in the outbox, unless the phone
         // is open on this network right now and has given this Mac a token (protocol 2).
-        if peer.isPhone && !(LANDiscovery.shared.isAdvertising(peer) && !(peer.token ?? "").isEmpty) {
+        if peer.isBrowser || peer.isPhone && !(LANDiscovery.shared.isAdvertising(peer) && !(peer.token ?? "").isEmpty) {
             do {
                 try outbox.enqueue(payload, for: peer)
                 lastSendResult = nil   // the tile's "waiting" badge already shows it

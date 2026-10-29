@@ -15,10 +15,13 @@ final class HTTPServer {
 
     let policy: Policy
     private let identity: sec_identity_t?
+    /// The browser port: HTTPS without asking for a client certificate (browsers have none).
+    let browserOnly: Bool
 
-    init(policy: Policy = .tailnet, identity: sec_identity_t? = nil) {
+    init(policy: Policy = .tailnet, identity: sec_identity_t? = nil, browserOnly: Bool = false) {
         self.policy = policy
         self.identity = identity
+        self.browserOnly = browserOnly
     }
 
     struct Request {
@@ -27,8 +30,10 @@ final class HTTPServer {
         var headers: [String: String]   // lowercased names
         var bodyFile: URL?
         var remoteHost: String?
-        /// True when it arrived on the HTTPS (protocol 2) listener.
+        /// True when it arrived on an HTTPS listener (protocol 2, or the browser port).
         var secure = false
+        /// True on the browser-only HTTPS port (HTTP port + 2), which serves just the page and its endpoints.
+        var browserPort = false
         /// The SHA-256 fingerprint of the client's TLS certificate, when it presented one (protocol 2 clients do).
         var clientFingerprint: String?
 
@@ -77,7 +82,7 @@ final class HTTPServer {
             // pairing reads its fingerprint. Any certificate is accepted here; the fingerprint is what counts.
             // Network.framework has no "optional" mode on Apple platforms, so a certificate is required on the
             // HTTPS port (the spec allows that; clients without one use plain HTTP over Tailscale).
-            sec_protocol_options_set_peer_authentication_required(tls.securityProtocolOptions, true)
+            if !browserOnly { sec_protocol_options_set_peer_authentication_required(tls.securityProtocolOptions, true) }
             sec_protocol_options_set_verify_block(tls.securityProtocolOptions, { _, _, complete in complete(true) }, queue)
             params = NWParameters(tls: tls, tcp: .init())
         } else {
@@ -420,7 +425,7 @@ private final class HTTPConnection {
         var remoteHost: String?
         if case .hostPort(let host, _) = connection.endpoint { remoteHost = "\(host)".components(separatedBy: "%").first }
         return .init(method: String(parts[0]).uppercased(), path: path, headers: headers, bodyFile: nil, remoteHost: remoteHost,
-                     secure: server.policy == .lan, clientFingerprint: clientFingerprint)
+                     secure: server.policy == .lan, browserPort: server.browserOnly, clientFingerprint: clientFingerprint)
     }
 
     private func dispatch() {

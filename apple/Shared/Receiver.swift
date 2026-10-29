@@ -80,6 +80,16 @@ final class DroprrReceiver {
     private let server = HTTPServer()
     /// Protocol 2: HTTPS on the HTTP port + 1, for the LAN (and optionally Tailscale).
     private var secureServer: HTTPServer?
+    /// Browser access over Wi-Fi: HTTPS on the HTTP port + 2, without a client certificate (desktops only).
+    private var browserServer: HTTPServer?
+    /// The "Open in a browser" code; nil (iPhone) turns Browser access off.
+    var browserAccess: BrowserAccess?
+    /// Saves a browser that used the code as a new "web" peer and returns its name. Called on the main queue.
+    var addBrowser: ((PairRequest) -> String)?
+    /// A browser signed itself out. Called on the main queue with its peer id.
+    var onBrowserRemoved: ((UUID) -> Void)?
+    /// This device's MagicDNS name, if Tailscale has one: a Host a browser may use.
+    private var magicDNS: String?
     private let settings: DroprrSettings
     private let inbox: URL
 
@@ -119,6 +129,8 @@ final class DroprrReceiver {
         server.stop()
         secureServer?.stop()
         secureServer = nil
+        browserServer?.stop()
+        browserServer = nil
         settings.secureListening = false
     }
 
@@ -126,6 +138,7 @@ final class DroprrReceiver {
     /// limited by free space.
     static func bodyLimit(_ request: HTTPServer.Request) -> Int {
         if Route(request).segments.first == "pair" { return 64 << 10 }
+        if Route(request).segments.first == "web" { return 4 << 10 }
         let mime = (request.header("content-type") ?? "").split(separator: ";").first
             .map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? ""
         // The same rule receive() uses: only a non-empty name makes it a file.
@@ -142,8 +155,24 @@ final class DroprrReceiver {
     func startSecure() {
         secureServer?.stop()
         secureServer = nil
+        browserServer?.stop()
+        browserServer = nil
         settings.secureListening = false
+        if browserAccess != nil { lookUpMagicDNS() }
         guard settings.localNetwork, let identity = settings.identity?.tlsIdentity else { return }
+        if browserAccess != nil {
+            let browser = HTTPServer(policy: .lan, identity: identity, browserOnly: true)
+            browser.precheck = server.precheck
+            browser.handler = server.handler
+            browser.bodyLimit = server.bodyLimit
+            browser.saveDirectory = inbox
+            do {
+                try browser.start(port: settings.port + 2)
+                browserServer = browser
+            } catch {
+                NSLog("Droprr: browser listener failed: %@", String(describing: error))
+            }
+        }
         let secure = HTTPServer(policy: .lan, identity: identity)
         secure.precheck = server.precheck
         secure.handler = server.handler
@@ -180,12 +209,20 @@ final class DroprrReceiver {
     // MARK: - Routing
 
     private func precheck(_ request: HTTPServer.Request) -> HTTPServer.Response? {
+        // Browser access: the page and its sign-in need no token; the browser port serves nothing else
+        // except the endpoints a browser's cookie works on.
+        if Self.isWebPath(request) { return browserAccess == nil ? .json(404, ["ok": false, "error": "not found"]) : nil }
+        if request.browserPort && !Self.cookieAllowed(request) { return .json(404, ["ok": false, "error": "not found"]) }
         // LAN pairing is the one request without a token, and only over HTTPS.
         if request.method == "POST", ["request", "confirm"].contains(Route(request).segments.dropFirst().first ?? ""),
            Route(request).segments.count == 2, Route(request).segments.first == "pair" {
             return request.secure && onPairRequest != nil ? nil : .json(404, ["ok": false, "error": "not found"])
         }
-        guard authorization(request) != nil else {
+        guard let auth = authorization(request) else {
+            return .json(401, ["ok": false, "error": "unauthorized"])
+        }
+        // A browser's token works only where its cookie would: never /pair or anything else.
+        if case .device = auth, isBrowserRequest(request), !Self.cookieAllowed(request) {
             return .json(401, ["ok": false, "error": "unauthorized"])
         }
         let route = Route(request)
@@ -222,6 +259,7 @@ final class DroprrReceiver {
 
     /// Which token authorized the request: the main token or a paired device's token.
     private func authorization(_ request: HTTPServer.Request) -> DroprrSettings.Authorization? {
+        if let token = cookieToken(request) { return settings.authorize(token) }
         let header = (request.header("authorization") ?? "").trimmingCharacters(in: .whitespaces)
         guard header.lowercased().hasPrefix("bearer ") else { return nil }
         return settings.authorize(String(header.dropFirst(7)).trimmingCharacters(in: .whitespaces))
@@ -248,6 +286,12 @@ final class DroprrReceiver {
         guard let file = outbox.file(id: id, peerID: peerID) else { return notFound }
         var response = HTTPServer.Response(status: 200, body: Data(), contentType: file.mimeType)
         response.file = file.url
+        if route.query["inline"] == "1", Self.inlineTypes.contains(file.mimeType.lowercased()) {
+            // The page's View button: shown in place, sandboxed, and never as HTML or SVG.
+            response.headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self'; media-src 'self'"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            return response
+        }
         let ascii = file.name.unicodeScalars.allSatisfy { $0.isASCII && $0 != "\"" }
         let fallback = String(String.UnicodeScalarView((file.name.applyingTransform(.stripDiacritics, reverse: false) ?? file.name)
             .unicodeScalars.filter { $0.isASCII && $0 != "\"" }))
@@ -261,6 +305,7 @@ final class DroprrReceiver {
 
     private func handle(_ request: HTTPServer.Request) async -> HTTPServer.Response {
         let route = Route(request)
+        if Self.isWebPath(request) { return await handleWeb(request, route as Any) }
         if route.segments.first == "inbox", let outbox {
             return handleInbox(request, route, outbox)
         }
@@ -323,6 +368,13 @@ final class DroprrReceiver {
             }
         }
         if route.segments.first == "ping" {
+            if let token = cookieToken(request), let peer = browserPeer(token) {
+                // A browser: say which device it is, and keep its cookie alive for another 30 days.
+                var response = HTTPServer.Response.json(200, ["name": settings.deviceName, "version": DroprrDefaults.version,
+                                                              "platform": DroprrSettings.platform, "protocol": 2, "you": peer.name])
+                response.headers["Set-Cookie"] = Self.cookie(token, secure: request.secure)
+                return response
+            }
             return .json(200, ["name": settings.deviceName, "version": DroprrDefaults.version,
                                "platform": DroprrSettings.platform, "protocol": 2].merging(settings.identityFields(includeLAN: false)) { a, _ in a })
         }
@@ -727,5 +779,166 @@ extension Data {
             index = next
         }
         self.init(bytes)
+    }
+}
+
+// MARK: - Browser access (docs/PROTOCOL.md, "Browser access")
+
+extension DroprrReceiver {
+    private static let webCookie = "droprr"
+    private static let webFiles: [String: (file: String, type: String)] = [
+        "/web": ("index.html", "text/html; charset=utf-8"),
+        "/web/": ("index.html", "text/html; charset=utf-8"),
+        "/web/app.js": ("app.js", "text/javascript; charset=utf-8"),
+        "/web/app.css": ("app.css", "text/css; charset=utf-8"),
+        "/web/icon.png": ("icon.png", "image/png"),
+    ]
+    /// Media a browser may show in place; never SVG or HTML, which could run script on this origin.
+    static let inlineTypes: Set<String> = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif",
+                                           "video/mp4", "video/quicktime", "video/x-m4v"]
+
+    private static func path(_ request: HTTPServer.Request) -> String {
+        (request.path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? request.path).lowercased()
+    }
+
+    /// GET of the page's files, and POST /web/session and /web/signout.
+    static func isWebPath(_ request: HTTPServer.Request) -> Bool {
+        let path = path(request)
+        return (request.method == "GET" && webFiles[path] != nil)
+            || (request.method == "POST" && (path == "/web/session" || path == "/web/signout"))
+    }
+
+    /// The endpoints a browser's cookie works on. Never /pair.
+    static func cookieAllowed(_ request: HTTPServer.Request) -> Bool {
+        let path = path(request)
+        switch request.method {
+        case "GET": return path == "/ping" || path == "/inbox" || path.hasPrefix("/inbox/")
+        case "POST": return path == "/send"
+        case "DELETE": return path.hasPrefix("/inbox/")
+        default: return false
+        }
+    }
+
+    static func cookie(_ token: String, secure: Bool) -> String {
+        "\(webCookie)=\(token); Max-Age=2592000; Path=/; SameSite=Strict; HttpOnly" + (secure ? "; Secure" : "")
+    }
+
+    /// Requests from the page itself, on a host name this computer answers to: the Host is an IP address,
+    /// localhost, this computer's name or its MagicDNS name (not a name someone else's DNS could point here); an
+    /// Origin, when sent, is this same origin; and anything but a GET carries X-Droprr-Web (which another site can't
+    /// add without a CORS preflight, and preflights are never answered).
+    private func isFromPage(_ request: HTTPServer.Request) -> Bool {
+        guard let hostHeader = request.header("host"), !hostHeader.isEmpty else { return false }
+        var host = hostHeader
+        if host.hasPrefix("["), let end = host.firstIndex(of: "]") {
+            host = String(host[host.index(after: host.startIndex)..<end])
+        } else if let colon = host.lastIndex(of: ":"), host.filter({ $0 == ":" }).count == 1 {
+            host = String(host[..<colon])
+        }
+        host = host.lowercased()
+        var v4 = in_addr(), v6 = in6_addr()
+        let names = [ProcessInfo.processInfo.hostName, Host.current().localizedName ?? ""]
+            .map { $0.lowercased() }.flatMap { [$0, $0.components(separatedBy: ".").first ?? $0] }
+            .map { $0.replacingOccurrences(of: " ", with: "-") }
+        let known = inet_pton(AF_INET, host, &v4) == 1 || inet_pton(AF_INET6, host, &v6) == 1 || host == "localhost"
+            || names.contains(host)
+            || (magicDNS.map { host == $0 || host == ($0.components(separatedBy: ".").first ?? $0) } ?? false)
+        guard known else { return false }
+        if let origin = request.header("origin"), !origin.isEmpty,
+           origin.lowercased() != "\(request.secure ? "https" : "http")://\(hostHeader.lowercased())" { return false }
+        return request.method == "GET" || request.header("x-droprr-web") == "1"
+    }
+
+    /// The cookie's token, when the request may use it in place of a bearer token.
+    private func cookieToken(_ request: HTTPServer.Request) -> String? {
+        guard browserAccess != nil, request.header("authorization") == nil,
+              let header = request.header("cookie"), Self.cookieAllowed(request) || Self.isWebPath(request) else { return nil }
+        let value = header.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { $0.hasPrefix(Self.webCookie + "=") }.map { String($0.dropFirst(Self.webCookie.count + 1)) }
+        guard let value, !value.isEmpty, settings.isBrowserToken(value), isFromPage(request) else { return nil }
+        return value
+    }
+
+    /// Whether a request authenticated as a browser (its cookie, or a browser token sent as a bearer).
+    private func isBrowserRequest(_ request: HTTPServer.Request) -> Bool {
+        if cookieToken(request) != nil { return true }
+        let header = (request.header("authorization") ?? "").trimmingCharacters(in: .whitespaces)
+        return header.lowercased().hasPrefix("bearer ")
+            && settings.isBrowserToken(String(header.dropFirst(7)).trimmingCharacters(in: .whitespaces))
+    }
+
+    private func browserPeer(_ token: String) -> Peer? {
+        guard case .device(let id) = settings.authorize(token) else { return nil }
+        return DispatchQueue.main.sync { settings.peers.first { $0.id == id && $0.isBrowser } }
+    }
+
+    private func lookUpMagicDNS() {
+        guard let address = PairingInfo.tailscaleAddress() else { return }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            var sin = sockaddr_in()
+            sin.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+            sin.sin_family = sa_family_t(AF_INET)
+            inet_pton(AF_INET, address, &sin.sin_addr)
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            let found = withUnsafePointer(to: &sin) {
+                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    getnameinfo($0, socklen_t(MemoryLayout<sockaddr_in>.size), &host, socklen_t(host.count), nil, 0, NI_NAMEREQD)
+                }
+            } == 0
+            let name = String(cString: host).lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            if found, name.hasSuffix(".ts.net") { self?.magicDNS = name }
+        }
+    }
+
+    fileprivate func handleWeb(_ request: HTTPServer.Request, _ route: Any) async -> HTTPServer.Response {
+        let path = Self.path(request)
+        if request.method == "GET", let file = Self.webFiles[path] {
+            guard let url = Bundle.main.url(forResource: file.file, withExtension: nil, subdirectory: "web") else {
+                return .json(404, ["ok": false, "error": "not found"])
+            }
+            var response = HTTPServer.Response(status: 200, body: Data(), contentType: file.type)
+            response.file = url
+            response.headers["Cache-Control"] = "no-cache"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["Referrer-Policy"] = "no-referrer"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; "
+                + "frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+            return response
+        }
+        if path == "/web/session" { return webSession(request) }
+        // Sign out: remove this browser's peer (and its queue) and clear the cookie.
+        if let token = cookieToken(request), let peer = browserPeer(token), request.header("x-droprr-web") == "1" {
+            let remove = onBrowserRemoved
+            DispatchQueue.main.sync { remove?(peer.id) }
+        }
+        var response = HTTPServer.Response.json(200, ["ok": true])
+        response.headers["Set-Cookie"] = "\(Self.webCookie)=; Max-Age=0; Path=/; SameSite=Strict; HttpOnly" + (request.secure ? "; Secure" : "")
+        return response
+    }
+
+    /// { code, name }: on the right code, a new "web" peer with the cookie as its token.
+    private func webSession(_ request: HTTPServer.Request) -> HTTPServer.Response {
+        guard isFromPage(request), let access = browserAccess, let addBrowser else {
+            return .json(403, ["ok": false, "error": "forbidden"])
+        }
+        guard let body = request.bodyFile, let data = try? Data(contentsOf: body), data.count <= 4096,
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return .json(400, ["ok": false, "error": "body must be JSON: {\"code\", \"name\"}"])
+        }
+        switch access.use(json["code"] as? String) {
+        case .wrong: return .json(403, ["ok": false, "error": "wrong code"])
+        case .closed: return .json(403, ["ok": false, "error": "no code is open: choose Open in a browser on the computer"])
+        case .accepted: break
+        }
+        let name = PairRequest.displayName(json["name"] as? String ?? "")
+        let token = DroprrSettings.generateToken()
+        let saved = DispatchQueue.main.sync {
+            addBrowser(PairRequest(name: name.isEmpty ? "Browser" : name, platform: "web", host: "", port: settings.port,
+                                   token: nil, acceptToken: token, viaLAN: true))
+        }
+        var response = HTTPServer.Response.json(200, ["ok": true, "name": settings.deviceName, "device": saved])
+        response.headers["Set-Cookie"] = Self.cookie(token, secure: request.secure)
+        return response
     }
 }

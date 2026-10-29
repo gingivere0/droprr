@@ -35,7 +35,10 @@ struct Peer: Codable, Identifiable, Hashable {
     /// "lan" or "tailscale": how the last send reached it.
     var lastPath: String?
 
-    var isPaired: Bool { isPhone || !(token ?? "").isEmpty }
+    var isPaired: Bool { isPhone || isBrowser || !(token ?? "").isEmpty }
+
+    /// A phone browser signed in through Browser access (platform "web"): queue-only, like a closed iPhone app.
+    var isBrowser: Bool { platform == "web" }
 
     var isPhone: Bool {
         get { platform == "ios" }
@@ -304,12 +307,12 @@ final class DroprrSettings {
 
     private struct AuthSnapshot {
         var main = ""
-        var devices: [(token: String, id: UUID)] = []
+        var devices: [(token: String, id: UUID, web: Bool)] = []
     }
 
     private func refreshAuth() {
         let snapshot = AuthSnapshot(main: token,
-                                    devices: peers.compactMap { peer in peer.acceptToken.flatMap { $0.isEmpty ? nil : ($0, peer.id) } })
+                                    devices: peers.compactMap { peer in peer.acceptToken.flatMap { $0.isEmpty ? nil : ($0, peer.id, peer.isBrowser) } })
         authLock.withLock { authSnapshot = snapshot }
     }
 
@@ -324,6 +327,14 @@ final class DroprrSettings {
             result = result ?? .device(device.id)
         }
         return result
+    }
+
+    /// True when the token belongs to a browser peer (its cookie value).
+    func isBrowserToken(_ token: String) -> Bool {
+        let snapshot = authLock.withLock { authSnapshot }
+        var found = false
+        for device in snapshot.devices where device.web && Self.constantTimeEqual(token, device.token) { found = true }
+        return found
     }
 
     private static func constantTimeEqual(_ a: String, _ b: String) -> Bool {
