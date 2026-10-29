@@ -22,6 +22,7 @@ mkdir -p "$OUT"
 
 echo "› Archiving"
 xcodebuild -project "$APPLE/Droprr.xcodeproj" -scheme DroprrMac -configuration Release \
+  -destination 'generic/platform=macOS' ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
   -archivePath "$OUT/Droprr.xcarchive" -allowProvisioningUpdates archive -quiet
 
 echo "› Exporting with Developer ID"
