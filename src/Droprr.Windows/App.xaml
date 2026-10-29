@@ -25,20 +25,22 @@
                 <Setter Property="PressedBackground" Value="{DynamicResource PrimaryButtonPressedBrush}" />
                 <Setter Property="PressedForeground" Value="{DynamicResource OnPrimaryButtonBrush}" />
                 <Setter Property="PressedBorderBrush" Value="{DynamicResource PrimaryButtonPressedBrush}" />
+                <Setter Property="CornerRadius" Value="{DynamicResource PrimaryButtonRadius}" />
                 <Setter Property="Padding" Value="16,8" />
             </Style>
 
-            <!-- A tonal secondary action (Send clipboard): accent tint fill, accent text, no border. Hover and
-                 press darken the tint and switch the label to textPrimary; disabled fades to 40%. Same height as
-                 the primary button. -->
+            <!-- The secondary action (Send clipboard), in the window style's look (AppTheme.ApplyShapes): an
+                 outlined pill (Material You), a raised pill (Clay), a frosted pill (Spatial), or an underlined
+                 label (Atelier). Hover switches the label to textPrimary; disabled fades to 40%. Same height as the
+                 primary button. -->
             <Style x:Key="TonalButton" TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
-                <Setter Property="Background" Value="{DynamicResource AccentTintBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
-                <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="BorderBrush" Value="Transparent" />
-                <Setter Property="CornerRadius" Value="{StaticResource RadiusChip}" />
+                <Setter Property="Background" Value="{DynamicResource TonalBackgroundBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TonalForegroundBrush}" />
+                <Setter Property="BorderThickness" Value="{DynamicResource TonalBorderThickness}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource TonalBorderBrush}" />
+                <Setter Property="CornerRadius" Value="{DynamicResource TonalRadius}" />
                 <Setter Property="MouseOverBackground" Value="{DynamicResource TonalHoverBrush}" />
-                <Setter Property="MouseOverBorderBrush" Value="Transparent" />
+                <Setter Property="MouseOverBorderBrush" Value="{DynamicResource TonalBorderBrush}" />
                 <Setter Property="PressedBackground" Value="{DynamicResource TonalPressedBrush}" />
                 <Setter Property="PressedForeground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
                 <Setter Property="PressedBorderBrush" Value="Transparent" />

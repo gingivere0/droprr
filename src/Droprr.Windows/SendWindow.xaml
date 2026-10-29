@@ -56,9 +56,9 @@
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
-                                    <Border x:Name="Tile" CornerRadius="{StaticResource RadiusTile}" BorderThickness="1"
+                                    <Border x:Name="Tile" CornerRadius="{DynamicResource LookTileRadius}" BorderThickness="1"
                                             Padding="12" Background="{DynamicResource ThemeTileBrush}"
-                                            BorderBrush="{DynamicResource ThemeBorderBrush}">
+                                            BorderBrush="{DynamicResource ThemeBorderBrush}" Effect="{DynamicResource LookTileEffect}">
                                         <ContentPresenter />
                                     </Border>
                                     <ControlTemplate.Triggers>
@@ -66,9 +66,9 @@
                                             <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
                                         </Trigger>
                                         <Trigger Property="IsSelected" Value="True">
-                                            <Setter TargetName="Tile" Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
-                                            <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
-                                            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                                            <Setter TargetName="Tile" Property="Background" Value="{DynamicResource SelectedTileBrush}" />
+                                            <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource SelectedTileTextBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource SelectedTileTextBrush}" />
                                         </Trigger>
                                         <Trigger Property="IsEnabled" Value="False">
                                             <Setter Property="Opacity" Value="0.4" />
@@ -83,14 +83,14 @@
                     <DataTemplate DataType="{x:Type local:Peer}">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,12">
-                                <!-- Icon well: accent tint normally; a soft overlay on the accent when selected. -->
+                                <!-- Icon well: accent tint normally; a soft well in the selected text color when selected. -->
                                 <Border DockPanel.Dock="Left" Width="32" Height="32" CornerRadius="{StaticResource RadiusTile}">
                                     <Border.Style>
                                         <Style TargetType="Border">
                                             <Setter Property="Background" Value="{DynamicResource AccentTintBrush}" />
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
-                                                    <Setter Property="Background" Value="{DynamicResource OnAccentWellBrush}" />
+                                                    <Setter Property="Background" Value="{DynamicResource SelectedWellBrush}" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -101,7 +101,7 @@
                                                 <Setter Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
-                                                        <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource SelectedTileTextBrush}" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>

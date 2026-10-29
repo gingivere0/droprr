@@ -8,18 +8,21 @@ using Wpf.Ui.Controls;
 
 namespace Droprr;
 
-// Light or dark (following Windows unless Settings picks one), plus the color theme chosen in Settings
-// (ThemeCatalog). Everything themed is a DynamicResource, so switching either one restyles open windows
-// immediately, with no restart.
+// Light or dark (following Windows unless Settings picks one), the window style (LookCatalog), and the color
+// theme (ThemeCatalog), all chosen in Settings. Everything themed is a DynamicResource, so switching any of them
+// restyles open windows immediately, with no restart.
 static class AppTheme
 {
     public const string SystemMode = "system", LightMode = "light", DarkMode = "dark";
 
     static ThemeDef _theme = ThemeCatalog.Find(null);
+    static LookDef _look = LookCatalog.Find(null);
     static string _modeSetting = SystemMode;
     static ApplicationTheme _mode = ApplicationTheme.Light;
 
     public static ThemeDef Current => _theme;
+
+    public static LookDef Look => _look;
 
     // "system", "light", or "dark", as chosen in Settings.
     public static string Mode => _modeSetting;
@@ -27,9 +30,10 @@ static class AppTheme
     // Raised after a light or dark switch, so views built for one mode can rebuild.
     public static event Action? ModeChanged;
 
-    public static void Initialize(string? themeId, string? mode = null)
+    public static void Initialize(string? themeId, string? mode = null, string? style = null)
     {
         _theme = ThemeCatalog.Find(themeId);
+        _look = LookCatalog.Find(style);
         _modeSetting = Normalize(mode);
         _mode = Resolve();
         ApplicationThemeManager.Apply(_mode, WindowBackdropType.None, updateAccent: false);
@@ -49,6 +53,21 @@ static class AppTheme
         ApplyMode();
     }
 
+    // Live: called from the Settings style picker. Spatial is always dark, so it can switch the mode too.
+    public static void SetStyle(string? style)
+    {
+        _look = LookCatalog.Find(style);
+        if (Resolve() != _mode)
+        {
+            ApplyMode();
+            return;
+        }
+        ApplyColors();
+        foreach (Window window in Application.Current.Windows)
+            UpdateWindow(window);
+        ModeChanged?.Invoke();
+    }
+
     static string Normalize(string? mode) => mode?.ToLowerInvariant() switch
     {
         LightMode => LightMode,
@@ -56,7 +75,7 @@ static class AppTheme
         _ => SystemMode,
     };
 
-    static ApplicationTheme Resolve() => _modeSetting switch
+    static ApplicationTheme Resolve() => _look.ForcesDark ? ApplicationTheme.Dark : _modeSetting switch
     {
         LightMode => ApplicationTheme.Light,
         DarkMode => ApplicationTheme.Dark,
@@ -104,23 +123,31 @@ static class AppTheme
 
     public static bool IsDark => _mode == ApplicationTheme.Dark;
 
-    // Sets every themed brush for the current theme and mode. WPF UI's own neutral and accent brushes are
-    // overridden too, so its controls (text boxes, toggles, cards) follow the theme.
+    // Sets every themed brush for the current style, theme, and mode. WPF UI's own neutral and accent brushes
+    // are overridden too, so its controls (text boxes, toggles, cards) follow along.
     static void ApplyColors()
     {
         var dark = IsDark;
         var c = _theme.For(dark);
+        var look = _look;
 
-        // Neutrals: the window surface behind the tiles, the tiles, hairlines, and text.
-        SetBrush("ThemeSurfaceBrush", c.Surface);
+        // Neutrals come from the style, as on the Mac and iPhone: the window surface behind the tiles, the tiles,
+        // hairlines, and text.
+        var surface = look.WindowBrush(dark, c.Accent, c.Secondary);
+        surface.Freeze();
+        Application.Current.Resources["ThemeSurfaceBrush"] = surface;
         // WPF UI's own window background, for anything that still uses it.
-        SetBrush("ApplicationBackgroundBrush", c.Surface);
-        SetBrush("ThemeTileBrush", c.Tile);
-        SetBrush("ThemeBorderBrush", c.Border);
-        SetBrush("CardBackgroundFillColorDefaultBrush", c.Tile);
-        SetBrush("CardStrokeColorDefaultBrush", c.Border);
-        SetBrush("TextFillColorPrimaryBrush", c.TextPrimary);
-        SetBrush("TextFillColorSecondaryBrush", c.TextSecondary);
+        Application.Current.Resources["ApplicationBackgroundBrush"] = surface;
+        var tile = look.TileColor(dark, c.Accent);
+        SetBrush("ThemeTileBrush", tile);
+        SetBrush("CardBackgroundFillColorDefaultBrush", tile);
+        SetBrush("ThemeBorderBrush", look.Hairline(dark));
+        SetBrush("CardStrokeColorDefaultBrush", look.Hairline(dark));
+        SetBrush("TextFillColorPrimaryBrush", look.Ink(dark));
+        var under = look.EffectiveTile(dark, c.Accent);
+        SetBrush("TextFillColorSecondaryBrush", LookDef.EnsureContrast(look.Muted(dark), under));
+        var accentText = LookDef.EnsureContrast(c.AccentText, under);
+        ApplyShapes(look, dark, c, accentText);
 
         // Accent: the selected tile, toggles, and checkboxes. Hover and press shades follow the design tokens.
         var hover = Blend(c.Accent, Colors.White, 0.18);
@@ -131,12 +158,8 @@ static class AppTheme
         SetBrush("AccentFillColorTertiaryBrush", pressed);
         SetBrush("TextOnAccentFillColorPrimaryBrush", c.OnAccent);
         SetBrush("OnAccentWellBrush", c.OnAccent, 0.16);
-        SetBrush("AccentTextFillColorPrimaryBrush", c.AccentText);
+        SetBrush("AccentTextFillColorPrimaryBrush", accentText);
         SetBrush("AccentTintBrush", c.AccentTint);
-        // Tonal buttons: the tint darkened 4% on hover and 8% when pressed, with textPrimary labels in those
-        // states, so the label stays at 4.5:1 or better in every theme and mode.
-        SetBrush("TonalHoverBrush", Blend(c.AccentTint, Colors.Black, 0.04));
-        SetBrush("TonalPressedBrush", Blend(c.AccentTint, Colors.Black, 0.08));
 
         // Secondary: one contrasting tile per screen (the message tile) and the "N waiting" badges. Raw
         // secondary is decorative only (dots, swatches); controls and text use secondaryText, and an icon well
@@ -147,10 +170,27 @@ static class AppTheme
 
         // The main action (Send, Pair a phone, Save): the theme's primaryButton and onPrimaryButton tokens, with
         // the same hover and press overlays as other accent fills.
-        SetBrush("PrimaryButtonBrush", c.PrimaryButton);
-        SetBrush("PrimaryButtonHoverBrush", Blend(c.PrimaryButton, Colors.White, 0.18));
-        SetBrush("PrimaryButtonPressedBrush", Blend(c.PrimaryButton, Colors.Black, 0.15));
-        SetBrush("OnPrimaryButtonBrush", c.OnPrimaryButton);
+        // Spatial's is a glowing pill in the theme's second color, with black text.
+        var primary = look.IsSpatial ? c.Secondary : c.PrimaryButton;
+        SetBrush("PrimaryButtonBrush", primary);
+        SetBrush("PrimaryButtonHoverBrush", Blend(primary, Colors.White, 0.18));
+        SetBrush("PrimaryButtonPressedBrush", Blend(primary, Colors.Black, 0.15));
+        SetBrush("OnPrimaryButtonBrush", look.IsSpatial ? Colors.Black : c.OnPrimaryButton);
+
+        // A selected device: the secondary tint with secondaryText (Spatial: near-white with near-black text).
+        var selected = look.IsSpatial ? Color.FromArgb(230, 255, 255, 255) : c.SecondaryTint;
+        var onSelected = look.IsSpatial ? Color.FromRgb(20, 20, 20) : c.SecondaryText;
+        SetBrush("SelectedTileBrush", selected);
+        SetBrush("SelectedTileTextBrush", onSelected);
+        SetBrush("SelectedWellBrush", onSelected, 0.12);
+
+        // Switches: the main action's color, or the second color in Clay and Spatial, with a white knob there.
+        var on = look.IsClay || look.IsSpatial ? c.Secondary : c.PrimaryButton;
+        SetBrush("ToggleSwitchFillOn", on);
+        SetBrush("ToggleSwitchFillOnPointerOver", Blend(on, Colors.White, 0.12));
+        SetBrush("ToggleSwitchFillOnPressed", Blend(on, Colors.Black, 0.15));
+        SetBrush("ToggleSwitchStrokeOn", on);
+        SetBrush("ToggleSwitchKnobFillOn", look.IsClay || look.IsSpatial ? Colors.White : c.OnPrimaryButton);
 
         SetBrush("SuccessFillBrush", dark ? ThemeCatalog.SuccessFill.Dark : ThemeCatalog.SuccessFill.Light);
 
@@ -158,6 +198,50 @@ static class AppTheme
 
         AppIcon.SetTheme(_theme.Id);
     }
+
+    // Corners, borders, shadows, title type, and the secondary button, which differ by style.
+    static void ApplyShapes(LookDef look, bool dark, ThemeColors c, Color accentText)
+    {
+        var resources = Application.Current.Resources;
+        resources["LookTileRadius"] = new CornerRadius(look.CardRadius);
+        // Atelier has no cards, only a rule under each section; Clay's cards are edged by shadow alone.
+        resources["LookTileBorderThickness"] = look.IsAtelier ? new Thickness(0, 0, 0, 1) : look.IsClay ? new Thickness(0) : new Thickness(1);
+        resources["LookTileEffect"] = look.IsClay
+            ? new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = dark ? Colors.Black : Color.FromRgb(0x78, 0x64, 0xB4),
+                Opacity = dark ? 0.45 : 0.18,
+                BlurRadius = 20,
+                ShadowDepth = 8,
+                Direction = 315,
+            }
+            : null;
+        resources["DisplayFontFamily"] = look.DisplayFont;
+        resources["DisplayFontWeight"] = look.DisplayWeight;
+        // Pills are 18 px corners on a 36 px button.
+        resources["PrimaryButtonRadius"] = new CornerRadius(Math.Min(look.PrimaryRadius, 18));
+
+        // The secondary button. Material: an outlined pill. Clay: a raised pill. Spatial: a frosted pill. Atelier:
+        // an underlined label.
+        var ink = look.Ink(dark);
+        var clear = Colors.Transparent;
+        var (fill, hover, pressed, text, border, thickness, radius) = look.Id switch
+        {
+            "clay" => (look.Container(dark), look.Background(dark), Blend(look.Background(dark), Colors.Black, 0.06), ink, clear, new Thickness(0), 18.0),
+            "spatial" => (Color.FromArgb(36, 255, 255, 255), Color.FromArgb(56, 255, 255, 255), Color.FromArgb(26, 255, 255, 255), ink, clear, new Thickness(0), 18.0),
+            "atelier" => (clear, clear, clear, ink, ink, new Thickness(0, 0, 0, 1), 0.0),
+            _ => (clear, WithAlpha(accentText, 0.08), WithAlpha(accentText, 0.14), accentText, WithAlpha(look.Muted(dark), 0.7), new Thickness(1), 18.0),
+        };
+        SetBrush("TonalBackgroundBrush", fill);
+        SetBrush("TonalHoverBrush", hover);
+        SetBrush("TonalPressedBrush", pressed);
+        SetBrush("TonalForegroundBrush", text);
+        SetBrush("TonalBorderBrush", border);
+        resources["TonalBorderThickness"] = thickness;
+        resources["TonalRadius"] = new CornerRadius(radius);
+    }
+
+    static Color WithAlpha(Color color, double opacity) => Color.FromArgb((byte)(color.A * opacity), color.R, color.G, color.B);
 
     static void SetBrush(string key, Color color, double opacity = 1)
     {
@@ -167,7 +251,7 @@ static class AppTheme
     }
 
     // An overlay of `over` at `amount` opacity on top of `color` (accent.hoverOverlay and accent.pressedOverlay).
-    static Color Blend(Color color, Color over, double amount) => Color.FromRgb(
+    static Color Blend(Color color, Color over, double amount) => Color.FromArgb(color.A,
         (byte)(color.R + (over.R - color.R) * amount),
         (byte)(color.G + (over.G - color.G) * amount),
         (byte)(color.B + (over.B - color.B) * amount));

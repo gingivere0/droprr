@@ -77,6 +77,9 @@ public sealed class AppSettings
     // The color theme's id (ThemeCatalog); Graphite & Lime unless chosen otherwise.
     public string Theme { get; set; } = ThemeCatalog.DefaultId;
 
+    // The window style's id (LookCatalog): "material", "clay", "spatial", or "atelier", as on the Mac and iPhone.
+    public string Style { get; set; } = LookCatalog.DefaultId;
+
     // "system" follows Windows' light or dark setting; "light" or "dark" overrides it.
     public string Mode { get; set; } = AppTheme.SystemMode;
 

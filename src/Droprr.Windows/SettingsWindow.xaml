@@ -166,6 +166,61 @@
                 <Border Grid.Row="7" Grid.Column="0" Style="{StaticResource Tile}">
                     <StackPanel>
                         <TextBlock Text="Appearance" Style="{StaticResource TileTitle}" />
+                        <!-- Style: the same four as the Mac and iPhone, in the same order. -->
+                        <TextBlock Text="Style" Style="{StaticResource Caption}" Margin="0,0,0,6" />
+                        <ListBox x:Name="StyleList" Background="Transparent" BorderThickness="0" Padding="0" Margin="0,0,0,8"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 AutomationProperties.Name="Style" SelectionChanged="OnStyleChanged">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="2" />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Margin" Value="0,0,8,8" />
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                                    <Setter Property="ToolTip" Value="{Binding Detail}" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <!-- The ring marks the current style. -->
+                                                <Border x:Name="Ring" CornerRadius="{StaticResource RadiusTile}" BorderThickness="2"
+                                                        BorderBrush="Transparent" Padding="4">
+                                                    <ContentPresenter />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource ThemeBorderBrush}" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource SelectedTileTextBrush}" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type local:StyleSwatch}">
+                                    <StackPanel>
+                                        <!-- Mini drawing: the style's surface, a chip, and its main button. -->
+                                        <Border Height="40" CornerRadius="{Binding Radius}" Background="{Binding Back}"
+                                                BorderBrush="{Binding Edge}" BorderThickness="1" Padding="8,0">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Border Width="22" Height="14" CornerRadius="{Binding ButtonRadius}" Background="{Binding Chip}" Margin="0,0,4,0" />
+                                                <Border Width="30" Height="14" CornerRadius="{Binding ButtonRadius}" Background="{Binding Button}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <TextBlock Text="{Binding Name}" FontFamily="{Binding TitleFont}" FontWeight="SemiBold" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                                        <TextBlock Text="{Binding Detail}" Style="{StaticResource Caption}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Text="Colors" Style="{StaticResource Caption}" Margin="0,0,0,6" />
                         <ListBox x:Name="ThemeList" Background="Transparent" BorderThickness="0" Padding="0"
                                  AutomationProperties.Name="Theme" SelectionChanged="OnThemeChanged">
                             <ListBox.ItemsPanel>

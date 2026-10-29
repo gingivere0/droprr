@@ -33,14 +33,17 @@
     <Thickness x:Key="FeaturePadding">16</Thickness>
 
     <!-- Type roles -->
+    <!-- Titles use the style's display type (Atelier's serif, Clay's heavy, and so on). -->
     <Style x:Key="TitleText" TargetType="TextBlock">
         <Setter Property="FontSize" Value="{StaticResource FontSizeTitle}" />
-        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontFamily" Value="{DynamicResource DisplayFontFamily}" />
+        <Setter Property="FontWeight" Value="{DynamicResource DisplayFontWeight}" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
     </Style>
     <Style x:Key="SubtitleText" TargetType="TextBlock">
         <Setter Property="FontSize" Value="{StaticResource FontSizeSubtitle}" />
-        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontFamily" Value="{DynamicResource DisplayFontFamily}" />
+        <Setter Property="FontWeight" Value="{DynamicResource DisplayFontWeight}" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
     </Style>
     <Style x:Key="BodyStrongText" TargetType="TextBlock">
@@ -68,10 +71,22 @@
     <Thickness x:Key="TilePadding">16</Thickness>
     <CornerRadius x:Key="RadiusTile">8</CornerRadius>
     <CornerRadius x:Key="RadiusChip">4</CornerRadius>
+    <!-- Window style (LookCatalog.cs, the same as apple/Shared/Looks.swift): AppTheme sets these for the chosen
+         style, so always use them as DynamicResource. The values below are only startup defaults. -->
+    <CornerRadius x:Key="LookTileRadius">24</CornerRadius>
+    <Thickness x:Key="LookTileBorderThickness">1</Thickness>
+    <x:Null x:Key="LookTileEffect" />
+    <FontFamily x:Key="DisplayFontFamily">Segoe UI Variable Display, Segoe UI</FontFamily>
+    <FontWeight x:Key="DisplayFontWeight">Normal</FontWeight>
+    <CornerRadius x:Key="PrimaryButtonRadius">16</CornerRadius>
+    <CornerRadius x:Key="TonalRadius">18</CornerRadius>
+    <Thickness x:Key="TonalBorderThickness">1</Thickness>
+
     <Style x:Key="Tile" TargetType="Border">
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusTile}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource LookTileRadius}" />
         <Setter Property="Padding" Value="{StaticResource TilePadding}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderThickness" Value="{DynamicResource LookTileBorderThickness}" />
+        <Setter Property="Effect" Value="{DynamicResource LookTileEffect}" />
         <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
     </Style>

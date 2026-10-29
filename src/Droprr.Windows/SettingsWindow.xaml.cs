@@ -21,6 +21,9 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
     readonly Dictionary<string, string> _originalTokens;
     readonly string _originalTheme;
     readonly string _originalMode;
+    readonly string _originalStyle;
+    // Set while the pickers are refilled, so their selection events don't apply anything.
+    bool _refilling;
     bool _tokenVisible;
     bool _saved;
 
@@ -50,10 +53,11 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         // Appearance: picking a swatch restyles every window at once; Cancel (or closing) puts it back.
         _originalTheme = AppTheme.Current.Id;
         _originalMode = AppTheme.Mode;
-        ShowSwatches(_originalTheme);
+        _originalStyle = AppTheme.Look.Id;
+        ShowSwatches();
         ModeBox.SelectedItem = ModeBox.Items.Cast<ComboBoxItem>().First(i => (string)i.Tag == _originalMode);
-        // The swatches preview each theme in the current mode.
-        Action rebuild = () => ShowSwatches(AppTheme.Current.Id);
+        // The swatches preview each style and theme in the current mode.
+        Action rebuild = ShowSwatches;
         AppTheme.ModeChanged += rebuild;
         Closed += (_, _) =>
         {
@@ -61,6 +65,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
             if (!_saved)
             {
                 AppTheme.SetTheme(_originalTheme);
+                AppTheme.SetStyle(_originalStyle);
                 AppTheme.SetMode(_originalMode);
             }
         };
@@ -92,15 +97,37 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
 
     void OnThemeChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        if (ThemeList.SelectedItem is ThemeSwatch swatch)
-            AppTheme.SetTheme(swatch.Id);
+        if (_refilling || ThemeList.SelectedItem is not ThemeSwatch swatch)
+            return;
+        AppTheme.SetTheme(swatch.Id);
+        // The style drawings use the theme's colors.
+        ShowSwatches();
     }
 
-    void ShowSwatches(string selectedId)
+    void OnStyleChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        var swatches = ThemeCatalog.All.Select(t => new ThemeSwatch(t, AppTheme.IsDark)).ToList();
-        ThemeList.ItemsSource = swatches;
-        ThemeList.SelectedItem = swatches.First(t => t.Id == selectedId);
+        if (!_refilling && StyleList.SelectedItem is StyleSwatch swatch)
+            AppTheme.SetStyle(swatch.Id);
+    }
+
+    void ShowSwatches()
+    {
+        _refilling = true;
+        try
+        {
+            var styles = LookCatalog.All.Select(l => new StyleSwatch(l, AppTheme.Current, AppTheme.IsDark)).ToList();
+            StyleList.ItemsSource = styles;
+            StyleList.SelectedItem = styles.First(s => s.Id == AppTheme.Look.Id);
+            var themes = ThemeCatalog.All.Select(t => new ThemeSwatch(t, AppTheme.IsDark)).ToList();
+            ThemeList.ItemsSource = themes;
+            ThemeList.SelectedItem = themes.First(t => t.Id == AppTheme.Current.Id);
+            // Spatial is always dark, so Light, Dark, or System waits until another style is picked.
+            ModeBox.IsEnabled = !AppTheme.Look.ForcesDark;
+        }
+        finally
+        {
+            _refilling = false;
+        }
     }
 
     void OnModeChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -274,6 +301,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         _settings.CopyTextToClipboard = CopyTextBox.IsChecked == true;
         _settings.Theme = AppTheme.Current.Id;
         _settings.Mode = AppTheme.Mode;
+        _settings.Style = AppTheme.Look.Id;
         try
         {
             SettingsStore.Save(_settings);
