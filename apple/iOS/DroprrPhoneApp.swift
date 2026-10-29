@@ -5,6 +5,10 @@ import UserNotifications
 @main
 struct DroprrPhoneApp: App {
     @State private var model = PhoneModel()
+
+    init() {
+        CrashLog.install()
+    }
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {

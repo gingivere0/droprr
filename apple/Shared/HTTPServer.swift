@@ -70,10 +70,16 @@ final class HTTPServer {
         params.allowLocalEndpointReuse = true
         let listener = try NWListener(using: params, on: nwPort)
         listener.service = service
-        listener.stateUpdateHandler = { [weak self] state in
+        listener.stateUpdateHandler = { [weak self, weak listener] state in
             switch state {
             case .ready: self?.onStateChange("Listening on port \(port)")
-            case .failed(let error): self?.onStateChange("Receiver stopped: \(error.localizedDescription)")
+            case .failed(let error):
+                self?.onStateChange("Receiver stopped: \(error.localizedDescription)")
+                // Network changes (Wi-Fi, Tailscale up or down) can fail a listener; start again shortly.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    guard let self, let listener, self.listener === listener else { return }
+                    try? self.start(port: port, service: service)
+                }
             default: break
             }
         }

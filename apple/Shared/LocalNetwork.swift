@@ -74,6 +74,16 @@ final class LANDiscovery {
         browser.browseResultsChangedHandler = { [weak self] results, _ in
             Task { @MainActor in self?.update(results) }
         }
+        // A network change can fail the browser; start a new one shortly instead of going quiet.
+        browser.stateUpdateHandler = { [weak self, weak browser] state in
+            guard case .failed = state else { return }
+            Task { @MainActor in
+                guard let self, let browser, self.browser === browser else { return }
+                self.stop()
+                try? await Task.sleep(for: .seconds(3))
+                self.start()
+            }
+        }
         browser.start(queue: .main)
         self.browser = browser
         // While a peer keeps advertising, keep its LAN address fresh (sends use it for 2 minutes).
