@@ -4,11 +4,15 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
-	<key>com.apple.security.network.client</key>
-	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>$(DROPRR_MAC_APP_GROUP)</string>
+	</array>
 	<key>com.apple.security.files.user-selected.read-only</key>
 	<true/>
-	<key>com.apple.security.application-groups</key>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>keychain-access-groups</key>
 	<array>
 		<string>$(DROPRR_MAC_APP_GROUP)</string>
 	</array>
