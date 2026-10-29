@@ -1,6 +1,6 @@
 # Droprr protocol
 
-Version 1. The Windows and Mac apps implement all of it. The iPhone app receives directly only while it's open, and otherwise collects items through the [inbox](#inbox-phone-pull).
+Version 1, plus the planned [local network transport](#local-network-lan-transport) (protocol 2). The Windows and Mac apps implement all of version 1. The iPhone app receives directly only while it's open, and otherwise collects items through the [inbox](#inbox-phone-pull).
 
 Devices talk over plain HTTP inside a Tailscale network. Tailscale's WireGuard tunnel already encrypts and authenticates the connection between devices, and a shared bearer token keeps other devices on the tailnet out.
 
@@ -309,6 +309,92 @@ Response `200`:
 A desktop also still adds an unknown name that calls `GET /inbox?for=` as an `"ios"` peer, as a fallback for phones that didn't call `/pair`.
 
 **Handling:** the code contains a secret. A desktop builds it only while the pairing window is open and never saves it to disk or writes it to a log. It warns the user that the code contains the token.
+
+## Local network (LAN) transport
+
+**Protocol 2. Design, not implemented yet.** Protocol 2 lets devices on the same Wi-Fi or wired network reach each other directly, without Tailscale. It's additive: everything above stays as it is, a protocol 1 device keeps working with a protocol 2 device over Tailscale, and the iOS Shortcuts are unaffected.
+
+### Transports
+
+| Transport | Port | Accepted from | Use |
+| --- | --- | --- | --- |
+| Plain HTTP | `53318` (the existing port setting) | Loopback and Tailscale (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) only | Exactly as in protocol 1: Tailscale peers, protocol 1 peers, and the iOS Shortcuts. |
+| HTTPS | `53319` (the HTTP port + 1) | Loopback, Tailscale, and private LAN ranges: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fe80::/10`, and `fd00::/8` | The LAN, where it's required, and Tailscale, where it's optional. |
+
+- A receiver drops any connection from an address outside its port's list, as in [Implementation notes](#implementation-notes). Every request still needs a bearer token, except [`POST /pair/request`](#lan-pairing-post-pairrequest).
+- **Tokens and file contents never travel over plain HTTP outside Tailscale.** A sender uses only HTTPS for a LAN address.
+- When the **Local network** setting is off, a device doesn't listen on `53319`, advertise, browse, or send over the LAN.
+
+### Device identity
+
+- **Device id:** each device generates a random id once (16 random bytes, base32, lowercase, without padding) and keeps it. Peers match on the id, never on the name, because names can change or repeat.
+- **Certificate:** each device generates a self-signed certificate once: an ECDSA P-256 key, a subject of `CN=Droprr <device id>`, and a validity of 20 years. Its private key is protected like the tokens: DPAPI on Windows and the Keychain on Apple. It's never exported or logged.
+- **Fingerprint (`fp`):** the SHA-256 of the certificate's DER encoding, as 64 lowercase hex characters, always in full.
+- **Pinning:** a client accepts a LAN server only if the server's certificate fingerprint equals the one pinned for that peer. It doesn't check the chain, the host name, or the expiry. On a mismatch, it refuses the connection over that address, falls back to Tailscale if the peer has a Tailscale host, and shows "`<name>`'s identity changed. Pair again." Only pairing again replaces a pinned fingerprint.
+- **Where a pin comes from:** the [pairing QR code](#pairing-qr), a `/pair` response, a confirmed [LAN pairing](#lan-pairing-post-pairrequest), or a `/ping` answered over Tailscale, which already authenticates the device. A protocol 1 peer can be upgraded that last way, without pairing again. Discovery never sets or changes a pin.
+
+### Discovery
+
+DNS-SD (Bonjour, mDNS) only, with no custom UDP multicast, because raw multicast on the iPhone needs a restricted entitlement.
+
+- **Service:** `_droprr._tcp`. The instance name is the device name, and the advertised port is the HTTPS port.
+- **TXT record:**
+
+  | Key | Value |
+  | --- | --- |
+  | `v` | `2`, the protocol version |
+  | `id` | The [device id](#device-identity) |
+  | `name` | The device name |
+  | `platform` | `windows`, `macos`, or `ios` |
+  | `port` | The HTTPS port, for example `53319` |
+  | `fp` | The certificate [fingerprint](#device-identity), in full |
+
+- **Who advertises:** computers whenever Local network is on, and the iPhone only while Droprr is open.
+- **Who browses:** every device while Local network is on. The iPhone browses only while open.
+- **Trust:** discovery only finds addresses; it never grants trust. When a found instance's `id` matches a paired peer and its `fp` matches that peer's pin, the browser records the instance's addresses as the peer's LAN addresses, with the time it was seen. An instance whose `fp` doesn't match is ignored.
+- **APIs:** Windows uses `DnsServiceRegister`, `DnsServiceBrowse`, and `DnsServiceResolve` from `dnsapi.dll` (Windows 10 1809 and later). They work in an unpackaged app on .NET 10 without extra packages. Apple uses Network.framework (`NWListener` and `NWBrowser` with Bonjour).
+
+### Additions to existing messages
+
+- **`GET /ping`** adds `"id"`, `"fp"`, and `"tlsPort"`, and reports `"protocol": 2`. A protocol 1 client ignores the extra fields.
+- **Pairing QR:** still payload version `v=1`, with three optional keys that older apps ignore: `id`, `fp`, and `lan`, a comma-separated list of the desktop's current LAN `host:port` pairs for HTTPS (IPv6 in brackets). A scanner that gets `fp` pins it right away.
+- **`POST /pair`:** the request may add `"id"`, `"fp"`, `"tlsPort"`, and `"lan"` (an array of `host:port` strings) for the caller, and the response adds the desktop's `"id"`, `"fp"`, `"tlsPort"`, and `"lan"`. Each side stores the other's values.
+
+### LAN pairing (`POST /pair/request`)
+
+Pairing by picking a device that discovery found, without a QR code and without either side showing a token.
+
+1. The requester picks a discovered device and connects to it over HTTPS, accepting whatever certificate it presents, because there's no pin yet. It remembers that certificate's fingerprint as `fpServer`.
+2. It sends `POST /pair/request` **without a token**:
+
+   ```json
+   { "id": "<requester id>", "name": "iPhone", "platform": "ios", "fp": "<requester fp>" }
+   ```
+
+   A computer also sends `"tlsPort"`, `"lan"`, `"host"` (its Tailscale name, if any), and `"token"` (a device token it minted for the receiver), as in [`POST /pair`](#post-pair).
+3. Both screens show the same **six-digit code**: the SHA-256 of the two fingerprints in sorted order, joined with `:`, with its first 4 bytes read as a big-endian unsigned integer, modulo 1,000,000, and zero-padded to six digits. The requester computes it from `fpServer` and its own `fp`, and the receiver from its own `fp` and the request's `fp`. Someone in the middle would have to present a different certificate, which changes the code, so the person can see the mismatch.
+4. The receiver asks: "Pair with `<name>`? Make sure `<name>` shows `<code>`." The request stays open until the person answers, for up to 60 seconds.
+5. **Accept:** the receiver adds or updates the peer (matched by `id`), pins the request's `fp`, mints a device token, and answers `200` with the same body as [`POST /pair`](#post-pair), plus its `id`, `fp`, `tlsPort`, and `lan`. The requester pins `fpServer` and stores the token. **Decline:** `403` with `"declined"`. **No answer:** `408` with `"timed out"`.
+
+**Limits:** only over HTTPS on `53319`, never on plain HTTP. One request at a time: a second one while a prompt is open gets `429`. After three declines or timeouts from the same address within 10 minutes, the receiver answers `429` to that address for 10 minutes. A request is never accepted without a person confirming it.
+
+### Sending
+
+- **Peer record:** besides today's fields, a device stores each peer's `id`, its Tailscale host, its last known LAN addresses with the time they were seen, its pinned `fp`, its `tlsPort`, and the path last used (`lan` or `tailscale`).
+- **Order:** if the peer has a pin and a LAN address seen within the last 2 minutes (or still advertised), the sender connects over HTTPS to each LAN address in turn with a connect timeout of about 1.5 seconds. If none answers, it falls back to Tailscale (plain HTTP on the HTTP port, as in protocol 1). It doesn't race the two paths, so a body is never sent twice.
+- **Status:** the result names the path, for example "Sent to MacBook (Wi-Fi)" or "Sent to MacBook (Tailscale)", and the peer's last-used path is updated.
+- **Addresses:** whenever discovery sees a paired peer's `id` with a new address and a matching `fp`, the stored LAN addresses are replaced.
+
+### Phones
+
+- **Sending to an iPhone:** if the phone is advertising right now (Droprr is open) and has a pin, the computer sends to it directly over HTTPS with `POST /send`. Otherwise it queues the item in the phone's [inbox](#inbox-phone-pull), as today.
+- **Inbox polling:** the phone polls whichever path to the computer answers first: LAN HTTPS if the computer is discovered, otherwise Tailscale. The inbox endpoints and their scoping are unchanged.
+
+### Platform notes
+
+- **iPhone:** `NSLocalNetworkUsageDescription` and `NSBonjourServices` (`_droprr._tcp`) in Info.plist. Apple's apps handle their own Local Network prompts.
+- **Windows firewall:** the HTTPS port needs an inbound rule for the **Private** profile only. Public networks are ignored: no rule there, and no advertising on interfaces whose network category is Public. Without an installer, the app checks for its rule when Local network is on (reading rules needs no elevation). If the rule is missing, Settings shows "Allow Droprr on your private network", which runs one elevated `netsh advfirewall firewall add rule` for the port (a single UAC prompt). It never elevates on its own at startup.
+- **Mac:** the existing network server entitlement covers the HTTPS listener.
 
 ## Implementation notes
 
