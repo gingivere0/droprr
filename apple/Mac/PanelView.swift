@@ -66,6 +66,7 @@ struct PanelView: View {
             if let window = sendWindow, sendWindowIsOnTop(window) {
                 dismissWindow(id: "send")
             } else {
+                closeMenuBarPanel()
                 openWindow(id: "send")
                 bringToFront()
             }
@@ -123,6 +124,7 @@ struct PanelView: View {
     private var footer: some View {
         HStack(spacing: Space.lg) {
             FooterButton(title: "Send", help: "Open the Send window (⌘N)", key: "n") {
+                closeMenuBarPanel()
                 openWindow(id: "send")
                 bringToFront()
             }
@@ -131,6 +133,7 @@ struct PanelView: View {
                 NSWorkspace.shared.open(MacModel.inbox)
             }
             FooterButton(title: "Pair", help: "Pair a phone with a QR code (⌘P)", key: "p") {
+                closeMenuBarPanel()
                 openWindow(id: "pair")
                 bringToFront()
             }
@@ -141,6 +144,7 @@ struct PanelView: View {
     }
 
     private func showSettings() {
+        closeMenuBarPanel()
         openSettings()
         bringToFront()
     }
@@ -313,9 +317,21 @@ func bringToFront() {
     NSApp.activate(ignoringOtherApps: true)
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
         NSApp.activate(ignoringOtherApps: true)
-        for window in NSApp.windows where window.isVisible && window.canBecomeKey {
+        for window in NSApp.windows where window.isVisible && window.canBecomeKey && !isMenuBarPanel(window) {
             window.makeKeyAndOrderFront(nil)
             window.orderFrontRegardless()
         }
     }
+}
+
+/// The menu bar popup's own window (SwiftUI's MenuBarExtra panel).
+@MainActor
+private func isMenuBarPanel(_ window: NSWindow) -> Bool {
+    String(describing: type(of: window)).contains("MenuBarExtra")
+}
+
+/// Hides the menu bar popup, for buttons in it that open another window.
+@MainActor
+func closeMenuBarPanel() {
+    for window in NSApp.windows where isMenuBarPanel(window) && window.isVisible { window.close() }
 }
