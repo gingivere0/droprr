@@ -78,6 +78,28 @@ struct ContentView: View {
     }
 }
 
+/// A round scan button for screens without a navigation bar, matching the toolbar's.
+private struct ScanCodeButton: View {
+    @Environment(\.startPairing) private var startPairing
+
+    var body: some View {
+        if #available(iOS 26, *) {
+            button.buttonStyle(.glass).buttonBorderShape(.circle)
+        } else {
+            button.buttonStyle(.bordered).buttonBorderShape(.circle)
+        }
+    }
+
+    private var button: some View {
+        Button(action: startPairing) {
+            Image(systemName: "qrcode.viewfinder")
+                .font(.system(size: 17, weight: .medium))
+                .frame(width: 32, height: 32)
+        }
+        .accessibilityLabel("Scan Pairing Code")
+    }
+}
+
 /// Shown when a pairing link is opened from outside the app: nothing changes until Pair is tapped.
 private struct ConfirmPairingSheet: View {
     var info: PairingInfo
@@ -247,9 +269,11 @@ private struct SendTab: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.top, Space.sm)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
+        // The same scan button as Settings' toolbar: pair a computer from its code.
+        .overlay(alignment: .topTrailing) { ScanCodeButton().offset(y: -Space.sm) }
+        .padding(.top, Space.sm)
     }
 
     /// Device tiles like the Mac's: the selected one fills with the theme color.
