@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media;
 using Microsoft.Win32;
@@ -75,12 +76,19 @@ static class AppTheme
         ApplicationThemeManager.Apply(_mode, WindowBackdropType.None, updateAccent: false);
         ApplyColors();
         foreach (Window window in Application.Current.Windows)
-            UpdateTitleBar(window);
+            UpdateWindow(window);
         ModeChanged?.Invoke();
     }
 
-    static void UpdateTitleBar(Window window)
+    static readonly HashSet<Window> Themed = new();
+
+    // The title bar's light or dark, and the themed surface behind the content. WPF UI replaces a window's
+    // background with its own ApplicationBackgroundBrush (as a fixed brush) when the window loads and when the
+    // theme changes, so the surface is put back each time.
+    static void UpdateWindow(Window window)
     {
+        if (Themed.Contains(window))
+            window.SetResourceReference(Window.BackgroundProperty, "ThemeSurfaceBrush");
         if (IsDark)
             WindowBackgroundManager.ApplyDarkThemeToWindow(window);
         else
@@ -105,6 +113,8 @@ static class AppTheme
 
         // Neutrals: the window surface behind the tiles, the tiles, hairlines, and text.
         SetBrush("ThemeSurfaceBrush", c.Surface);
+        // WPF UI's own window background, for anything that still uses it.
+        SetBrush("ApplicationBackgroundBrush", c.Surface);
         SetBrush("ThemeTileBrush", c.Tile);
         SetBrush("ThemeBorderBrush", c.Border);
         SetBrush("CardBackgroundFillColorDefaultBrush", c.Tile);
@@ -183,9 +193,16 @@ static class AppTheme
         // The logo follows the theme: replace the taskbar and title bar icons when it changes.
         AppIcon.Changed += ShowIcon;
         window.Closed += (_, _) => AppIcon.Changed -= ShowIcon;
-        // Bento: a solid themed surface behind the tiles rather than Mica.
-        window.SetResourceReference(Window.BackgroundProperty, "ThemeSurfaceBrush");
-        window.Loaded += (_, _) => UpdateTitleBar(window);
+        // A solid themed surface behind the tiles rather than Mica.
+        Themed.Add(window);
+        window.Closed += (_, _) => Themed.Remove(window);
+        UpdateWindow(window);
+        window.Loaded += (_, _) =>
+        {
+            UpdateWindow(window);
+            // After WPF UI's own Loaded handling, which may have replaced the background.
+            window.Dispatcher.BeginInvoke(() => UpdateWindow(window), System.Windows.Threading.DispatcherPriority.Loaded);
+        };
     }
 
     static bool SystemUsesLightTheme()
