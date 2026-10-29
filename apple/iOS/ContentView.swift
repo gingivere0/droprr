@@ -168,6 +168,7 @@ private struct SendTab: View {
     }
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: Space.xl) {
                 header
@@ -176,7 +177,7 @@ private struct SendTab: View {
                 } else {
                     devicePicker
                     actionGrid
-                    composer
+                    composer.id("composer")
                     SendStatusView(message: model.lastSendResult, progress: model.progress)
                 }
             }
@@ -184,13 +185,31 @@ private struct SendTab: View {
             .padding(.bottom, Space.lg)
         }
         .scrollDismissesKeyboard(.interactively)
+        // While typing, keep the whole message box in view above the Send button and keyboard.
+        .onChange(of: typing) { _, isTyping in
+            guard isTyping else { return }
+            Task {
+                try? await Task.sleep(for: .milliseconds(350))
+                withAnimation(Motion.standard) { proxy.scrollTo("composer", anchor: .bottom) }
+            }
+        }
+        .onChange(of: text) {
+            guard typing else { return }
+            proxy.scrollTo("composer", anchor: .bottom)
+        }
+        }
+        // Content scrolling up passes under a band of the background, not under the clock.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Color.clear.frame(height: 0)
+                .background { LookBackground().ignoresSafeArea(edges: .top) }
+        }
         // The Send button stays pinned above the tab bar so it's always in reach.
         .safeAreaInset(edge: .bottom) {
             if !desktops.isEmpty {
                 sendButton
                     .padding(.horizontal, Space.lg)
                     .padding(.vertical, Space.sm)
-                    .background(.bar)
+                    .background { LookBackground().ignoresSafeArea(edges: .bottom) }
             }
         }
         .sensoryFeedback(.selection, trigger: peerID)
@@ -274,7 +293,7 @@ private struct SendTab: View {
                                 detail: photos.isEmpty ? "Pick photos or videos" : "\(photos.count) selected", selected: !photos.isEmpty)
             }
             .buttonStyle(PressableStyle())
-            .frame(height: 240)
+            .frame(height: 260)
             .overlay(alignment: .topTrailing) {
                 if !photos.isEmpty { ClearBadge { photos = [] } }
             }
@@ -290,16 +309,16 @@ private struct SendTab: View {
                         model.lastSendResult = "The clipboard is empty."
                     }
                 }
-                .frame(height: 109)
+                .frame(height: 119)
                 ActionCard(title: "Files", symbol: "folder.fill",
                            detail: files.isEmpty ? nil : "\(files.count) selected", selected: !files.isEmpty,
                            onClear: { files = [] }) {
                     importing = true
                 }
-                .frame(height: 109)
+                .frame(height: 119)
             }
         }
-        .frame(height: 240)
+        .frame(height: 260)
         .disabled(model.sending)
         .motion(Motion.standard, value: hasStaged)
     }
@@ -446,8 +465,9 @@ private struct ActionCardLabel: View {
                 .opacity(detail == nil ? 0 : 0.9)
         }
         .foregroundStyle(selected ? Look.selectedInk : Look.ink)
+        // Padding goes inside the frame, so a card is exactly as tall as the grid gives it.
+        .padding(.vertical, Space.md)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.vertical, Space.lg)
         .background { LookTile(selected: selected) }
     }
 }
