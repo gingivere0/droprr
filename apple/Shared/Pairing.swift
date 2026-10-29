@@ -183,7 +183,8 @@ extension DroprrSettings {
         let peer = pairing.peer
         peers.append(peer)
         lastPeerID = peer.id
-        return peer
+        mergeDuplicates()   // already known by its device id under another address
+        return peers.first { $0.id == lastPeerID } ?? peer
     }
 }
 

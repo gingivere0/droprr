@@ -124,6 +124,33 @@ final class DroprrSettings {
         if let tlsPort { peer.tlsPort = tlsPort }
         if let lan, !lan.isEmpty { peer.lan = lan; peer.lanSeen = Date() }
         if peer != peers[i] { peers[i] = peer }
+        mergeDuplicates()
+    }
+
+    /// One device, one entry: peers that turn out to share a device id (say, one added over Tailscale and
+    /// one paired over Wi-Fi) become a single peer keeping both paths. The newer pairing's tokens win.
+    func mergeDuplicates() {
+        var merged: [Peer] = []
+        var changed = false
+        for peer in peers {
+            guard let id = peer.deviceID, let k = merged.firstIndex(where: { $0.deviceID == id }) else {
+                merged.append(peer)
+                continue
+            }
+            changed = true
+            var keep = merged[k]
+            if keep.host.trimmingCharacters(in: .whitespaces).isEmpty { keep.host = peer.host; keep.port = peer.port }
+            if let token = peer.token, !token.isEmpty { keep.token = token }
+            if let accept = peer.acceptToken, !accept.isEmpty { keep.acceptToken = accept }
+            keep.fingerprint = peer.fingerprint ?? keep.fingerprint
+            keep.tlsPort = peer.tlsPort ?? keep.tlsPort
+            if let seen = peer.lanSeen, seen > (keep.lanSeen ?? .distantPast) { keep.lan = peer.lan; keep.lanSeen = seen }
+            keep.platform = keep.platform ?? peer.platform
+            keep.remoteName = keep.remoteName ?? peer.remoteName
+            if lastPeerID == peer.id { lastPeerID = keep.id }
+            merged[k] = keep
+        }
+        if changed { peers = merged }
     }
 
     init() {
@@ -192,6 +219,7 @@ final class DroprrSettings {
 
         if legacyMain != nil { defaults.removeObject(forKey: "token") }
         savePeers(old: [])   // rewrites the peer list without tokens
+        mergeDuplicates()
         refreshAuth()
     }
 
