@@ -25,10 +25,12 @@ struct SendView: View {
 
             if model.settings.peers.isEmpty {
                 emptyState
+                received
             } else {
                 devices
                 dropArea
                 composer
+                received
                 SendStatusView(message: model.lastSendResult, progress: model.progress, onCancel: model.cancelSend)
                 bottomBar
             }
@@ -42,6 +44,7 @@ struct SendView: View {
         .motion(Motion.standard, value: model.lastSendResult)
         .onChange(of: model.justAdded) { _, id in if let id { selectedID = id } }
         .motion(Motion.fast, value: files)
+        .motion(Motion.standard, value: model.recent.map(\.id))
     }
 
     // MARK: Sections
@@ -139,6 +142,21 @@ struct SendView: View {
             }
             }
             .scrollDisabled(!Look.isAtelier)
+        }
+    }
+
+    /// What arrived recently, as in the menu bar panel (and the Windows Send window).
+    @ViewBuilder private var received: some View {
+        if !model.recent.isEmpty {
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Kicker("Received")
+                VStack(spacing: 0) {
+                    ForEach(model.recent.prefix(4)) { item in
+                        RecentRow(item: item, onOpen: { model.open(item) }, onRemove: { model.removeRecent(item) })
+                    }
+                }
+                .lookCard(list: true, padding: 8)
+            }
         }
     }
 

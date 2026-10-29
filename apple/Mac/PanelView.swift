@@ -215,7 +215,8 @@ struct WaitingBadge: View {
 
 /// A received item, like Chrome's downloads list: click the row to open it; the buttons copy it,
 /// show it in Finder (files only) or remove it from the list (the file itself is kept).
-private struct RecentRow: View {
+/// A received item: open, copy, show in Finder, or remove from the list. In the panel and the Send window.
+struct RecentRow: View {
     var item: ReceivedItem
     var onOpen: () -> Void
     var onRemove: () -> Void
@@ -269,7 +270,7 @@ private struct RecentRow: View {
     }
 }
 
-private struct RowAction: View {
+struct RowAction: View {
     var symbol: String
     var label: String
     var action: () -> Void
