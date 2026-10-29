@@ -31,6 +31,8 @@ for t,d in targets.items():
 
 WEBPHASE = I('webphaseDroprrMac')
 WEBFILES = ['index.html', 'app.js', 'app.css', 'icon.png']
+# Browser access over the internet: the host page the Mac runs hidden (host/ plus the shared site/rtc.js).
+HOSTFILES = [('host', 'host.html'), ('host', 'host.js'), ('site', 'rtc.js')]
 PCFGLIST=I('pcfglist'); PDBG=I('pdbg'); PREL=I('prel'); BASECFG=I('basexcconfig')
 cfgfiles = ['Base.xcconfig','Mac-Info.plist','iOS-Info.plist','Share-Info.plist','MacShare-Info.plist','Mac.entitlements','iOS.entitlements','Share.entitlements','MacShare.entitlements','Local.xcconfig.example']
 CF = {f: I('cf'+f) for f in cfgfiles}
@@ -133,9 +135,9 @@ for t,d in targets.items():
     a(f'\t\t{d["res"]} /* Resources */ = {{\n\t\t\tisa = PBXResourcesBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t}};\n')
 a('/* End PBXResourcesBuildPhase section */\n\n')
 a('/* Begin PBXShellScriptBuildPhase section */\n')
-web_in = ''.join(f'\t\t\t\t"$(SRCROOT)/../web/{f}",\n' for f in WEBFILES)
-web_out = ''.join(f'\t\t\t\t"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/{f}",\n' for f in WEBFILES)
-a(f'\t\t{WEBPHASE} /* Copy browser page */ = {{\n\t\t\tisa = PBXShellScriptBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t);\n\t\t\tinputFileListPaths = (\n\t\t\t);\n\t\t\tinputPaths = (\n{web_in}\t\t\t);\n\t\t\tname = "Copy browser page";\n\t\t\toutputFileListPaths = (\n\t\t\t);\n\t\t\toutputPaths = (\n{web_out}\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t\tshellPath = /bin/sh;\n\t\t\tshellScript = "# The browser page is shared with Windows: web/ in the repository, copied as is.\\nmkdir -p \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/web\\"\\ncp \\"$SRCROOT\\"/../web/* \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/web/\\"\\n";\n\t\t}};\n')
+web_in = ''.join(f'\t\t\t\t"$(SRCROOT)/../web/{f}",\n' for f in WEBFILES) + ''.join(f'\t\t\t\t"$(SRCROOT)/../{d}/{f}",\n' for d, f in HOSTFILES)
+web_out = ''.join(f'\t\t\t\t"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/{f}",\n' for f in WEBFILES) + ''.join(f'\t\t\t\t"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/host/{f}",\n' for d, f in HOSTFILES)
+a(f'\t\t{WEBPHASE} /* Copy browser page */ = {{\n\t\t\tisa = PBXShellScriptBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t);\n\t\t\tinputFileListPaths = (\n\t\t\t);\n\t\t\tinputPaths = (\n{web_in}\t\t\t);\n\t\t\tname = "Copy browser page";\n\t\t\toutputFileListPaths = (\n\t\t\t);\n\t\t\toutputPaths = (\n{web_out}\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t\tshellPath = /bin/sh;\n\t\t\tshellScript = "# The browser page is shared with Windows: web/ in the repository, copied as is.\\nmkdir -p \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/web\\"\\ncp \\"$SRCROOT\\"/../web/* \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/web/\\"\\nmkdir -p \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/host\\"\\ncp \\"$SRCROOT\\"/../host/host.html \\"$SRCROOT\\"/../host/host.js \\"$SRCROOT\\"/../site/rtc.js \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/host/\\"\\n";\n\t\t}};\n')
 a('/* End PBXShellScriptBuildPhase section */\n\n')
 a('/* Begin PBXSourcesBuildPhase section */\n')
 for t,d in targets.items():

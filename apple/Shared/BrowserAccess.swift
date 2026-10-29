@@ -15,6 +15,9 @@ final class BrowserAccess {
 
     private let lock = NSLock()
     private var code: String?
+    /// Browser access over the internet: the join secret in the website QR (16 bytes, base64url), valid for any
+    /// number of browsers while the window is open, for at most 10 minutes.
+    private var joinSecret: String?
     private var expires = Date.distantPast
     private var wrong = 0
 
@@ -27,8 +30,11 @@ final class BrowserAccess {
         var bytes = [UInt8](repeating: 0, count: Self.length)
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         let fresh = String(bytes.map { Self.alphabet[Int($0) % Self.alphabet.count] })
+        var secretBytes = [UInt8](repeating: 0, count: 16)
+        _ = SecRandomCopyBytes(kSecRandomDefault, secretBytes.count, &secretBytes)
         lock.withLock {
             code = fresh
+            joinSecret = Data(secretBytes).base64URL
             expires = Date().addingTimeInterval(Self.lifetime)
             wrong = 0
         }
@@ -36,7 +42,21 @@ final class BrowserAccess {
     }
 
     func close() {
-        lock.withLock { code = nil }
+        lock.withLock {
+            code = nil
+            joinSecret = nil
+        }
+    }
+
+    /// The open join secret, or nil once the window closed or 10 minutes passed.
+    var secret: String? {
+        lock.withLock { Date() < expires ? joinSecret : nil }
+    }
+
+    func isSecret(_ given: String?) -> Bool {
+        guard let given, let current = secret else { return false }
+        let a = Array(given.utf8), b = Array(current.utf8)
+        return a.count == b.count && zip(a, b).reduce(0) { $0 | ($1.0 ^ $1.1) } == 0
     }
 
     /// "XXXX-XXXX", for showing and typing.
@@ -74,5 +94,19 @@ final class BrowserAccess {
         }
         if let ended { onEnded?(ended) }
         return result
+    }
+}
+
+extension Data {
+    /// Base64url without padding.
+    var base64URL: String {
+        base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    init?(base64URL text: String) {
+        var plain = text.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        plain += String(repeating: "=", count: (4 - plain.count % 4) % 4)
+        self.init(base64Encoded: plain)
     }
 }

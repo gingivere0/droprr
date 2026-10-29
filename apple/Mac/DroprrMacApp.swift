@@ -176,6 +176,11 @@ final class MacModel {
         }
         receiver.onItem = { [weak self] in self?.received($0) }
         receiver.browserAccess = browserAccess
+        browserHost = BrowserHost(settings: settings, access: browserAccess, outbox: outbox)
+        let host = browserHost!
+        receiver.hostBridge = { request in await host.handle(request) }
+        host.onChange = { [weak self] in self?.browserHostVersion += 1 }
+        host.onBrowserJoined = { [weak self] name in self?.connectedBrowser = name }
         receiver.addBrowser = { [weak self] in self?.addBrowser($0) ?? "Browser" }
         receiver.onBrowserRemoved = { [weak self] id in
             guard let self, let peer = self.settings.peers.first(where: { $0.id == id }) else { return }
@@ -189,7 +194,10 @@ final class MacModel {
         browserAccess.onEnded = { [weak self] used in
             DispatchQueue.main.async { if !used { self?.browserCodeClosed = true } }
         }
-        outbox.onChange = { [weak self] in self?.outboxVersion += 1 }
+        outbox.onChange = { [weak self] in
+            self?.outboxVersion += 1
+            self?.browserHost.outboxChanged()
+        }
         Notifier.shared.onOpen = { url in
             if url.isFileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) } else { Links.open(url) }
         }
@@ -222,6 +230,9 @@ final class MacModel {
         guard settings.port != listeningPort else { return }
         listeningPort = settings.port
         receiver.start()
+        // The host page's origin includes the port, so it starts (again) once the listener is up.
+        browserHost.stop()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.browserHost.start() }
     }
 
     private func received(_ item: ReceivedItem) {
@@ -328,6 +339,10 @@ final class MacModel {
 
     /// The "Open in a browser" code; only open while that window is.
     @ObservationIgnored let browserAccess = BrowserAccess()
+    /// Browser access over the internet: the hidden host page (website, relay and WebRTC).
+    @ObservationIgnored private(set) var browserHost: BrowserHost!
+    /// Bumped when the host page reports its fingerprint or who's connected.
+    var browserHostVersion = 0
     /// The browser that just connected (the window says so, then closes).
     var connectedBrowser: String?
     /// Five wrong codes closed the current one.

@@ -361,6 +361,9 @@
 				"$(SRCROOT)/../web/app.js",
 				"$(SRCROOT)/../web/app.css",
 				"$(SRCROOT)/../web/icon.png",
+				"$(SRCROOT)/../host/host.html",
+				"$(SRCROOT)/../host/host.js",
+				"$(SRCROOT)/../site/rtc.js",
 			);
 			name = "Copy browser page";
 			outputFileListPaths = (
@@ -370,10 +373,13 @@
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/app.js",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/app.css",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/icon.png",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/host/host.html",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/host/host.js",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/host/rtc.js",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# The browser page is shared with Windows: web/ in the repository, copied as is.\nmkdir -p \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/web\"\ncp \"$SRCROOT\"/../web/* \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/web/\"\n";
+			shellScript = "# The browser page is shared with Windows: web/ in the repository, copied as is.\nmkdir -p \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/web\"\ncp \"$SRCROOT\"/../web/* \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/web/\"\nmkdir -p \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/host\"\ncp \"$SRCROOT\"/../host/host.html \"$SRCROOT\"/../host/host.js \"$SRCROOT\"/../site/rtc.js \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/host/\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

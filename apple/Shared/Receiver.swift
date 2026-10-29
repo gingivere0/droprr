@@ -88,6 +88,9 @@ final class DroprrReceiver {
     var addBrowser: ((PairRequest) -> String)?
     /// A browser signed itself out. Called on the main queue with its peer id.
     var onBrowserRemoved: ((UUID) -> Void)?
+    /// Browser access over the internet: the hidden host page's files (/host/…) and its /api bridge, on the
+    /// plain listener over loopback only. The handler checks the page's own cookie, Host and Origin.
+    var hostBridge: ((HTTPServer.Request) async -> HTTPServer.Response)?
     /// This device's MagicDNS name, if Tailscale has one: a Host a browser may use.
     private var magicDNS: String?
     private let settings: DroprrSettings
@@ -212,6 +215,9 @@ final class DroprrReceiver {
         // Browser access: the page and its sign-in need no token; the browser port serves nothing else
         // except the endpoints a browser's cookie works on.
         if Self.isWebPath(request) { return browserAccess == nil ? .json(404, ["ok": false, "error": "not found"]) : nil }
+        if request.path.hasPrefix("/host/") || request.path.hasPrefix("/api/") {
+            return hostBridge != nil && !request.secure && Self.isLoopback(request.remoteHost) ? nil : .json(404, ["ok": false, "error": "not found"])
+        }
         if request.browserPort && !Self.cookieAllowed(request) { return .json(404, ["ok": false, "error": "not found"]) }
         // LAN pairing is the one request without a token, and only over HTTPS.
         if request.method == "POST", ["request", "confirm"].contains(Route(request).segments.dropFirst().first ?? ""),
@@ -306,6 +312,9 @@ final class DroprrReceiver {
     private func handle(_ request: HTTPServer.Request) async -> HTTPServer.Response {
         let route = Route(request)
         if Self.isWebPath(request) { return await handleWeb(request, route as Any) }
+        if request.path.hasPrefix("/host/") || request.path.hasPrefix("/api/"), let hostBridge {
+            return await hostBridge(request)
+        }
         if route.segments.first == "inbox", let outbox {
             return handleInbox(request, route, outbox)
         }

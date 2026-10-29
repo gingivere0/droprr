@@ -116,6 +116,17 @@ final class DroprrSettings {
     /// Whether the HTTPS listener is running right now (set by the receiver).
     @ObservationIgnored var secureListening = false
 
+    /// Browser access over the internet: 32 random bytes (base64url), made once and kept with the tokens.
+    /// The relay room is base64url(SHA-256(host key)).
+    var browserHostKey: String {
+        if let key = tokens.get("browser.hostkey"), !key.isEmpty { return key }
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        let key = Data(bytes).base64URL
+        tokens.set(key, for: "browser.hostkey")
+        return key
+    }
+
     /// This device's protocol 2 fields for /pair requests (id, fp, tlsPort, lan).
     var ownIdentityFields: [String: Any] { identityFields(includeLAN: true) }
 
