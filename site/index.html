@@ -39,6 +39,15 @@
         <video id="camera" playsinline muted></video>
         <button class="secondary" id="stop-scan" type="button">Cancel</button>
       </div>
+      <!-- This browser's own code, for the Droprr iPhone app (or another browser) to connect to it. -->
+      <button class="secondary wide" id="host-qr" type="button">Show QR code</button>
+      <div class="share-code" id="host-code" hidden>
+        <button class="qr-plate blurred" id="host-plate" type="button" aria-label="Tap to show the code">
+          <img id="host-image" alt="QR code to connect to this browser" width="232" height="232">
+          <span class="qr-reveal">Tap to show the code</span>
+        </button>
+        <p class="caption">Scan with the Droprr app on your iPhone, or another phone's camera, to connect to this browser. Keep this page open. The code works for 10 minutes.</p>
+      </div>
       <p class="status" id="start-status" role="status"></p>
       <div id="known" hidden>
         <h2 class="spaced">Recent computers</h2>

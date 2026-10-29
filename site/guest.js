@@ -309,6 +309,181 @@ function hideInvite() {
   $("show-qr").textContent = "Show QR code";
 }
 
+// --- Hosting --------------------------------------------------------------------------------------------------
+//
+// This browser as the host of its own room (docs/PROTOCOL.md, "Browsers as hosts"), so a Droprr iPhone app (or
+// another browser) can connect to it: the start screen's Show QR code. Its host key stays in this browser's storage
+// and its DTLS certificate in IndexedDB, so a device it accepted can reconnect later while this page is open.
+
+const HOST_KEY = "droprr.hostKey";
+const HOST_PEERS = "droprr.hostPeers";
+const { base64url, fromBase64url, sameSecret } = self.DroprrRtc;
+let hosting = null;
+
+function hostPeers() {
+  try {
+    const list = JSON.parse(storage(HOST_PEERS) || "{}");
+    return list && typeof list === "object" ? list : {};
+  } catch {
+    return {};
+  }
+}
+
+function hostCertificate() {
+  return new Promise((resolve) => {
+    let request;
+    try { request = indexedDB.open("droprr-web-host", 1); } catch { resolve(null); return; }
+    request.onupgradeneeded = () => request.result.createObjectStore("certs");
+    request.onerror = () => resolve(null);
+    request.onsuccess = () => {
+      const db = request.result;
+      const read = db.transaction("certs").objectStore("certs").get("dtls");
+      read.onerror = () => resolve(null);
+      read.onsuccess = () => resolve(read.result || null);
+    };
+  }).then(async (stored) => {
+    if (stored && stored.expires - Date.now() > 30 * 24 * 3600 * 1000) return stored;
+    const fresh = await RTCPeerConnection.generateCertificate({ name: "ECDSA", namedCurve: "P-256", expires: 365 * 24 * 3600 * 1000 });
+    try {
+      const request = indexedDB.open("droprr-web-host", 1);
+      request.onsuccess = () => request.result.transaction("certs", "readwrite").objectStore("certs").put(fresh, "dtls");
+    } catch { /* not remembered: devices scan again next time */ }
+    return fresh;
+  });
+}
+
+// Starts listening as a host (once per page), and returns the room details.
+async function startHosting() {
+  if (hosting) return hosting;
+  if (!RELAY || /example\.workers\.dev/.test(RELAY)) throw new Error("this copy of the page has no introduction server");
+  let key = storage(HOST_KEY);
+  if (!key || !ID.test(key)) {
+    key = randomId(32);
+    storage(HOST_KEY, key);
+  }
+  const certificate = await hostCertificate();
+  const sha = certificate.getFingerprints().find((f) => f.algorithm === "sha-256");
+  const h = {
+    key, certificate, secret: null, guests: new Map(),
+    room: base64url(await crypto.subtle.digest("SHA-256", fromBase64url(key))),
+    fp: base64url(Uint8Array.from(sha.value.split(":"), (x) => parseInt(x, 16))),
+  };
+  h.relay = new RelaySocket(`${RELAY}/host/${key}`, {
+    keepalive: true,
+    onMessage: (data) => {
+      if (data.t === "from" && typeof data.cid === "string" && data.m) hostSignal(h, data.cid, data.m);
+    },
+  });
+  hosting = h;
+  return h;
+}
+
+async function hostSignal(h, cid, m) {
+  let guest = h.guests.get(cid);
+  if (m.t === "offer" && typeof m.sdp === "string" && m.sdp.length < 12000) {
+    guest?.pc.close();
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, certificates: [h.certificate] });
+    guest = { pc, pending: [], accepted: false };
+    h.guests.set(cid, guest);
+    pc.onicecandidate = (event) => h.relay.send({ t: "to", cid, m: { t: "ice", c: event.candidate ? event.candidate.toJSON() : null } });
+    pc.ondatachannel = (event) => {
+      if (event.channel.label === "droprr" && !guest.link) acceptGuest(h, cid, guest, event.channel);
+    };
+    setTimeout(() => { if (!guest.accepted) pc.close(); }, 30000);
+    await pc.setRemoteDescription({ type: "offer", sdp: m.sdp });
+    for (const c of guest.pending.splice(0)) await pc.addIceCandidate(c || null).catch(() => {});
+    await pc.setLocalDescription(await pc.createAnswer());
+    h.relay.send({ t: "to", cid, m: { t: "answer", sdp: pc.localDescription.sdp } });
+  } else if (m.t === "ice" && guest) {
+    if (guest.pc.remoteDescription) await guest.pc.addIceCandidate(m.c || null).catch(() => {});
+    else guest.pending.push(m.c);
+  }
+}
+
+// A device that scanned this browser's code (with its secret) or reconnects (with the token it was given). This
+// browser talks to one device at a time; a new one replaces the current connection.
+function acceptGuest(h, cid, guest, channel) {
+  const current = { name: "", pc: guest.pc, done: false, hosted: true };
+  guest.link = new Link(channel, {
+    onControl: (message) => {
+      if (message.t !== "hello" || guest.hello) return;
+      guest.hello = true;
+      const id = String(message.id || "");
+      const known = hostPeers()[id];
+      const byToken = known && sameSecret(message.token, known.token);
+      if (!/^[A-Za-z0-9_-]{22}$/.test(id) || !(byToken || (h.secret && sameSecret(message.secret, h.secret)))) {
+        guest.link.control({ t: "denied", e: "scan this browser's code again" });
+        setTimeout(() => guest.pc.close(), 500);
+        return;
+      }
+      const token = byToken ? known.token : randomId(32);
+      const name = String(message.name || "Device").replace(/[\u0000-\u001f\u007f‪-‮⁦-⁩]/g, "").slice(0, 64) || "Device";
+      const peers = hostPeers();
+      peers[id] = { token, name };
+      storage(HOST_PEERS, JSON.stringify(peers));
+      guest.accepted = true;
+      guest.link.control({ t: "welcome", name: guessBrowserName(), token });
+      if (session && session !== current) disconnect(false);
+      current.name = name;
+      current.done = true;
+      session = current;
+      link = guest.link;
+      hideHostCode();
+      showApp(name);
+    },
+    accepting: () => guest.accepted,
+    onItem: async (item) => addReceived(item),
+    onProgress: showProgress,
+    onClose: () => {
+      h.guests.delete(cid);
+      guest.pc.close();
+      if (session !== current) return;
+      link = null;
+      session = null;
+      showStart();
+      setStatus($("start-status"), `Disconnected from ${current.name}.`, "error");
+    },
+  });
+}
+
+// The start screen's Show QR code: this browser's own code, blurred until tapped, valid for 10 minutes.
+$("host-qr").addEventListener("click", async () => {
+  if (!$("host-code").hidden) {
+    hideHostCode();
+    return;
+  }
+  setStatus($("start-status"), "Getting a code…");
+  try {
+    const h = await startHosting();
+    h.secret = randomId(16);
+    const info = base64url(new TextEncoder().encode(JSON.stringify({ v: 1, p: "web", n: guessBrowserName() })));
+    const qr = self.qrcode(0, "M");
+    qr.addData(`${location.origin}${location.pathname}#${h.room}.${h.secret}.${h.fp}.${info}`);
+    qr.make();
+    $("host-image").src = qr.createDataURL(8, 0);
+    $("host-plate").classList.add("blurred");
+    $("host-code").hidden = false;
+    $("host-qr").textContent = "Hide QR code";
+    setStatus($("start-status"), "");
+    clearTimeout(hostTimer);
+    hostTimer = setTimeout(hideHostCode, 10 * 60 * 1000);
+  } catch (error) {
+    setStatus($("start-status"), `Couldn't make a code: ${error.message}`, "error");
+  }
+});
+
+$("host-plate").addEventListener("click", () => $("host-plate").classList.remove("blurred"));
+
+let hostTimer = null;
+
+function hideHostCode() {
+  clearTimeout(hostTimer);
+  if (hosting) hosting.secret = null;
+  $("host-code").hidden = true;
+  $("host-image").removeAttribute("src");
+  $("host-qr").textContent = "Show QR code";
+}
+
 function showApp(name) {
   stopScan();
   hideInvite();
@@ -595,3 +770,5 @@ renderChosen();
 showStart();
 connectFromLink();
 addEventListener("hashchange", connectFromLink);
+// Devices this browser accepted before can reconnect while the page is open.
+if (Object.keys(hostPeers()).length) startHosting().catch(() => {});

@@ -554,6 +554,17 @@ Text frames are JSON. Binary frames are file chunks.
 
 On the computer, items from a browser are saved, announced, and checked exactly like a `POST /send` from that browser's peer. Items for a `"web"` peer wait in its [inbox](#inbox-phone-pull) and go out over the data channel while it's connected, each removed once the browser answers `saved`. The browser offers each received file to save (the share sheet on phones) and each text to copy.
 
+### Browsers as hosts
+
+A browser can also host its own room, so the Droprr iPhone app (or another browser) connects to it with no computer involved: **Show QR code** on the website's start screen. The roles are the same as above, with the browser as the host:
+
+- **Host key:** 32 random bytes the browser keeps in its storage (`droprr.hostKey`), so its room stays the same across visits. **DTLS certificate:** made with `generateCertificate` and kept in IndexedDB, replaced a month before it expires, as on computers.
+- **The code:** `<website>#<room>.<secret>.<fp>.<b>`, where `<b>` is base64url JSON `{ "v": 1, "p": "web", "n": "<browser name>" }`. **`"p": "web"` marks a browser host**: a scanner must connect to it over WebRTC as a guest, never with `POST /pair`. The secret is new each time the code is shown and works for 10 minutes, or until the code is hidden. The code shows blurred until tapped.
+- **Joining** is exactly the browser side above: join the room on the relay, make the offer with a `droprr` data channel, check the answer's fingerprint against `fp`, and say hello with the secret (or, later, the token).
+- **The browser host** accepts a hello whose `secret` matches its open secret, or whose `token` matches the one it gave that `id` before, and answers `welcome` with its name and that token. It keeps `{ id: { token, name } }` in its storage (`droprr.hostPeers`). It talks to one device at a time; a new accepted connection replaces the current one. Items, `saved`, and `failed` are the same in both directions.
+- **Reconnecting:** while the page is open (and has accepted a device before), it stays connected to the relay as its room's host, so a remembered device can reconnect with its token. A closed page can't be reached; the device says so and tries again later.
+- **The iPhone app** scans the code (or gets it from the `droprr://join?code=` link), sees `"p": "web"`, and joins as a guest. It stores `{ room, fp, token, name }` as a browser device, and runs the same WebRTC code (`site/rtc.js`) in a hidden web view.
+
 ### The host page's bridge
 
 The host page reaches its app with same-origin requests that the app answers itself (the Windows app intercepts them in WebView2; they never reach a network):
