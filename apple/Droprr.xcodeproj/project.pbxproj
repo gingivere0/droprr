@@ -181,6 +181,7 @@
 				3284F8DBAA924ADD5579FA5A /* Sources */,
 				465FEF455DEDFAB326AF6807 /* Frameworks */,
 				6BFB1367808D402E85CC3812 /* Resources */,
+				C5C67A6DAA8503015CF8D902 /* Copy browser page */,
 				B159B9E8C3F305AABB14CE1C /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -346,6 +347,35 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		C5C67A6DAA8503015CF8D902 /* Copy browser page */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../web/index.html",
+				"$(SRCROOT)/../web/app.js",
+				"$(SRCROOT)/../web/app.css",
+				"$(SRCROOT)/../web/icon.png",
+			);
+			name = "Copy browser page";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/index.html",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/app.js",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/app.css",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/icon.png",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# The browser page is shared with Windows: web/ in the repository, copied as is.\nmkdir -p \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/web\"\ncp \"$SRCROOT\"/../web/* \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/web/\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		3284F8DBAA924ADD5579FA5A /* Sources */ = {
