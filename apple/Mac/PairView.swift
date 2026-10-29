@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Pair a phone: the one code (docs/PROTOCOL.md, "One code") for any phone's browser and the Droprr app. Its join
-/// secret is open only while this window is. Without the website (the host page isn't ready), the older pairing
-/// code, which carries the token.
+/// secret is open only while this window is. Until the host page is ready, "Getting ready…" (never the older
+/// pairing code, which carries the token).
 struct PairView: View {
     @Bindable var model: MacModel
     @Environment(\.dismissWindow) private var dismissWindow
@@ -25,7 +25,7 @@ struct PairView: View {
                     LogoBadge(size: 30).padding(.bottom, 4)
                 }
                 Hairline()
-                Text(oneCode == nil ? "Scan with the Camera app or Droprr on your iPhone." : "Scan with any phone's camera.")
+                Text("Scan with any phone's camera.")
                     .font(.system(size: 12)).foregroundStyle(Look.muted)
             }
 
@@ -53,11 +53,12 @@ struct PairView: View {
                 }
                 .foregroundStyle(Look.muted)
             } else {
-                PairingQRCode(settings: model.settings)
-                Label("This code contains this Mac's pairing token. Only show it to your own phone.", systemImage: "lock")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Look.muted)
-                    .multilineTextAlignment(.center)
+                // The host page is still starting (it reloads until it's ready): never fall back to the token code.
+                VStack(spacing: Space.md) {
+                    ProgressView().controlSize(.small)
+                    Text("Getting ready…").font(.callout).foregroundStyle(Look.muted)
+                }
+                .frame(width: 268, height: 268)
             }
         }
         .padding(.horizontal, 30)
