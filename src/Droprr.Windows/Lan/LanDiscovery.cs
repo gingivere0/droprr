@@ -97,6 +97,7 @@ static class LanDiscovery
 
     static async Task BrowseLoopAsync(CancellationToken cancel)
     {
+        var shown = new HashSet<string>();
         while (!cancel.IsCancellationRequested)
         {
             try
@@ -112,6 +113,10 @@ static class LanDiscovery
                     Found[device.Id] = device;
                     changed |= !known;
                 }
+                // A device that left the network drops off the list once it's no longer fresh.
+                var fresh = Devices.Select(d => d.Id).ToHashSet();
+                changed |= !fresh.SetEquals(shown);
+                shown = fresh;
                 if (changed)
                     Changed?.Invoke();
                 await Task.Delay(BrowseEvery, cancel);

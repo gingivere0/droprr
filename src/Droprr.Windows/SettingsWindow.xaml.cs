@@ -118,8 +118,10 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         TestResult.Text = $"Testing {peer.Name}…";
         try
         {
-            var (_, text) = await Sender.TestAsync(peer, cancel.Token);
-            TestResult.Text = $"{peer.Name}: {text}";
+            var (ok, text) = await Sender.TestAsync(peer, cancel.Token);
+            TestResult.Text = !ok && peer.IsPhone
+                ? $"{peer.Name} isn't open on this Wi-Fi right now. Items you send wait here until it opens Droprr."
+                : $"{peer.Name}: {text}";
         }
         catch (OperationCanceledException)
         {
