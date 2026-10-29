@@ -159,13 +159,13 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
     // "Sent" shows in the success tile; everything else in the InfoBar.
     void ShowStatus(InfoBarSeverity severity, string message)
     {
-        HideStatus();
         if (severity == InfoBarSeverity.Success)
         {
-            SuccessText.Text = message;
-            SuccessTile.Visibility = Visibility.Visible;
+            StatusBar.IsOpen = false;
+            ShowTile(SymbolRegular.CheckmarkCircle24, message);
             return;
         }
+        HideStatus();
         StatusBar.Severity = severity;
         StatusBar.Title = severity switch
         {
@@ -175,6 +175,14 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         };
         StatusBar.Message = message;
         StatusBar.IsOpen = true;
+    }
+
+    // Shown or updated in place, never collapsed and reopened, so the window keeps its height.
+    void ShowTile(SymbolRegular icon, string message)
+    {
+        SuccessIcon.Symbol = icon;
+        SuccessText.Text = message;
+        SuccessTile.Visibility = Visibility.Visible;
     }
 
     void HideStatus()
@@ -347,8 +355,11 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         SendClipboardButton.IsEnabled = false;
         Progress.Value = 0;
         Progress.Visibility = paths.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        // Queuing for a phone is quiet: its "N waiting" badge and the tray count show the result.
-        HideStatus();
+        // A previous "Sent" tile stays up and turns into "Sending…" in place, so the window doesn't shrink and grow
+        // again. A message in the InfoBar is out of date now, though.
+        StatusBar.IsOpen = false;
+        if (SuccessTile.Visibility == Visibility.Visible)
+            ShowTile(SymbolRegular.ArrowSync24, $"Sending to {peer.Name}…");
         try
         {
             if (peer.IsPhone)
@@ -357,6 +368,8 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
                     await Outbox.EnqueueFileAsync(peer.Name, path, progress);
                 if (text.Length > 0)
                     Outbox.EnqueueText(peer.Name, Sender.TextType(text), text);
+                // Queuing for a phone is quiet: its "N waiting" badge and the tray count show the result.
+                HideStatus();
                 ShowPeers();
             }
             else

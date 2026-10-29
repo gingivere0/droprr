@@ -253,15 +253,19 @@
             </Border>
 
             <!-- Status tile -->
-            <ProgressBar x:Name="Progress" Style="{StaticResource BrandProgressBar}" Visibility="Collapsed" Margin="0,12,0,0" />
-            <Border x:Name="SuccessTile" Style="{StaticResource Tile}" Visibility="Collapsed" Margin="0,12,0,0"
-                    Background="{DynamicResource SuccessFillBrush}" BorderBrush="{DynamicResource SuccessFillBrush}" Padding="12">
-                <DockPanel>
-                    <ui:SymbolIcon DockPanel.Dock="Left" Symbol="CheckmarkCircle24" Filled="True" FontSize="20" Margin="0,0,8,0"
-                                   Foreground="{DynamicResource SuccessTextBrush}" />
-                    <TextBlock x:Name="SuccessText" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource SuccessTextBrush}" />
-                </DockPanel>
-            </Border>
+            <!-- The progress bar lies over the tile's bottom edge when the tile is up, so a send after a send
+                 changes nothing's height (the window sizes to its content). -->
+            <Grid Margin="0,12,0,0">
+                <Border x:Name="SuccessTile" Style="{StaticResource Tile}" Visibility="Collapsed"
+                        Background="{DynamicResource SuccessFillBrush}" BorderBrush="{DynamicResource SuccessFillBrush}" Padding="12">
+                    <DockPanel>
+                        <ui:SymbolIcon x:Name="SuccessIcon" DockPanel.Dock="Left" Symbol="CheckmarkCircle24" Filled="True" FontSize="20"
+                                       Margin="0,0,8,0" Foreground="{DynamicResource SuccessTextBrush}" />
+                        <TextBlock x:Name="SuccessText" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource SuccessTextBrush}" />
+                    </DockPanel>
+                </Border>
+                <ProgressBar x:Name="Progress" Style="{StaticResource BrandProgressBar}" Visibility="Collapsed" VerticalAlignment="Bottom" />
+            </Grid>
             <ui:InfoBar x:Name="StatusBar" Margin="0,12,0,0" IsOpen="False" IsClosable="True" />
 
             <!-- Bottom bar: a secondary button on the left, the primary Send on the right. -->
