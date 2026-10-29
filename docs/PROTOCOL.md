@@ -578,6 +578,7 @@ The app posts the page `{ "t": "config" }` when the join secret changes, and `{ 
 
 A computer shows **one** QR code, in **Pair a phone** (from its tray or menu bar, or Settings), for every way of connecting: any phone's browser, and the Droprr app. It never contains a token. There's no choice of Wi-Fi or Tailscale: browsers connect with WebRTC, which tries every path between the two devices (Tailscale addresses included), and the app tries Wi-Fi, then Tailscale, as for any send.
 
+- **Opening it:** an **Add a device** tile (a plus) after the device tiles in the Send window, plus the tray or menu bar and Settings. The code shows **blurred** until the person clicks it, so it isn't readable by anyone glancing at the screen. This is UI, not wire format, but every computer app does the same.
 - **Contents:** the [website code](#identity-and-the-code) `<website>#<room>.<secret>.<fp>.<app>`, where `<app>` is base64url JSON with what the app needs: `{ "v": 1, "n": name, "p": platform, "port", "id", "f": LAN certificate fingerprint (hex), "l": [LAN "host:port", …], "h": Tailscale address, "d": MagicDNS name }`. `h` and `d` are left out without Tailscale, and `l` is empty without the local network.
 - **The join secret** is valid while that window is open, for at most 10 minutes. Closing the window ends it.
 - **Browsers:** the website connects as above. On an iPhone, iPad, or Mac, when the code has `<app>`, it also offers **Open in Droprr**, a link to `droprr://join?code=<the fragment, percent-encoded>`.
