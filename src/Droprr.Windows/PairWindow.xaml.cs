@@ -21,13 +21,61 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
         InitializeComponent();
         AppTheme.Setup(this, AppTitleBar);
         _settings = settings;
-        ShowCode();
 
         if (Application.Current is App app)
         {
+            // The join code works only while this window is open.
+            app.BrowserAccess.Open();
+            app.BrowserHost?.ConfigChanged();
             app.DevicePaired += OnPaired;
-            Closed += (_, _) => app.DevicePaired -= OnPaired;
+            app.BrowserConnected += OnPaired;
+            if (app.BrowserHost is { } browserHost)
+                browserHost.Ready += OnHostReady;
+            Closed += (_, _) =>
+            {
+                app.DevicePaired -= OnPaired;
+                app.BrowserConnected -= OnPaired;
+                if (app.BrowserHost is { } browserHost)
+                    browserHost.Ready -= OnHostReady;
+                app.BrowserAccess.Close();
+                app.BrowserHost?.ConfigChanged();
+            };
         }
+        ShowCode();
+    }
+
+    void OnHostReady() => Dispatcher.BeginInvoke(ShowCode);
+
+    // The one code (docs/PROTOCOL.md, "One code"): a link to the Droprr website that browsers connect with, and that
+    // the iPhone app pairs with, carrying the join secret and this PC's addresses but never its token. Without
+    // WebView2 (so no website), the app-only pairing code instead.
+    string CodeText(string host, string? dns)
+    {
+        if (Application.Current is App { BrowserHost: { } browserHost } && browserHost.JoinLink(AppInfo(_settings, host, dns)) is { } link)
+        {
+            PrivacyNote.Severity = Wpf.Ui.Controls.InfoBarSeverity.Informational;
+            PrivacyNote.Title = "Anyone who scans this can connect";
+            PrivacyNote.Message = "While this window is open, any phone that scans the code can send to this PC and receive from it. You can remove a device later in Settings.";
+            ScanHint.Text = "Scan with any phone's camera";
+            return link;
+        }
+        return PairingUri(_settings, host, dns);
+    }
+
+    // What the iPhone app needs to pair from the one code, as base64url JSON: name, platform, port, id, the LAN
+    // certificate fingerprint, LAN addresses, and the Tailscale address and name. No token.
+    static string AppInfo(AppSettings settings, string host, string? dns)
+    {
+        var lan = Application.Current is App { LanListening: true }
+            ? LanNetwork.LocalAddresses().Select(a => $"{a.Address}:{LanNetwork.TlsPort(settings.Port)}").ToList()
+            : [];
+        var tailscale = LanNetwork.IsTailscale(System.Net.IPAddress.TryParse(host, out var ip) ? ip : System.Net.IPAddress.None) ? host : null;
+        var json = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            v = 1, n = settings.DeviceName, p = "windows", port = settings.Port, id = settings.DeviceId,
+            f = DeviceIdentity.Fingerprint(settings), l = lan, h = tailscale, d = tailscale is null ? null : dns,
+        }, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
+        return Convert.ToBase64String(json).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
     // Tailscale when it's connected; otherwise this PC's first private LAN address, which the phone reaches over
@@ -69,7 +117,7 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
 
         Error.IsOpen = false;
         var dns = tailscale is null ? null : MagicDnsName();
-        Code.Source = Render(PairingUri(_settings, host, dns));
+        Code.Source = Render(CodeText(host, dns));
         CodePanel.Visibility = Visibility.Visible;
         ScanHint.Visibility = Visibility.Visible;
         Details.Visibility = Visibility.Visible;

@@ -517,7 +517,7 @@ The page above needs a certificate warning on Wi-Fi. This variant has none, work
 - **Host key:** each computer makes 32 random bytes once and keeps them secret (encrypted like its tokens). Its **room** is `base64url(SHA-256(host key))`. Base64url is always without padding.
 - **DTLS certificate:** the host page makes one ECDSA P-256 certificate with `RTCPeerConnection.generateCertificate` and keeps it in its own storage, so its fingerprint stays the same across restarts and updates. Browsers limit certificates to a year, so it's replaced a month before it expires; browsers that knew the old one must scan again. Its **fp** is the SHA-256 fingerprint's 32 bytes, base64url.
 - **Join secret:** 16 random bytes, base64url, made when **Open in a browser** opens, and valid for any number of browsers while that window is open, for at most 10 minutes. Never saved or logged.
-- **The code:** the QR code is `<website>#<room>.<secret>.<fp>`. Scanning it with a phone's camera opens the website, which reads and then removes the fragment. The website can also scan it with its own camera button.
+- **The code:** the QR code is `<website>#<room>.<secret>.<fp>[.<app>]`. Scanning it with a phone's camera opens the website, which reads and then removes the fragment. The website can also scan it with its own camera button. It's the computer's only code; see [One code](#one-code).
 
 ### Relay
 
@@ -573,6 +573,18 @@ The app posts the page `{ "t": "config" }` when the join secret changes, and `{ 
 - The relay learns only metadata: that devices met, their addresses, and ICE candidates.
 - Whoever controls the website could change its code. That's the trust any web app needs; the repository is public, and the website is published only from `main`.
 - The join secret only lets a browser add itself while the person has the window open; it's 128 bits, so it can't be guessed. Removing a browser in Settings revokes its token.
+
+## One code
+
+A computer shows **one** QR code, in **Pair a phone** (from its tray or menu bar, or Settings), for every way of connecting: any phone's browser, and the Droprr app. It never contains a token. There's no choice of Wi-Fi or Tailscale: browsers connect with WebRTC, which tries every path between the two devices (Tailscale addresses included), and the app tries Wi-Fi, then Tailscale, as for any send.
+
+- **Contents:** the [website code](#identity-and-the-code) `<website>#<room>.<secret>.<fp>.<app>`, where `<app>` is base64url JSON with what the app needs: `{ "v": 1, "n": name, "p": platform, "port", "id", "f": LAN certificate fingerprint (hex), "l": [LAN "host:port", …], "h": Tailscale address, "d": MagicDNS name }`. `h` and `d` are left out without Tailscale, and `l` is empty without the local network.
+- **The join secret** is valid while that window is open, for at most 10 minutes. Closing the window ends it.
+- **Browsers:** the website connects as above. On an iPhone, iPad, or Mac, when the code has `<app>`, it also offers **Open in Droprr**, a link to `droprr://join?code=<the fragment, percent-encoded>`.
+- **The app** gets the code from that link or from its own scanner (the website URL). It calls [`POST /pair`](#post-pair) on the computer as usual (LAN HTTPS pinned to `f`, or Tailscale), but with the header `X-Droprr-Join: <secret>` and **no** `Authorization` header. The computer treats a `/pair` with its open join secret like a confirmed [LAN pairing](#pairing-rules): always a new peer (a unique name), and `409` with `"already paired …"` if the caller's `id` or fingerprint already belongs to a peer. The response's device token is the app's from then on. A wrong or expired secret is `401`.
+- **Without WebView2** (no website code), Windows falls back to the [pairing QR](#pairing-qr), which carries the token, with its warning.
+
+The [pairing QR](#pairing-qr) and the computer's own page's typed codes still work for older apps and for computers without the website, but computers no longer show them by default.
 
 ## Implementation notes
 

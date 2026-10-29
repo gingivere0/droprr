@@ -372,7 +372,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
 
     // Uses the saved settings, so the code carries the token and port this PC is actually using.
     void OnPair(object sender, RoutedEventArgs e) =>
-        new PairWindow(SettingsStore.Load()) { Owner = this }.ShowDialog();
+        (Application.Current as App)?.ShowPairWindow();
 
     void OnRemovePeer(object sender, RoutedEventArgs e)
     {

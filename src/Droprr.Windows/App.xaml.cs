@@ -321,16 +321,17 @@ public partial class App : Application
     // Browser access: the code the "Open in a browser" window shows, kept across receiver restarts.
     internal BrowserAccess BrowserAccess { get; } = new();
 
-    BrowserWindow? _browserWindow;
+    PairWindow? _pairWindow;
 
-    internal void ShowBrowserAccess()
+    // The one code, from the tray: phones with the app pair, and any phone's browser connects.
+    internal void ShowPairWindow()
     {
-        if (_browserWindow is not { IsLoaded: true })
+        if (_pairWindow is not { IsLoaded: true })
         {
-            _browserWindow = new BrowserWindow(this);
-            _browserWindow.Show();
+            _pairWindow = new PairWindow(SettingsStore.Load()) { WindowStartupLocation = WindowStartupLocation.CenterScreen };
+            _pairWindow.Show();
         }
-        BringToFront(_browserWindow);
+        BringToFront(_pairWindow);
     }
 
     // Browser access over the internet: the hidden page that connects browsers through the relay. Null when

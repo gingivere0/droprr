@@ -104,8 +104,10 @@ function parseCode(text) {
     if (url.origin !== location.origin) return null;
     fragment = url.hash.slice(1);
   } catch { /* a bare fragment */ }
-  const [room, secret, fp] = fragment.replace(/^#/, "").split(".");
-  return ID.test(room || "") && SECRET.test(secret || "") && ID.test(fp || "") ? { room, secret, fp } : null;
+  const [room, secret, fp, app] = fragment.replace(/^#/, "").split(".");
+  if (!ID.test(room || "") || !SECRET.test(secret || "") || !ID.test(fp || "")) return null;
+  // The one code may also carry what the Droprr app needs to pair (base64url JSON, never a token).
+  return { room, secret, fp, app: /^[A-Za-z0-9_-]{1,2000}$/.test(app || "") ? app : null };
 }
 
 // --- Connecting -----------------------------------------------------------------------------------------------
@@ -519,7 +521,19 @@ function connectFromLink() {
   if (!code) return;
   // The code stays out of the address bar and history once it's read.
   history.replaceState(null, "", location.pathname + location.search);
+  offerApp(code);
   connect(code);
+}
+
+// A phone with the Droprr app can pair it from the same code, while the window on the computer is open.
+function offerApp(code) {
+  const link = $("open-app");
+  if (!code.app || !/iPhone|iPad|Macintosh/.test(navigator.userAgent)) {
+    link.hidden = true;
+    return;
+  }
+  link.href = `droprr://join?code=${encodeURIComponent(`${code.room}.${code.secret}.${code.fp}.${code.app}`)}`;
+  link.hidden = false;
 }
 
 renderChosen();

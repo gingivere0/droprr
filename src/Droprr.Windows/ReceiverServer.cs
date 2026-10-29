@@ -57,6 +57,9 @@ sealed partial class ReceiverServer : IAsyncDisposable
 
     static string? DevicePeer(HttpContext context) => context.Items[DevicePeerKey] as string;
 
+    // Set when POST /pair authenticated with the one code's join secret instead of a token.
+    const string JoinKey = "droprr.join";
+
     public event Action<ReceivedItem>? ItemReceived;
 
     // Raised on a server thread with the device name a phone asked for in GET /inbox.
@@ -182,6 +185,14 @@ sealed partial class ReceiverServer : IAsyncDisposable
                 devicePeer = browser;
                 context.Items[WebCookie] = browser;
             }
+            // The one code: POST /pair may use the open join secret instead of a token, so the code never needs
+            // the main token. The caller still gets its own device token.
+            else if (HttpMethods.IsPost(context.Request.Method) && context.Request.Path.Equals("/pair", StringComparison.OrdinalIgnoreCase)
+                     && context.Request.Headers.Authorization.Count == 0 && BrowserAccess?.IsSecret(context.Request.Headers["X-Droprr-Join"].ToString()) == true)
+            {
+                devicePeer = null;
+                context.Items[JoinKey] = true;
+            }
             else if (!TryAuthenticate(context.Request, out devicePeer))
             {
                 context.Response.Headers.WWWAuthenticate = "Bearer";
@@ -291,12 +302,18 @@ sealed partial class ReceiverServer : IAsyncDisposable
             return Error("port must be from 1 to 65535", StatusCodes.Status400BadRequest);
 
         var phone = platform == "ios";
+        // With the one code's join secret, like LAN pairing: always a new peer, and a device that's already paired
+        // must be removed first, so a code shown to a guest can't take over another device's record.
+        var joined = context.Items[JoinKey] is true;
+        if (joined && Settings.Peers.Find(p => (ValidId(body.Id) is { } id && p.Id == id)
+                || (ValidFingerprint(body.Fp) is { } fp && p.Fingerprint.Equals(fp, StringComparison.OrdinalIgnoreCase))) is { } existing)
+            return Error($"already paired as {existing.Name}: remove it on {Settings.DeviceName} to pair again", StatusCodes.Status409Conflict);
         // Phones send one too when they can receive directly over the local network.
         var sendToken = body.Token?.Trim();
         var acceptToken = SettingsStore.NewToken();
         PairRequested?.Invoke(new PairRequest(name, platform, phone ? null : host, body.Port,
             string.IsNullOrEmpty(sendToken) ? null : sendToken, acceptToken,
-            ValidId(body.Id), ValidFingerprint(body.Fp), body.TlsPort, body.Lan, DevicePeer(context)));
+            ValidId(body.Id), ValidFingerprint(body.Fp), body.TlsPort, body.Lan, DevicePeer(context), FromLan: joined));
         return Results.Json(LanPairResponse(acceptToken));
     }
 
