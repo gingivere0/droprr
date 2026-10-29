@@ -26,20 +26,16 @@ struct SettingsForm<Extra: View>: View {
         Form {
             #if os(iOS)
             Section {
-                StylePicker(settings: settings)
-                    .listRowInsets(EdgeInsets(top: Space.md, leading: Space.md, bottom: Space.md, trailing: Space.md))
-            } header: {
-                Text("Style")
-            } footer: {
-                Text("Spatial is always dark.")
-            }
-            Section {
-                ThemePicker(settings: settings)
-                    .listRowInsets(EdgeInsets(top: Space.md, leading: Space.md, bottom: Space.md, trailing: Space.md))
-            } header: {
-                Text("Colors")
-            } footer: {
-                Text("Light and dark follow your iPhone.")
+                NavigationLink {
+                    AppearanceSettings(settings: settings)
+                } label: {
+                    LabeledContent {
+                        Text("\(LookStyle(rawValue: settings.style)?.name ?? "") · \(ThemePalette.named(settings.theme).name)")
+                            .foregroundStyle(.secondary)
+                    } label: {
+                        Label("Appearance", systemImage: "paintpalette")
+                    }
+                }
             }
             #endif
             Section {
@@ -430,3 +426,35 @@ enum Clipboard {
     }
     #endif
 }
+
+#if os(iOS)
+/// iPhone Settings › Appearance: the window style and the color theme.
+struct AppearanceSettings: View {
+    @Bindable var settings: DroprrSettings
+
+    var body: some View {
+        Form {
+            Section {
+                StylePicker(settings: settings)
+                    .listRowInsets(EdgeInsets(top: Space.md, leading: Space.md, bottom: Space.md, trailing: Space.md))
+            } header: {
+                Text("Style")
+            } footer: {
+                Text("Spatial is always dark.")
+            }
+            Section {
+                ThemePicker(settings: settings)
+                    .listRowInsets(EdgeInsets(top: Space.md, leading: Space.md, bottom: Space.md, trailing: Space.md))
+            } header: {
+                Text("Colors")
+            } footer: {
+                Text("Light and dark follow your iPhone.")
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background { LookBackground().ignoresSafeArea() }
+        .navigationTitle("Appearance")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+#endif
