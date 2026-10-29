@@ -113,14 +113,16 @@ private struct ConfirmPairingSheet: View {
             List {
                 Section {
                     HStack(spacing: Space.md) {
-                        GlyphCircle(symbol: info.platform == "macos" ? "laptopcomputer" : "pc", size: 44, filled: true)
+                        GlyphCircle(symbol: info.isBrowser ? "globe" : info.platform == "macos" ? "laptopcomputer" : "pc", size: 44, filled: true)
                         VStack(alignment: .leading, spacing: Space.xs) {
                             Text(info.name).font(.headline)
                             Text(Theme.platformName(info.platform)).font(.subheadline).foregroundStyle(.secondary)
                         }
                     }
-                    LabeledContent("Address", value: "\(info.connectHost):\(String(info.port))")
-                        .font(.callout.monospaced())
+                    if !info.isBrowser {
+                        LabeledContent("Address", value: "\(info.connectHost):\(String(info.port))")
+                            .font(.callout.monospaced())
+                    }
                 } footer: {
                     if let replacing {
                         Text("This replaces the address and token saved for \(replacing.name).")

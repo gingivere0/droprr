@@ -1,6 +1,12 @@
 import Foundation
 import Security
 
+/// The live website and relay for Browser access over the internet (docs/PROTOCOL.md).
+enum DroprrWeb {
+    static let relay = "wss://droprr-relay.droprr-domain.workers.dev"
+    static let site = "https://gingivere0.github.io/droprr/"
+}
+
 /// The one-time access code for Browser access (docs/PROTOCOL.md, "Browser access"). It exists only while the
 /// "Open in a browser" window is open, for at most 10 minutes, and works once; five wrong codes close it.
 /// Never saved or logged.

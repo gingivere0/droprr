@@ -25,6 +25,7 @@ struct DroprrPhoneApp: App {
             if phase == .active {
                 model.startLocalNetwork()
                 Task { await model.collectInbox() }
+                Task { await model.connectBrowsers() }
             } else if phase == .background {
                 model.enterBackground()
             }
@@ -65,6 +66,9 @@ final class PhoneModel {
            let saved = try? JSONDecoder().decode([HistoryEntry].self, from: data) {
             history = saved.filter(\.isAvailable)
         }
+        let guest = BrowserGuest.shared
+        guest.onReceive = { [weak self] room, item in self?.receivedFromBrowser(room, item) }
+        guest.onProgress = { [weak self] value in if self?.sending == true { self?.progress = value } }
     }
 
     // MARK: Local network (protocol 2)
@@ -88,6 +92,10 @@ final class PhoneModel {
                 pair(with: code)
                 while case .working = pairingStatus { try? await Task.sleep(for: .milliseconds(200)) }
                 NSLog("Droprr test: join %@", String(describing: pairingStatus))
+                if let text = ProcessInfo.processInfo.environment["DROPRR_JOIN_SEND"], let peer = settings.lastPeer {
+                    let ok = await send([.text(text)], to: peer)
+                    NSLog("Droprr test: sent %@ %@", ok ? "ok" : "failed", lastSendResult ?? "")
+                }
             }
         }
         // Tests: DROPRR_AUTO_LAN_PAIR=<name> pairs with that nearby device once it's found.
@@ -328,7 +336,7 @@ final class PhoneModel {
 
     func completePairing(_ info: PairingInfo) {
         pendingPairing = nil
-        if let secret = info.join { return join(info, secret: secret) }
+        if let secret = info.join { return info.isBrowser ? joinBrowser(info, secret: secret) : join(info, secret: secret) }
         var peer = settings.apply(info)
         pairingStatus = .working("Pairing with \(peer.name)")
         Task {
@@ -422,6 +430,85 @@ final class PhoneModel {
         }
     }
 
+    // MARK: Browsers (docs/PROTOCOL.md, "Browsers as hosts")
+
+    /// A browser's own code: join its room as a guest with the code's secret; it answers with a token for later.
+    private func joinBrowser(_ info: PairingInfo, secret: String) {
+        guard let room = info.id, let fp = info.fp else { return }
+        pairingStatus = .working("Connecting to \(info.name)")
+        Task {
+            do {
+                let welcome = try await BrowserGuest.shared.join(room: room, fingerprint: fp, secret: secret, token: nil,
+                                                                 name: settings.deviceName)
+                let name = welcome.name.isEmpty ? info.name : PairRequest.displayName(welcome.name)
+                let id: UUID
+                if let i = settings.peers.firstIndex(where: { $0.isBrowser && $0.deviceID == room }) {
+                    settings.peers[i].token = welcome.token
+                    settings.peers[i].fingerprint = fp
+                    settings.peers[i].remoteName = name
+                    id = settings.peers[i].id
+                } else {
+                    var peer = Peer(name: settings.uniqueName(name), host: "", port: DroprrDefaults.port, platform: "web",
+                                    remoteName: name, token: welcome.token)
+                    peer.deviceID = room
+                    peer.fingerprint = fp
+                    settings.peers.append(peer)
+                    id = peer.id
+                }
+                added(id)
+            } catch {
+                pairingStatus = .failure(error.localizedDescription)
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        }
+    }
+
+    /// Reconnects to remembered browsers whose pages are open (they stay on the relay), so they can send here.
+    func connectBrowsers() async {
+        for peer in settings.peers where peer.isBrowser && !BrowserGuest.shared.connected.contains(peer.deviceID ?? "") {
+            _ = try? await connectBrowser(peer)
+        }
+    }
+
+    private func connectBrowser(_ peer: Peer) async throws {
+        guard let room = peer.deviceID, let fp = peer.fingerprint, let token = peer.token, !token.isEmpty else {
+            throw DroprrError.notPaired
+        }
+        if BrowserGuest.shared.connected.contains(room) { return }
+        let welcome = try await BrowserGuest.shared.join(room: room, fingerprint: fp, secret: nil, token: token,
+                                                         name: settings.deviceName)
+        if let i = settings.peers.firstIndex(where: { $0.id == peer.id }), !welcome.token.isEmpty { settings.peers[i].token = welcome.token }
+    }
+
+    private func sendToBrowser(_ payloads: [SendPayload], peer: Peer, label: String) async -> Bool {
+        do {
+            try await connectBrowser(peer)
+            for payload in payloads {
+                try Task.checkCancellation()
+                try await BrowserGuest.shared.send(payload, to: peer.deviceID ?? "")
+            }
+            lastSendResult = "Sent \(label) to \(peer.name)."
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            return true
+        } catch {
+            lastSendResult = Task.isCancelled ? "Canceled sending to \(peer.name)." : "Couldn't send to \(peer.name): \(error.localizedDescription)"
+            if !Task.isCancelled { UINotificationFeedbackGenerator().notificationOccurred(.error) }
+            return false
+        }
+    }
+
+    private func receivedFromBrowser(_ room: String, _ item: ReceivedItem) {
+        let source = settings.peers.first { $0.isBrowser && $0.deviceID == room }?.name
+        if case .file(let temp) = item.kind {
+            let destination = Self.uniqueDestination(for: temp.lastPathComponent)
+            guard (try? FileManager.default.moveItem(at: temp, to: destination)) != nil else { return }
+            try? FileManager.default.removeItem(at: temp.deletingLastPathComponent())
+            record(ReceivedItem(kind: .file(destination)), from: source)
+        } else {
+            record(item, from: source)
+        }
+    }
+
     // MARK: Inbox
 
     /// Pulls items each desktop is holding for this phone (GET /inbox), then acknowledges them.
@@ -430,7 +517,7 @@ final class PhoneModel {
     }
 
     private func collectInboxNow() async {
-        let desktops = settings.peers.filter { !$0.isPhone }
+        let desktops = settings.peers.filter { !$0.isPhone && !$0.isBrowser }
         guard !collecting, !desktops.isEmpty else { return }
         collecting = true
         defer { collecting = false }
@@ -525,6 +612,7 @@ final class PhoneModel {
         let label = payloads.map(\.label).joined(separator: ", ")
         lastSendResult = "Sending \(label) to \(peer.name)…"
         let work = Task { @MainActor () -> Bool in
+            if peer.isBrowser { return await sendToBrowser(payloads, peer: peer, label: label) }
             do {
                 let (client, identityChanged) = try await DroprrClient.connect(peer)
                 for payload in payloads {

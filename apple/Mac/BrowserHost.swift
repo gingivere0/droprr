@@ -11,8 +11,8 @@ import WebKit
 @MainActor
 final class BrowserHost: NSObject, WKNavigationDelegate {
     /// The live website and relay (docs/PROTOCOL.md).
-    static let defaultRelay = "wss://droprr-relay.droprr-domain.workers.dev"
-    static let defaultSite = "https://gingivere0.github.io/droprr/"
+    static let defaultRelay = DroprrWeb.relay
+    static let defaultSite = DroprrWeb.site
 
     private let settings: DroprrSettings
     private let access: BrowserAccess

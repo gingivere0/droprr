@@ -157,7 +157,8 @@ private struct PeerRow: View {
             GlyphCircle(symbol: Theme.symbol(for: peer), size: 34)
             VStack(alignment: .leading, spacing: Space.xs) {
                 Text(peer.name).font(.body.weight(.medium))
-                Text(peer.isPhone ? "iPhone · collects items when opened" : peer.addressLine)
+                Text(peer.isPhone ? "iPhone · collects items when opened"
+                     : peer.isBrowser ? "Browser · while its page is open" : peer.addressLine)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -165,7 +166,7 @@ private struct PeerRow: View {
                 statusLine
             }
             Spacer()
-            if !peer.isPhone {
+            if !peer.isPhone && !peer.isBrowser {
                 Button("Test", action: onTest)
                     .buttonStyle(.bordered).controlSize(.small)
             }

@@ -33,6 +33,8 @@ WEBPHASE = I('webphaseDroprrMac')
 WEBFILES = ['index.html', 'app.js', 'app.css', 'icon.png']
 # Browser access over the internet: the host page the Mac runs hidden (host/ plus the shared site/rtc.js).
 HOSTFILES = [('host', 'host.html'), ('host', 'host.js'), ('site', 'rtc.js')]
+# Browsers as hosts (iPhone): the hidden guest page (apple/guest/) plus the shared site/rtc.js. Added to the project
+# by hand as the DroprriOS phase "Copy browser guest".
 PCFGLIST=I('pcfglist'); PDBG=I('pdbg'); PREL=I('prel'); BASECFG=I('basexcconfig')
 cfgfiles = ['Base.xcconfig','Mac-Info.plist','iOS-Info.plist','Share-Info.plist','MacShare-Info.plist','Mac.entitlements','iOS.entitlements','Share.entitlements','MacShare.entitlements','Local.xcconfig.example']
 CF = {f: I('cf'+f) for f in cfgfiles}

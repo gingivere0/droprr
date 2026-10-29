@@ -230,6 +230,7 @@
 				5D15B79FEFA86D61F38B103D /* Sources */,
 				C083CAF926B423255BDF0476 /* Frameworks */,
 				FE6A4BB845F0AE66918D1244 /* Resources */,
+				9A3C51D2B7E04F68A1C2D3E4 /* Copy browser guest */,
 				5924BD806B6FC15AD79134CA /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -349,6 +350,30 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		9A3C51D2B7E04F68A1C2D3E4 /* Copy browser guest */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/guest/guest.html",
+				"$(SRCROOT)/guest/guest.js",
+				"$(SRCROOT)/../site/rtc.js",
+			);
+			name = "Copy browser guest";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/guest/guest.html",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/guest/guest.js",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/guest/rtc.js",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Browsers as hosts: the hidden page that joins a browser's room (guest/), with the shared site/rtc.js.\nmkdir -p \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/guest\"\ncp \"$SRCROOT\"/guest/guest.html \"$SRCROOT\"/guest/guest.js \"$SRCROOT\"/../site/rtc.js \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/guest/\"\n";
+		};
 		C5C67A6DAA8503015CF8D902 /* Copy browser page */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;

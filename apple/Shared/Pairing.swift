@@ -79,6 +79,8 @@ struct PairingInfo: Equatable {
                                     lan: (query["lan"] ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty }))
     }
 
+    var isBrowser: Bool { platform == "web" }
+
     /// Whether a scanned or opened string is one of Droprr's codes: the pairing QR, droprr://join, or the website's
     /// one code (any https link whose fragment is <room>.<secret>.<fp>.<app>).
     static func isCode(_ string: String) -> Bool {
@@ -109,6 +111,16 @@ struct PairingInfo: Equatable {
         let secret = parts[1]
         guard secret.count >= 16, secret.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }) else {
             return .failure(.notDroprr)
+        }
+        // A browser's own code (docs/PROTOCOL.md, "Browsers as hosts"): joined as a WebRTC guest, never /pair.
+        // The room goes in id and the browser's DTLS fingerprint (base64url) in fp.
+        if app["p"] as? String == "web" {
+            let room = parts[0], dtls = parts[2]
+            let base64url = { (text: String) in text.count == 43 && text.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") } }
+            guard base64url(room), base64url(dtls) else { return .failure(.notDroprr) }
+            let name = (app["n"] as? String).map(PairRequest.displayName).flatMap { $0.isEmpty ? nil : $0 } ?? "Browser"
+            return .success(PairingInfo(name: name, host: "", port: DroprrDefaults.port, token: "", platform: "web",
+                                        id: room, fp: dtls, join: secret))
         }
         let lan = (app["l"] as? [String] ?? []).filter { !$0.isEmpty }
         let tailscale = (app["h"] as? String).flatMap { $0.isEmpty ? nil : $0 }
