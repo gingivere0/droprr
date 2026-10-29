@@ -55,8 +55,12 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
     // The one code (docs/PROTOCOL.md, "One code"): a link to the Droprr website that browsers connect with, and that
     // the iPhone app pairs with, carrying the join secret and this PC's addresses but never its token. Without
     // WebView2 (so no website), the app-only pairing code instead.
-    string CodeText(string host, string? dns)
+    // Null while the website side is still starting: then the window waits rather than show the token code, which
+    // the website can't use.
+    string? CodeText(string host, string? dns)
     {
+        if (Application.Current is App { BrowserHost: { } starting } && starting.Fingerprint is null)
+            return null;
         if (Application.Current is App { BrowserHost: { } browserHost } && browserHost.JoinLink(AppInfo(_settings, host, dns)) is { } link)
         {
             PrivacyNote.Severity = Wpf.Ui.Controls.InfoBarSeverity.Informational;
@@ -123,7 +127,22 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
 
         Error.IsOpen = false;
         var dns = tailscale is null ? null : MagicDnsName();
-        Code.Source = Render(CodeText(host, dns));
+        if (CodeText(host, dns) is not { } codeText)
+        {
+            Code.Source = null;
+            CodePanel.Visibility = Visibility.Collapsed;
+            ScanHint.Visibility = Visibility.Collapsed;
+            Details.Visibility = Visibility.Collapsed;
+            PrivacyNote.IsOpen = false;
+            Error.Severity = Wpf.Ui.Controls.InfoBarSeverity.Informational;
+            Error.Title = "Getting ready";
+            Error.Message = "The code appears in a few seconds, once Droprr has started.";
+            Error.IsOpen = true;
+            return;
+        }
+        Error.Severity = Wpf.Ui.Controls.InfoBarSeverity.Error;
+        Error.Title = "Can't pair right now";
+        Code.Source = Render(codeText);
         CodePanel.Visibility = Visibility.Visible;
         ScanHint.Visibility = Visibility.Visible;
         Details.Visibility = Visibility.Visible;

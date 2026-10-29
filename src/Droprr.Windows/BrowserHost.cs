@@ -98,7 +98,19 @@ sealed class BrowserHost : IDisposable
         _core.NewWindowRequested += (_, e) => e.Handled = true;
         _core.WebMessageReceived += (_, _) => { };
         _core.Navigate(Origin + "/host.html");
+        // If the page never reports ready (it failed to load, or its script stopped), load it again.
+        _watchdog = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+        _watchdog.Tick += (_, _) =>
+        {
+            if (Fingerprint is not null)
+                _watchdog.Stop();
+            else
+                _core?.Navigate(Origin + "/host.html");
+        };
+        _watchdog.Start();
     }
+
+    System.Windows.Threading.DispatcherTimer? _watchdog;
 
     static readonly Dictionary<string, (string Resource, string Type)> Files = new()
     {
@@ -253,6 +265,7 @@ sealed class BrowserHost : IDisposable
 
     public void Dispose()
     {
+        _watchdog?.Stop();
         _controller?.Close();
         _controller = null;
         _core = null;

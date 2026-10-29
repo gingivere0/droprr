@@ -338,7 +338,8 @@ public partial class App : Application
     // WebView2 isn't available, in which case only the PC's own page works.
     internal BrowserHost? BrowserHost { get; private set; }
 
-    async Task StartBrowserHostAsync()
+    // Retried a few times, a minute apart: WebView2 can briefly fail to start (for example, while it updates).
+    async Task StartBrowserHostAsync(int attempt = 1)
     {
         var host = new BrowserHost(() => Settings, BrowserAccess, OnBrowserHello);
         try
@@ -349,7 +350,12 @@ public partial class App : Application
         catch (Exception ex)
         {
             host.Dispose();
-            RequestLog.Note($"browser host: couldn't start WebView2 ({ex.Message.ReplaceLineEndings(" ")})");
+            RequestLog.Note($"browser host: couldn't start WebView2, attempt {attempt} ({ex.Message.ReplaceLineEndings(" ")})");
+            if (attempt < 5)
+            {
+                await Task.Delay(TimeSpan.FromMinutes(1));
+                await StartBrowserHostAsync(attempt + 1);
+            }
         }
     }
 

@@ -21,6 +21,7 @@ const RENEW_BEFORE_MS = 30 * 24 * 3600 * 1000;
 let config = null;
 let relay = null;
 let certificate = null;
+let listening = false;
 const guests = new Map(); // relay cid -> { pc, link, peer }
 
 function log(text) {
@@ -215,6 +216,8 @@ async function start() {
   await loadConfig();
   await postJson("/api/ready", { fp: fingerprintOf(certificate) });
   connectRelay();
+  if (listening) return;
+  listening = true;
   self.chrome?.webview?.addEventListener("message", async (event) => {
     if (event.data?.t === "outbox") return wake();
     if (event.data?.t !== "config") return;
@@ -224,4 +227,14 @@ async function start() {
   });
 }
 
-start().catch((error) => log(`couldn't start: ${error.message}`));
+// Retried until it works (the app also reloads this page if it never reports ready).
+async function startWithRetry(delay = 2000) {
+  try {
+    await start();
+  } catch (error) {
+    log(`couldn't start: ${error.message}; retrying`);
+    setTimeout(() => startWithRetry(Math.min(delay * 2, 30000)), delay);
+  }
+}
+
+startWithRetry();
