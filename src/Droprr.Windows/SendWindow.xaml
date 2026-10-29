@@ -261,7 +261,11 @@
                     <DockPanel>
                         <ui:SymbolIcon x:Name="SuccessIcon" DockPanel.Dock="Left" Symbol="CheckmarkCircle24" Filled="True" FontSize="20"
                                        Margin="0,0,8,0" Foreground="{DynamicResource SuccessTextBrush}" />
-                        <TextBlock x:Name="SuccessText" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource SuccessTextBrush}" />
+                        <!-- While sending: stops the send and gives the buttons back. -->
+                        <ui:Button x:Name="CancelSendButton" DockPanel.Dock="Right" Content="Cancel" Appearance="Transparent" Padding="8,2"
+                                   Visibility="Collapsed" AutomationProperties.Name="Cancel sending" Click="OnCancelSend" />
+                        <TextBlock x:Name="SuccessText" VerticalAlignment="Center" FontWeight="SemiBold" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource SuccessTextBrush}" />
                     </DockPanel>
                 </Border>
                 <ProgressBar x:Name="Progress" Style="{StaticResource BrandProgressBar}" Visibility="Collapsed" VerticalAlignment="Bottom" />

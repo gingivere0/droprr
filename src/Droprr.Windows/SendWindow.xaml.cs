@@ -177,11 +177,33 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // Shown or updated in place, never collapsed and reopened, so the window keeps its height.
-    void ShowTile(SymbolRegular icon, string message)
+    void ShowTile(SymbolRegular icon, string message, bool busy = false)
     {
         SuccessIcon.Symbol = icon;
         SuccessText.Text = message;
         SuccessTile.Visibility = Visibility.Visible;
+        // Busy: the plain tile colors (it isn't a success yet), with Cancel.
+        var (fill, text) = busy ? ("ThemeTileBrush", "TextFillColorPrimaryBrush") : ("SuccessFillBrush", "SuccessTextBrush");
+        SuccessTile.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, fill);
+        SuccessTile.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, busy ? "ThemeBorderBrush" : fill);
+        SuccessIcon.SetResourceReference(ForegroundProperty, text);
+        SuccessText.SetResourceReference(TextBlock.ForegroundProperty, text);
+        CancelSendButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    System.Threading.CancellationTokenSource? _sendCancel;
+
+    void OnCancelSend(object sender, RoutedEventArgs e) => _sendCancel?.Cancel();
+
+    // After a failed send: another device that's probably the same computer and can be reached right now.
+    string SimilarReachableHint(Peer failed)
+    {
+        static bool Overlap(string a, string b) => a.Contains(b, StringComparison.OrdinalIgnoreCase) || b.Contains(a, StringComparison.OrdinalIgnoreCase);
+        var tailscale = TailscaleNetwork.FindAddresses().Count > 0;
+        var other = _peers.FirstOrDefault(p => p != failed && p.IsPaired && !p.IsPhone && Overlap(p.Name, failed.Name)
+            && (p.Platform.Length == 0 || failed.Platform.Length == 0 || p.Platform == failed.Platform)
+            && (LanDiscovery.Find(p) is not null || (p.Host.Length > 0 && tailscale)));
+        return other is null ? "" : $" Try \u201c{other.Name}\u201d.";
     }
 
     void HideStatus()
@@ -358,17 +380,24 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
 
         SendButton.IsEnabled = false;
         SendClipboardButton.IsEnabled = false;
-        Progress.Value = 0;
-        Progress.Visibility = paths.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        // A previous "Sent" tile stays up and turns into "Sending…" in place, so the window doesn't shrink and grow
-        // again. A message in the InfoBar is out of date now, though.
+        // Something shows the moment Send is clicked: the status tile (in place of any previous "Sent", so a send
+        // after a send changes no heights), with the path being tried, a moving bar, and Cancel. Files show bytes.
         StatusBar.IsOpen = false;
-        if (SuccessTile.Visibility == Visibility.Visible)
-            ShowTile(SymbolRegular.ArrowSync24, $"Sending to {peer.Name}…");
+        Progress.Value = 0;
+        Progress.IsIndeterminate = paths.Count == 0;
+        Progress.Visibility = Visibility.Visible;
+        ShowTile(SymbolRegular.ArrowSync24, $"Sending to {peer.Name}…", busy: true);
+        using var cancel = new System.Threading.CancellationTokenSource();
+        _sendCancel = cancel;
+        var stage = new Progress<string>(message =>
+        {
+            if (!cancel.IsCancellationRequested)
+                SuccessText.Text = message;
+        });
         try
         {
             // A phone that gave this PC a token and is open on this network takes the items directly.
-            var direct = !peer.IsPhone || (peer.Token.Length > 0 && await Sender.IsOnLanAsync(peer));
+            var direct = !peer.IsPhone || (peer.Token.Length > 0 && await Sender.IsOnLanAsync(peer, cancel.Token));
             if (!direct)
             {
                 foreach (var path in paths)
@@ -383,9 +412,9 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             {
                 SendOutcome? outcome = null;
                 if (paths.Count > 0)
-                    outcome = await Sender.SendFilesAsync(peer, peer.Token, paths, progress);
+                    outcome = await Sender.SendFilesAsync(peer, peer.Token, paths, progress, cancel.Token, stage);
                 if (text.Length > 0)
-                    outcome = await Sender.SendTextAsync(peer, peer.Token, text);
+                    outcome = await Sender.SendTextAsync(peer, peer.Token, text, cancel.Token, stage);
                 if (outcome is not null)
                     RememberPath(peer, outcome.Path);
                 ShowStatus(InfoBarSeverity.Success, $"Sent to {peer.Name} ({outcome?.Label}).");
@@ -398,14 +427,29 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
                 MessageText.Clear();
             }
         }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            ShowTile(SymbolRegular.Dismiss24, "Canceled. Nothing was sent.", busy: false);
+            CancelSendButton.Visibility = Visibility.Collapsed;
+        }
+        catch (Exception ex) when (cancel.IsCancellationRequested)
+        {
+            ShowTile(SymbolRegular.Dismiss24, "Canceled.", busy: false);
+            CancelSendButton.Visibility = Visibility.Collapsed;
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
         catch (Exception ex)
         {
-            ShowStatus(InfoBarSeverity.Error, $"{peer.Name}: {ex.Message}");
+            ShowStatus(InfoBarSeverity.Error, ex.Message.Contains(peer.Name, StringComparison.Ordinal)
+                ? ex.Message + SimilarReachableHint(peer)
+                : $"{peer.Name}: {ex.Message}{SimilarReachableHint(peer)}");
         }
         finally
         {
+            _sendCancel = null;
             SendButton.IsEnabled = true;
             UpdateSendClipboard();
+            Progress.IsIndeterminate = false;
             Progress.Visibility = Visibility.Collapsed;
         }
     }

@@ -86,8 +86,16 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // Test: /ping the selected device, Wi-Fi first (pinned) and then Tailscale, as a send would.
+    System.Threading.CancellationTokenSource? _testCancel;
+
     async void OnTestPeer(object sender, RoutedEventArgs e)
     {
+        // While a test runs, the button cancels it.
+        if (_testCancel is { } running)
+        {
+            running.Cancel();
+            return;
+        }
         PeerGrid.CommitEdit(DataGridEditingUnit.Row, true);
         if (PeerGrid.SelectedItem is not Peer peer)
         {
@@ -99,16 +107,23 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
             TestResult.Text = $"{peer.Name}: phones collect items when Droprr opens.";
             return;
         }
-        TestButton.IsEnabled = false;
+        using var cancel = new System.Threading.CancellationTokenSource();
+        _testCancel = cancel;
+        TestButton.Content = "Cancel";
         TestResult.Text = $"Testing {peer.Name}…";
         try
         {
-            var (_, text) = await Sender.TestAsync(peer);
+            var (_, text) = await Sender.TestAsync(peer, cancel.Token);
             TestResult.Text = $"{peer.Name}: {text}";
+        }
+        catch (OperationCanceledException)
+        {
+            TestResult.Text = "Test canceled.";
         }
         finally
         {
-            TestButton.IsEnabled = true;
+            _testCancel = null;
+            TestButton.Content = "Test";
         }
     }
 

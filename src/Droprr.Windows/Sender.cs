@@ -34,7 +34,8 @@ public sealed class IdentityChangedException(string name)
 
 static class Sender
 {
-    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(30) };
+    // Connecting gets 5 seconds; once connected, a large file has as long as it needs.
+    static readonly HttpClient Http = new(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(5) }) { Timeout = TimeSpan.FromMinutes(30) };
     static readonly TimeSpan LanConnectTimeout = TimeSpan.FromSeconds(1.5);
     static readonly ConcurrentDictionary<string, HttpClient> Pinned = new();
 
@@ -43,9 +44,9 @@ static class Sender
 
     sealed record Route(Uri Base, HttpClient Client, string Path);
 
-    // Reports bytes uploaded as they're read from disk.
+    // Reports bytes uploaded as they're read from disk, and each path it tries in `stage`.
     public static Task<SendOutcome> SendFilesAsync(Peer peer, string token, IReadOnlyList<string> paths,
-        IProgress<long>? progress = null, CancellationToken cancel = default) =>
+        IProgress<long>? progress = null, CancellationToken cancel = default, IProgress<string>? stage = null) =>
         SendAsync(peer, token, () =>
         {
             var form = new MultipartFormDataContent();
@@ -56,16 +57,36 @@ static class Sender
                 form.Add(content, "file", Path.GetFileName(path));
             }
             return form;
-        }, cancel);
+        }, cancel, stage);
 
-    public static Task<SendOutcome> SendTextAsync(Peer peer, string token, string text, CancellationToken cancel = default) =>
-        SendAsync(peer, token, () => JsonContent.Create(new { type = TextType(text), content = text }), cancel);
+    public static Task<SendOutcome> SendTextAsync(Peer peer, string token, string text, CancellationToken cancel = default,
+        IProgress<string>? stage = null) =>
+        SendAsync(peer, token, () => JsonContent.Create(new { type = TextType(text), content = text }), cancel, stage);
+
+    // Whether Tailscale is up on this PC: without a 100.64/10 address, a Tailscale host can't be reached, so it
+    // isn't even tried.
+    static bool TailscaleUp => TailscaleNetwork.FindAddresses().Count > 0;
+
+    // The peer's Tailscale host can be tried: Tailscale is up here (or the host is this PC itself, for tests).
+    static bool CanTryTailscale(Peer peer) => peer.Host.Length > 0
+        && (TailscaleUp || peer.Host is "localhost" || (IPAddress.TryParse(peer.Host, out var ip) && IPAddress.IsLoopback(ip)));
+
+    // Why a peer can't be reached at all, without trying: no Wi-Fi route and no usable Tailscale route.
+    static string Unreachable(Peer peer) => peer.Host.Length > 0
+        ? peer.Fingerprint.Length > 0
+            ? $"{peer.Name} isn't reachable: Tailscale is off on this PC, and it hasn't been seen on this Wi-Fi."
+            : $"{peer.Name} isn't reachable: Tailscale is off on this PC."
+        : $"{peer.Name} hasn't been seen on this Wi-Fi. Check that Droprr is open on it and it's on the same network.";
 
     // LAN first when the peer was discovered recently (about 1.5 s to connect), then Tailscale. Never both: a
     // body is sent once. A LAN certificate that doesn't match the pin isn't used.
-    static async Task<SendOutcome> SendAsync(Peer peer, string token, Func<HttpContent> content, CancellationToken cancel)
+    static async Task<SendOutcome> SendAsync(Peer peer, string token, Func<HttpContent> content, CancellationToken cancel,
+        IProgress<string>? stage)
     {
         var identityChanged = false;
+        var triedLan = LocalNetworkEnabled && peer.Fingerprint.Length > 0 && LanDiscovery.Find(peer) is not null;
+        if (triedLan)
+            stage?.Report($"Sending to {peer.Name} over Wi-Fi…");
         if (await LanRouteAsync(peer, cancel) is { } lan)
         {
             try
@@ -79,11 +100,24 @@ static class Sender
                 RequestLog.Note($"local network: {peer.Name}'s certificate doesn't match its pin");
             }
         }
-        if (peer.Host.Length == 0)
-            throw identityChanged ? new IdentityChangedException(peer.Name) : new HttpRequestException($"{peer.Name} isn't on this network right now.");
-        await PostAsync(TailscaleRoute(peer), token, content(), cancel);
+        if (!CanTryTailscale(peer))
+            throw identityChanged ? new IdentityChangedException(peer.Name) : new HttpRequestException(Unreachable(peer));
+        stage?.Report(triedLan ? "Wi-Fi didn't answer. Trying Tailscale…" : $"Sending to {peer.Name} over Tailscale…");
+        try
+        {
+            await PostAsync(TailscaleRoute(peer), token, content(), cancel);
+        }
+        catch (Exception ex) when (!cancel.IsCancellationRequested && IsConnectFailure(ex))
+        {
+            throw new HttpRequestException($"Couldn't reach {peer.Name} over Tailscale. Check that Tailscale is on and {peer.Name} is awake.", ex);
+        }
         return new SendOutcome("tailscale", identityChanged);
     }
+
+    // Connecting failed or timed out (as opposed to the peer answering with an error).
+    static bool IsConnectFailure(Exception ex) =>
+        ex is OperationCanceledException or TimeoutException
+        || (ex is HttpRequestException { StatusCode: null } && ex.InnerException is SocketException or IOException or TimeoutException or OperationCanceledException);
 
     // The peer over the local network, if it has a pin, was discovered recently, and one of its addresses answers.
     static async Task<Route?> LanRouteAsync(Peer peer, CancellationToken cancel)
@@ -268,10 +302,10 @@ static class Sender
         var routes = new List<Route>();
         if (await LanRouteAsync(peer, cancel) is { } lan)
             routes.Add(lan);
-        if (peer.Host.Length > 0)
+        if (CanTryTailscale(peer))
             routes.Add(TailscaleRoute(peer));
         if (routes.Count == 0)
-            return (false, "Not on this network right now");
+            return (false, Unreachable(peer));
         var identityChanged = false;
         foreach (var route in routes)
         {
@@ -296,10 +330,11 @@ static class Sender
             {
                 identityChanged = true;
             }
-            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException)
+            catch (Exception ex) when (!cancel.IsCancellationRequested && ex is HttpRequestException or OperationCanceledException or JsonException)
             {
             }
         }
+        cancel.ThrowIfCancellationRequested();
         return (false, identityChanged ? $"{peer.Name}'s identity changed. Pair again." : "Couldn't reach it");
     }
 
