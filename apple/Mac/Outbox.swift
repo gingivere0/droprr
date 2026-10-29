@@ -93,14 +93,16 @@ final class Outbox: OutboxServing {
             // A device token picks the queue; ?for= is ignored.
             if let peerID { return settings.peers.first { $0.id == peerID } }
             guard let deviceName else { return nil }
+            // A known name: a phone's queue. A computer with that name is left alone (never flipped to a phone,
+            // so its sends can't be redirected into a queue someone else reads).
             if let known = settings.peers.first(where: { $0.matches(deviceName: deviceName) }) {
-                if !known.isPhone, let i = settings.peers.firstIndex(where: { $0.id == known.id }) {
-                    settings.peers[i].platform = "ios"   // it's polling, so it's a phone
-                }
-                return known
+                return known.isPhone ? known : nil
             }
-            // First check-in from an unknown phone: register it so the Mac can send to it.
-            let added = Peer(name: deviceName, host: remoteHost ?? "", platform: "ios", remoteName: deviceName)
+            // First check-in from an unknown phone: register it so the Mac can send to it. Its address is
+            // only kept if it's Tailscale (plain HTTP never goes anywhere else).
+            let host = remoteHost.flatMap { PairingInfo.isTailscaleHost($0) ? $0 : nil } ?? ""
+            let added = Peer(name: settings.uniqueName(PairRequest.displayName(deviceName)), host: host, platform: "ios",
+                             remoteName: deviceName)
             settings.peers.append(added)
             return added
         }

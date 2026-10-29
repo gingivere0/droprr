@@ -8,7 +8,12 @@ extension DroprrSettings {
     func save(_ peer: Peer) -> Bool {
         let tokenChanged = peers.first { $0.id == peer.id }?.token != peer.token
         if let i = peers.firstIndex(where: { $0.id == peer.id }) {
-            peers[i] = peer
+            // Only what the editor changes; discovery or pairing may have updated the rest meanwhile.
+            peers[i].name = peer.name
+            peers[i].host = peer.host
+            peers[i].port = peer.port
+            peers[i].platform = peer.platform
+            peers[i].token = peer.token
         } else {
             peers.append(peer)
         }
@@ -16,6 +21,8 @@ extension DroprrSettings {
     }
 
     /// Checks that a device answers, and remembers what it says it is.
+    /// On the main actor: it updates `peers`, which the UI and discovery also change.
+    @MainActor
     func ping(_ peer: Peer) async -> PingResult {
         do {
             // Wi-Fi first (pinned), then Tailscale, like a send.
@@ -38,19 +45,26 @@ extension DroprrSettings {
 
 /// "Missing Token" on a device that can't be sent to yet; clicking it opens that device's token.
 struct MissingTokenButton: View {
+    /// Just the warning icon (tight rows like the menu bar popup); the hint and label still say it.
+    var compact = false
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Label("Missing Token", systemImage: "exclamationmark.triangle.fill")
+            // An HStack, not a Label: inside a Form a Label's title can be dropped.
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                if !compact { Text("Missing Token") }
+            }
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.orange)
                 .lineLimit(1)
                 .fixedSize()
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Missing Token")
         #if os(macOS)
-        .hoverHint("Enter this device's token")
+        .hoverHint("Missing Token: enter this device's token")
         #endif
     }
 }

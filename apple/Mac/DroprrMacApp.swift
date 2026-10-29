@@ -64,6 +64,7 @@ private struct MenuBarLabel: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         CrashLog.install()
+        CrashLog.cleanTemporaryFiles()
         Look.applyAppAppearance()
         // No title bar strip on any Droprr window (Settings included): content runs to the top edge,
         // with just the window buttons in the corner.
@@ -219,10 +220,17 @@ final class MacModel {
 
     /// A device paired with this Mac (POST /pair): add it, or update the peer with that name.
     private func paired(_ request: PairRequest) {
-        // The same device: the one whose token made the request, then its id, then its name.
-        let match = request.existingPeerID.flatMap { id in settings.peers.firstIndex { $0.id == id } }
-            ?? request.deviceID.flatMap { id in settings.peers.firstIndex { $0.deviceID == id } }
-            ?? settings.peers.firstIndex { $0.matches(deviceName: request.name) }
+        // The same device: a device token updates only its own peer; LAN pairing always adds a new entry
+        // (it answered 409 for a known id or certificate); the main token (QR pairing) matches id, then name.
+        let match: Int?
+        if let existing = request.existingPeerID {
+            match = settings.peers.firstIndex { $0.id == existing }
+        } else if request.viaLAN {
+            match = nil
+        } else {
+            match = request.deviceID.flatMap { id in settings.peers.firstIndex { $0.deviceID == id } }
+                ?? settings.peers.firstIndex { $0.matches(deviceName: request.name) }
+        }
         let peerID: UUID
         if let i = match {
             settings.peers[i].platform = request.platform
@@ -236,15 +244,16 @@ final class MacModel {
             else if request.platform == "ios" { settings.peers[i].token = nil }
             peerID = settings.peers[i].id
         } else {
-            let peer = Peer(name: request.name, host: request.host, port: request.port,
+            let peer = Peer(name: settings.uniqueName(request.name), host: request.host, port: request.port,
                             platform: request.platform, remoteName: request.name,
                             token: request.token, acceptToken: request.acceptToken)
             settings.peers.append(peer)
             peerID = peer.id
         }
         // Pairing is where a fingerprint gets pinned (or replaced).
+        // A device token may only fill in an id or pin its peer doesn't have yet (protocol 1 upgrade).
         settings.learn(peerID, deviceID: request.deviceID, fingerprint: request.fingerprint, tlsPort: request.tlsPort,
-                       lan: request.lan, replacePin: request.fingerprint != nil)
+                       lan: request.lan, replacePin: request.existingPeerID == nil && request.fingerprint != nil)
         // A phone upgrading an existing pairing to protocol 2 isn't news.
         guard request.existingPeerID == nil else { return }
         lastPaired = request.name
@@ -261,12 +270,15 @@ final class MacModel {
         // Tests: DROPRR_AUTO_PAIR=accept|decline answers without a dialog.
         if let auto = ProcessInfo.processInfo.environment["DROPRR_AUTO_PAIR"] { return auto == "accept" }
         #endif
-        bringToFront()
+        // No activation and no default button: a keystroke meant for another app must never accept.
         let alert = NSAlert()
         alert.messageText = "Pair with \(request.name)?"
-        alert.informativeText = "Make sure \(request.name) shows \(request.code)."
-        alert.addButton(withTitle: "Pair")
-        alert.addButton(withTitle: "Decline")
+        alert.informativeText = "Make sure \(request.name) shows \(request.code). Only pair if you started this on that device."
+        let pair = alert.addButton(withTitle: "Pair")
+        pair.keyEquivalent = ""
+        let decline = alert.addButton(withTitle: "Decline")
+        decline.keyEquivalent = "\u{1b}"
+        alert.window.level = .floating
         // The receiver answers "timed out" after 60 seconds; close the question then too.
         let timeout = DispatchWorkItem { NSApp.abortModal() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 60, execute: timeout)
@@ -402,9 +414,14 @@ final class MacModel {
                     ? "Sent \(payload.label) to \(peer.name) (Tailscale). \(peer.name)'s identity changed. Pair again."
                     : "Sent \(payload.label) to \(peer.name) (\(client.path.label))."
             } catch {
-                lastSendResult = Task.isCancelled
-                    ? "Canceled sending to \(peer.name)."
-                    : "Couldn't send to \(peer.name): \(error.localizedDescription)"
+                if Task.isCancelled {
+                    lastSendResult = "Canceled sending to \(peer.name)."
+                } else if peer.isPhone, (try? outbox.enqueue(payload, for: peer)) != nil {
+                    // A phone that stopped answering (Droprr closed) still gets it: queue it for its next check-in.
+                    lastSendResult = nil
+                } else {
+                    lastSendResult = "Couldn't send to \(peer.name): \(error.localizedDescription)"
+                }
             }
         }
         sendTask = work

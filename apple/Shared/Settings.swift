@@ -62,7 +62,7 @@ struct Peer: Codable, Identifiable, Hashable {
 
     /// HTTPS addresses to try first: only with a pin and an address seen in the last 2 minutes.
     var lanURLs: [URL] {
-        guard fingerprint != nil, let lan, let lanSeen, Date().timeIntervalSince(lanSeen) < 120 else { return [] }
+        guard DroprrSettings.shared.localNetwork, fingerprint != nil, let lan, let lanSeen, Date().timeIntervalSince(lanSeen) < 120 else { return [] }
         return lan.compactMap { URL(string: "https://\($0)") }
     }
 }
@@ -81,7 +81,13 @@ final class DroprrSettings {
     /// This device's main token: in its pairing QR code and accepted from anyone who has it (e.g. Shortcuts).
     var token: String { didSet { tokens.set(token, for: "main"); refreshAuth() } }
     var deviceName: String { didSet { defaults.set(deviceName, forKey: "deviceName") } }
-    var port: Int { didSet { defaults.set(port, forKey: "port") } }
+    /// 1024–65534, so the HTTPS port (port + 1) always fits.
+    var port: Int {
+        didSet {
+            if !(1024...65534).contains(port) { port = min(max(port, 1024), 65534) }
+            defaults.set(port, forKey: "port")
+        }
+    }
     var peers: [Peer] { didSet { savePeers(old: oldValue) } }
     var lastPeerID: UUID? { didSet { defaults.set(lastPeerID?.uuidString, forKey: "lastPeerID") } }
     /// Copy every received item (text, links, images and files) to the clipboard. Off by default.
@@ -101,14 +107,21 @@ final class DroprrSettings {
     /// This device's stable id: 16 random bytes, lowercase base32 without padding. Made once.
     @ObservationIgnored private(set) var deviceID = ""
     /// This device's certificate and key for HTTPS, made on first use.
-    @ObservationIgnored private(set) lazy var identity: DeviceIdentity? = DeviceIdentity.load(from: tokens, name: "Droprr \(deviceID)")
+    /// Made once at launch (never lazily from several request threads at once, which minted several).
+    @ObservationIgnored private(set) var identity: DeviceIdentity?
     var tlsPort: Int { port + 1 }
+    /// Whether the HTTPS listener is running right now (set by the receiver).
+    @ObservationIgnored var secureListening = false
 
     /// This device's protocol 2 fields for /pair requests (id, fp, tlsPort, lan).
-    var ownIdentityFields: [String: Any] {
-        var fields: [String: Any] = ["id": deviceID, "tlsPort": tlsPort]
+    var ownIdentityFields: [String: Any] { identityFields(includeLAN: true) }
+
+    /// tlsPort only while HTTPS is listening; LAN addresses for pairing, not for /ping.
+    func identityFields(includeLAN: Bool) -> [String: Any] {
+        var fields: [String: Any] = ["id": deviceID]
         if let fp = identity?.fingerprint { fields["fp"] = fp }
-        if localNetwork { fields["lan"] = LocalAddresses.lan(port: tlsPort) }
+        if secureListening || DroprrSettings.platform == "ios" && localNetwork { fields["tlsPort"] = tlsPort }
+        if includeLAN && localNetwork { fields["lan"] = LocalAddresses.lan(port: tlsPort) }
         return fields
     }
 
@@ -119,25 +132,39 @@ final class DroprrSettings {
         guard let i = peers.firstIndex(where: { $0.id == peerID }) else { return }
         var peer = peers[i]
         if let host, peer.host.isEmpty, PairingInfo.isTailscaleHost(host) { peer.host = host }
-        if let deviceID, !deviceID.isEmpty { peer.deviceID = deviceID }
-        if let fingerprint, fingerprint.count == 64, replacePin || peer.fingerprint == nil { peer.fingerprint = fingerprint.lowercased() }
+        // An id or certificate that already belongs to a different peer is never taken over: that would let one
+        // paired device inherit another's tokens and pin.
+        let others = peers.filter { $0.id != peerID }
+        if let deviceID, !deviceID.isEmpty, !others.contains(where: { $0.deviceID == deviceID }),
+           peer.deviceID == nil || replacePin { peer.deviceID = deviceID }
+        if let fingerprint, fingerprint.count == 64, !others.contains(where: { $0.fingerprint == fingerprint.lowercased() }),
+           replacePin || peer.fingerprint == nil { peer.fingerprint = fingerprint.lowercased() }
         if let tlsPort { peer.tlsPort = tlsPort }
         if let lan, !lan.isEmpty { peer.lan = lan; peer.lanSeen = Date() }
         if peer != peers[i] { peers[i] = peer }
         mergeDuplicates()
     }
 
-    /// One device, one entry: peers that turn out to be the same device (same device id, same pinned
-    /// fingerprint, or same Tailscale host), say one added over Tailscale and one paired over Wi-Fi, become a
+    /// A name not yet used by another peer: "MacBook", then "MacBook (2)", "MacBook (3)"…
+    func uniqueName(_ name: String) -> String {
+        guard peers.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else { return name }
+        var n = 2
+        while peers.contains(where: { $0.name.caseInsensitiveCompare("\(name) (\(n))") == .orderedSame }) { n += 1 }
+        return "\(name) (\(n))"
+    }
+
+    /// One device, one entry: peers that turn out to be the same device (same device id or same pinned
+    /// fingerprint), say one added over Tailscale and one paired over Wi-Fi, become a
     /// single peer keeping both paths. The older entry's name and host stay; the newer pairing's tokens win,
     /// since that's the token the other device now accepts. Matches the Windows app.
     func mergeDuplicates() {
         func same(_ a: Peer, _ b: Peer) -> Bool {
+            // Never merge two entries that each have their own, different identity.
+            if let x = a.fingerprint, let y = b.fingerprint, x != y { return false }
+            if let x = a.deviceID, let y = b.deviceID, x != y { return false }
             if let x = a.deviceID, x == b.deviceID { return true }
             if let x = a.fingerprint, x == b.fingerprint { return true }
-            let h = a.host.trimmingCharacters(in: .whitespaces)
-            return !h.isEmpty && PairingInfo.isTailscaleHost(h) && h.caseInsensitiveCompare(b.host) == .orderedSame
-                && a.isPhone == b.isPhone && a.port == b.port
+            return false
         }
         var merged: [Peer] = []
         var changed = false
@@ -193,13 +220,21 @@ final class DroprrSettings {
         // Tokens: move any left in UserDefaults into the Keychain once, then delete them there.
         let legacyMain = defaults.string(forKey: "token")
         if let legacyMain, !legacyMain.isEmpty, tokens.get("main") == nil { tokens.set(legacyMain, for: "main") }
-        let main = tokens.get("main") ?? ""
+        var main = tokens.get("main") ?? ""
+        // A fresh install gets its main token right away, so Pair a Phone can show a code (computers only;
+        // the iPhone's default token is only for devices added by hand).
+        if main.isEmpty, Self.platform != "ios", !tokens.hadReadError {
+            main = Self.generateToken()
+            tokens.set(main, for: "main")
+        }
         token = main
 
         deviceName = defaults.string(forKey: "deviceName") ?? DroprrSettings.defaultDeviceName
         let storedPort = defaults.integer(forKey: "port")
-        port = storedPort > 0 ? storedPort : DroprrDefaults.port
-        var loaded = (defaults.data(forKey: "peers").flatMap { try? JSONDecoder().decode([Peer].self, from: $0) }) ?? []
+        port = (1024...65534).contains(storedPort) ? storedPort : DroprrDefaults.port
+        // One unreadable entry mustn't cost every other peer: decode them one by one.
+        var loaded = (defaults.data(forKey: "peers").flatMap { try? JSONDecoder().decode([Lenient<Peer>].self, from: $0) })?
+            .compactMap(\.value) ?? []
         for i in loaded.indices {
             let id = loaded[i].id.uuidString
             if let legacy = loaded[i].token, !legacy.isEmpty, tokens.get("send." + id) == nil { tokens.set(legacy, for: "send." + id) }
@@ -228,7 +263,8 @@ final class DroprrSettings {
         }
 
         if legacyMain != nil { defaults.removeObject(forKey: "token") }
-        savePeers(old: [])   // rewrites the peer list without tokens
+        savePeers(old: peers)   // rewrites the peer list without tokens (tokens that didn't change aren't touched)
+        identity = DeviceIdentity.load(from: tokens, name: "Droprr \(deviceID)")
         mergeDuplicates()
         refreshAuth()
     }
@@ -339,4 +375,10 @@ final class DroprrSettings {
         return "ios"
         #endif
     }
+}
+
+/// Decodes an element if it can, or nil instead of failing the whole array.
+private struct Lenient<T: Decodable>: Decodable {
+    let value: T?
+    init(from decoder: Decoder) throws { value = try? T(from: decoder) }
 }

@@ -28,10 +28,11 @@ enum Clipboard {
         pb.writeObjects(objects)
         if concealed { conceal(pb) }
         #else
+        // Local only: received items don't spread to other devices through Universal Clipboard.
         if isImage, let image = UIImage(contentsOfFile: file.path) {
-            UIPasteboard.general.image = image
+            UIPasteboard.general.setItems([[UTType.image.identifier: image]], options: [.localOnly: true])
         } else if let type = UTType(filenameExtension: file.pathExtension), let data = try? Data(contentsOf: file) {
-            UIPasteboard.general.setData(data, forPasteboardType: type.identifier)
+            UIPasteboard.general.setItems([[type.identifier: data]], options: [.localOnly: true])
         }
         #endif
     }
@@ -43,7 +44,7 @@ enum Clipboard {
         pb.setString(text, forType: .string)
         if concealed { conceal(pb) }
         #else
-        UIPasteboard.general.string = text
+        UIPasteboard.general.setItems([[UTType.utf8PlainText.identifier: text]], options: concealed ? [.localOnly: true] : [:])
         #endif
     }
 
@@ -56,7 +57,8 @@ enum Clipboard {
         pb.setString(url.absoluteString, forType: .string)
         if concealed { conceal(pb) }
         #else
-        UIPasteboard.general.url = url
+        UIPasteboard.general.setItems([[UTType.url.identifier: url, UTType.utf8PlainText.identifier: url.absoluteString]],
+                                      options: concealed ? [.localOnly: true] : [:])
         #endif
     }
 

@@ -174,13 +174,14 @@ final class LANDiscovery {
 /// Both screens show the same six digits; the other device's person confirms.
 enum LANPairing {
     enum Failure: LocalizedError {
-        case unreachable, declined, timedOut, busy, identityMismatch, other(String)
+        case unreachable, declined, timedOut, busy, identityMismatch, alreadyPaired(String), other(String)
         var errorDescription: String? {
             switch self {
             case .unreachable: return "Couldn't reach it on this Wi-Fi."
             case .declined: return "It declined."
             case .timedOut: return "Nobody answered on the other device."
             case .busy: return "It's busy with another pairing. Try again in a few minutes."
+            case .alreadyPaired(let name): return "Already paired with \(name). Remove it there to pair again."
             case .identityMismatch: return "Identity mismatch: the device that answered isn't the one advertised on this Wi-Fi."
             case .other(let message): return message
             }
@@ -234,34 +235,36 @@ enum LANPairing {
         case 403: throw Failure.declined
         case 408: throw Failure.timedOut
         case 429: throw Failure.busy
+        case 409: throw Failure.alreadyPaired(PairRequest.displayName(device.name))
         default: throw Failure.other(json["error"] as? String ?? "It answered \(status).")
         }
         guard let fpServer = capture.fingerprint, let token = (json["token"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) else {
             throw Failure.other("It answered without a token.")
         }
 
-        let name = json["name"] as? String ?? device.name
-        let match = settings.peers.firstIndex { $0.deviceID == device.id } ?? settings.peers.firstIndex { $0.matches(deviceName: name) }
+        let name = PairRequest.displayName(json["name"] as? String ?? device.name)
+        // Only the device discovery found (its id or certificate); never a name match.
+        let match = settings.peers.firstIndex { $0.deviceID == device.id || $0.fingerprint == fpServer }
         let peerID: UUID
         if let i = match {
-            settings.peers[i].name = name
             settings.peers[i].remoteName = name
             settings.peers[i].platform = device.platform.isEmpty ? settings.peers[i].platform : device.platform
             settings.peers[i].token = token
             settings.peers[i].acceptToken = minted
             peerID = settings.peers[i].id
         } else {
-            let peer = Peer(name: name, host: "", platform: device.platform.isEmpty ? nil : device.platform,
+            let peer = Peer(name: settings.uniqueName(name), host: "", platform: device.platform.isEmpty ? nil : device.platform,
                             remoteName: name, token: token, acceptToken: minted)
             settings.peers.append(peer)
             peerID = peer.id
         }
         var lan = json["lan"] as? [String] ?? []
         if lan.isEmpty { lan = [address] }
-        settings.learn(peerID, deviceID: json["id"] as? String ?? device.id, fingerprint: fpServer,
+        settings.learn(peerID, deviceID: device.id, fingerprint: fpServer,
                        tlsPort: json["tlsPort"] as? Int ?? device.port, lan: lan, host: json["host"] as? String, replacePin: true)
         settings.lastPeerID = peerID
-        return settings.peers.first { $0.id == peerID }!
+        if let peer = settings.peers.first(where: { $0.id == peerID || $0.fingerprint == fpServer }) { return peer }
+        throw Failure.other("Paired, but the device entry couldn't be found.")
     }
 }
 

@@ -25,12 +25,17 @@ enum Links {
 
     /// Marks a received file as downloaded from the internet, so macOS shows its usual warning
     /// before opening it (com.apple.quarantine). No-op on iOS.
-    static func quarantine(_ file: URL) {
+    @discardableResult
+    static func quarantine(_ file: URL) -> Bool {
         #if os(macOS)
         let value = String(format: "0083;%llx;Droprr;", UInt64(Date().timeIntervalSince1970))
-        _ = file.path.withCString { path in
+        let result = file.path.withCString { path in
             value.withCString { setxattr(path, "com.apple.quarantine", $0, strlen($0), 0, 0) }
         }
+        if result != 0 { NSLog("Droprr: couldn't quarantine %@ (errno %d)", file.lastPathComponent, errno) }
+        return result == 0
+        #else
+        return true
         #endif
     }
 }

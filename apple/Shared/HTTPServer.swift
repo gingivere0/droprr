@@ -48,6 +48,13 @@ final class HTTPServer {
 
     /// Called once headers arrive. Return a response to reject the request before its body is read.
     var precheck: (Request) -> Response? = { _ in nil }
+    /// The largest body a request may carry (413 beyond it); small for the unauthenticated endpoints.
+    var bodyLimit: (Request) -> Int = { _ in Int.max }
+    /// Where received files end up; its volume's free space is checked too (507).
+    var saveDirectory: URL?
+    /// Open connections, capped so a flood of half-open ones can't pile up.
+    private var openConnections = 0
+    private static let maxConnections = 64
     var handler: (Request) async -> Response = { _ in .json(404, ["ok": false, "error": "not found"]) }
     var onStateChange: (String) -> Void = { _ in }
 
@@ -57,7 +64,8 @@ final class HTTPServer {
     /// Starts listening. `service` advertises the listener with Bonjour (HTTPS only).
     func start(port: Int, service: NWListener.Service? = nil) throws {
         stop()
-        guard let nwPort = NWEndpoint.Port(rawValue: UInt16(clamping: port)) else { return }
+        stopped = false
+        guard (1...65535).contains(port), let nwPort = NWEndpoint.Port(rawValue: UInt16(port)) else { return }
         let params: NWParameters
         if let identity {
             let tls = NWProtocolTLS.Options()
@@ -76,20 +84,39 @@ final class HTTPServer {
             case .failed(let error):
                 self?.onStateChange("Receiver stopped: \(error.localizedDescription)")
                 // Network changes (Wi-Fi, Tailscale up or down) can fail a listener; start again shortly.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                    guard let self, let listener, self.listener === listener else { return }
-                    try? self.start(port: port, service: service)
-                }
+                self?.retry(port: port, service: service, after: listener)
             default: break
             }
         }
         listener.newConnectionHandler = { [weak self] connection in
             guard let self else { connection.cancel(); return }
-            guard Self.isAllowed(connection.endpoint, policy: self.policy) else { connection.cancel(); return }
+            guard Self.isAllowed(connection.endpoint, policy: self.policy), self.openConnections < Self.maxConnections else {
+                connection.cancel()
+                return
+            }
+            self.openConnections += 1
             HTTPConnection(connection: connection, server: self).start(on: self.queue)
         }
         listener.start(queue: queue)
         self.listener = listener
+    }
+
+    /// Called on the server queue when a connection ends.
+    fileprivate func connectionClosed() {
+        openConnections = max(0, openConnections - 1)
+    }
+
+    /// Starts again a few seconds after a failure, and keeps trying if starting itself throws.
+    private func retry(port: Int, service: NWListener.Service?, after failed: NWListener?) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, !self.stopped, failed == nil || self.listener === failed else { return }
+            do {
+                try self.start(port: port, service: service)
+            } catch {
+                self.onStateChange("Receiver stopped: \(error.localizedDescription). Retrying…")
+                self.retry(port: port, service: service, after: nil)
+            }
+        }
     }
 
     /// Updates the Bonjour advertisement (for example after a rename) without restarting.
@@ -98,9 +125,13 @@ final class HTTPServer {
     }
 
     func stop() {
+        stopped = true
         listener?.cancel()
         listener = nil
     }
+
+    /// Set by stop(), so a pending retry doesn't bring a stopped server back.
+    private var stopped = false
 
     static func isAllowed(_ endpoint: NWEndpoint, policy: Policy = .tailnet) -> Bool {
         guard case .hostPort(let host, _) = endpoint else { return false }
@@ -137,6 +168,11 @@ private final class HTTPConnection {
     private var bodyHandle: FileHandle?
     private var remaining = 0
     private var chunked = false
+    /// Chunked: the current chunk's data is done and its CRLF is still due.
+    private var chunkTrailer = false
+    private var bodyBytes = 0
+    private var limit = Int.max
+    private var bytesSinceSpaceCheck = 0
     private var retainSelf: HTTPConnection?
 
     private static let maxHeaderBytes = 64 * 1024
@@ -162,12 +198,18 @@ private final class HTTPConnection {
                 }
                 self.armTimeout(seconds: Self.headerTimeout)
                 self.receive()
-            case .failed, .cancelled:
+            case .failed, .waiting:
+                // A failed connection keeps its socket until it's cancelled (a TLS handshake that never
+                // finished leaked one each time); cancelling leads to .cancelled, which cleans up.
+                self.connection.cancel()
+            case .cancelled:
                 self.cleanup()
             default:
                 break
             }
         }
+        // A connection that never finishes connecting (or its TLS handshake) is dropped too.
+        armTimeout(seconds: Self.headerTimeout)
         connection.start(queue: queue)
     }
 
@@ -190,11 +232,14 @@ private final class HTTPConnection {
         queue?.asyncAfter(deadline: .now() + seconds, execute: work)
     }
 
-    /// Free space on the volume that holds temporary and received files.
-    private static func freeSpace() -> Int64? {
-        let url = FileManager.default.temporaryDirectory
-        let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
-        return values?.volumeAvailableCapacityForImportantUsage ?? values?.volumeAvailableCapacity.map(Int64.init)
+    /// Free space: the smaller of the temporary folder's volume (bodies land there first) and the save folder's.
+    private func freeSpace() -> Int64? {
+        let urls = [FileManager.default.temporaryDirectory] + (server.saveDirectory.map { [$0] } ?? [])
+        let values = urls.compactMap { url -> Int64? in
+            let v = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
+            return v?.volumeAvailableCapacityForImportantUsage ?? v?.volumeAvailableCapacity.map(Int64.init)
+        }
+        return values.min()
     }
 
     private func receive() {
@@ -231,8 +276,15 @@ private final class HTTPConnection {
                 return
             }
             chunked = req.header("transfer-encoding")?.lowercased().contains("chunked") == true
-            remaining = Int(req.header("content-length") ?? "") ?? 0
-            if remaining > 0, let free = Self.freeSpace(), free - Int64(remaining) < Self.minimumFreeSpace {
+            remaining = max(0, Int(req.header("content-length") ?? "") ?? 0)
+            limit = server.bodyLimit(req)
+            if remaining > limit {
+                respond(.json(413, ["ok": false, "error": "request too large"]))
+                return
+            }
+            // A multipart body is copied out of its temp file, so it briefly needs twice its size.
+            let copies: Int64 = req.header("content-type")?.lowercased().hasPrefix("multipart/") == true ? 2 : 1
+            if (chunked || remaining > 0), let free = freeSpace(), free - copies * Int64(remaining) < Self.minimumFreeSpace {
                 respond(.json(507, ["ok": false, "error": "not enough disk space"]))
                 return
             }
@@ -246,7 +298,9 @@ private final class HTTPConnection {
                 }
             }
         }
-        if chunked ? drainChunked() : drainFixed() {
+        let done = chunked ? drainChunked() : drainFixed()
+        if finished { return }   // rejected while reading (too large or disk full)
+        if done {
             try? bodyHandle?.close()
             bodyHandle = nil
             dispatch()
@@ -259,31 +313,74 @@ private final class HTTPConnection {
     private func drainFixed() -> Bool {
         if remaining > 0 && !buffer.isEmpty {
             let take = buffer.prefix(remaining)
-            try? bodyHandle?.write(contentsOf: take)
+            guard writeBody(take) else { return false }
             remaining -= take.count
             buffer = Data(buffer.dropFirst(take.count))
         }
         return remaining <= 0
     }
 
+    /// Chunk data is written as it arrives, so a huge chunk never sits in memory.
     private func drainChunked() -> Bool {
         let crlf = Data("\r\n".utf8)
         while true {
             if remaining > 0 {
-                // Need chunk data plus its trailing CRLF.
-                guard buffer.count >= remaining + 2 else { return false }
-                try? bodyHandle?.write(contentsOf: buffer.prefix(remaining))
-                buffer = Data(buffer.dropFirst(remaining + 2))
-                remaining = 0
+                guard !buffer.isEmpty else { return false }
+                let take = buffer.prefix(remaining)
+                guard writeBody(take) else { return false }
+                remaining -= take.count
+                buffer = Data(buffer.dropFirst(take.count))
+                if remaining > 0 { return false }
+                chunkTrailer = true
             }
-            guard let lineEnd = buffer.range(of: crlf) else { return false }
+            if chunkTrailer {
+                guard buffer.count >= 2 else { return false }
+                guard buffer.prefix(2) == crlf else { return malformedBody() }
+                buffer = Data(buffer.dropFirst(2))
+                chunkTrailer = false
+            }
+            guard let lineEnd = buffer.range(of: crlf) else {
+                return buffer.count > 1024 ? malformedBody() : false   // no size line in sight
+            }
             let line = String(decoding: buffer[buffer.startIndex..<lineEnd.lowerBound], as: UTF8.self)
             let sizeText = line.split(separator: ";").first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
-            guard let size = Int(sizeText, radix: 16) else { return true }   // malformed: stop reading
+            // Malformed or absurd sizes stop reading (at most 15 hex digits keeps the arithmetic safe).
+            guard sizeText.count <= 15, let size = Int(sizeText, radix: 16), size >= 0 else { return malformedBody() }
             buffer = Data(buffer[lineEnd.upperBound...])
             if size == 0 { return true }   // trailers ignored
             remaining = size
         }
+    }
+
+    /// Writes body bytes, enforcing the request's size limit and the free-space floor as it goes.
+    private func writeBody(_ data: Data) -> Bool {
+        bodyBytes += data.count
+        if bodyBytes > limit {
+            respond(.json(413, ["ok": false, "error": "request too large"]))
+            return false
+        }
+        bytesSinceSpaceCheck += data.count
+        if bytesSinceSpaceCheck > 64 << 20 {
+            bytesSinceSpaceCheck = 0
+            if let free = freeSpace(), free < Self.minimumFreeSpace {
+                respond(.json(507, ["ok": false, "error": "not enough disk space"]))
+                return false
+            }
+        }
+        do {
+            try bodyHandle?.write(contentsOf: data)
+        } catch {
+            // Disk full (or similar) mid-transfer: say so instead of keeping a short file.
+            respond(.json(507, ["ok": false, "error": "not enough disk space"]))
+            return false
+        }
+        return true
+    }
+
+    /// A chunked body that doesn't follow the format.
+    private func malformedBody() -> Bool {
+        respond(.json(400, ["ok": false, "error": "malformed chunked body"]))
+        return false
     }
 
     private func parseHead(_ head: String) -> HTTPServer.Request? {
@@ -316,8 +413,9 @@ private final class HTTPConnection {
 
     private func respond(_ response: HTTPServer.Response) {
         finished = true
-        let reasons = [200: "OK", 400: "Bad Request", 401: "Unauthorized", 404: "Not Found", 415: "Unsupported Media Type",
-                       507: "Insufficient Storage",
+        let reasons = [200: "OK", 400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found",
+                       408: "Request Timeout", 409: "Conflict", 413: "Content Too Large", 415: "Unsupported Media Type",
+                       429: "Too Many Requests", 507: "Insufficient Storage",
                        431: "Request Header Fields Too Large", 500: "Internal Server Error", 503: "Service Unavailable"]
         let reason = reasons[response.status] ?? "Status"
         var length = response.body.count
@@ -358,6 +456,7 @@ private final class HTTPConnection {
     }
 
     private func cleanup() {
+        if retainSelf != nil { server.connectionClosed() }
         timeout?.cancel()
         timeout = nil
         try? bodyHandle?.close()

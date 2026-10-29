@@ -42,6 +42,8 @@ final class DeviceIdentity {
            let cert = SecCertificateCreateWithData(nil, certData as CFData) {
             return DeviceIdentity(certificate: cert, privateKey: key)
         }
+        // A failed read (say, the Keychain is locked) mustn't replace the identity every peer has pinned.
+        guard !store.hadReadError else { return nil }
         guard let key = SecKeyCreateRandomKey([
                   kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom,
                   kSecAttrKeySizeInBits: 256,
@@ -71,7 +73,7 @@ enum SelfSignedCertificate {
         let validity = sequence(time(now.addingTimeInterval(-86_400)) + time(now.addingTimeInterval(Double(years) * 365.25 * 86_400)))
         let spki = sequence(sequence(oid([1, 2, 840, 10045, 2, 1]) + oid([1, 2, 840, 10045, 3, 1, 7])) + bitString(point))
         var serial = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
-        serial[0] &= 0x7F   // positive
+        serial[0] = serial[0] % 0x7F + 1   // positive and minimal DER (first byte 0x01...0x7F)
         let tbs = sequence(tlv(0x02, serial) + ecdsaWithSHA256 + name + validity + name + spki)
         guard let signature = SecKeyCreateSignature(key, .ecdsaSignatureMessageX962SHA256, tbs as CFData, nil) as Data? else { return nil }
         return sequence(tbs + ecdsaWithSHA256 + bitString(signature))

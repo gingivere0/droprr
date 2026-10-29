@@ -61,8 +61,8 @@ struct DroprrClient {
         self.sendPath = sendPath
     }
 
-    /// Picks the path for a send: each fresh LAN address in turn over pinned HTTPS (about 1.5 s each),
-    /// then Tailscale. Never both, so a body is never sent twice. Throws `identityChanged` only when the
+    /// Picks the path for a send: the fresh LAN addresses over pinned HTTPS (probed together, about 1.5 s
+    /// in all; only a /ping, so no body is sent twice), then Tailscale. Never both, so a body is never sent twice. Throws `identityChanged` only when the
     /// LAN answered with the wrong certificate and there's no Tailscale host to fall back to.
     static func connect(_ peer: Peer) async throws -> (client: DroprrClient, identityChanged: Bool) {
         var client = DroprrClient(peer: peer)
@@ -72,20 +72,35 @@ struct DroprrClient {
             return (client, false)
         }
         var mismatch = false
-        for base in peer.lanURLs {
-            guard let url = URL(string: base.absoluteString + "/ping") else { continue }
-            var request = URLRequest(url: url, timeoutInterval: 1.5)
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            let trust = PinnedTrust(fingerprint: fp)
-            let probe = URLSession(configuration: .ephemeral, delegate: trust, delegateQueue: nil)
-            defer { probe.finishTasksAndInvalidate() }
-            if let (_, response) = try? await probe.data(for: request),
-               let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
-                client.path = .lan
-                client.lanBase = base
-                return (client, false)
+        let answered: URL? = await withTaskGroup(of: (URL?, Bool).self) { group in
+            for base in peer.lanURLs {
+                group.addTask {
+                    guard let url = URL(string: base.absoluteString + "/ping") else { return (nil, false) }
+                    var request = URLRequest(url: url, timeoutInterval: 1.5)
+                    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                    let trust = PinnedTrust(fingerprint: fp)
+                    let probe = URLSession(configuration: .ephemeral, delegate: trust, delegateQueue: nil)
+                    defer { probe.finishTasksAndInvalidate() }
+                    if let (_, response) = try? await probe.data(for: request),
+                       let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+                        return (base, false)
+                    }
+                    return (nil, trust.mismatch)
+                }
             }
-            mismatch = mismatch || trust.mismatch
+            for await (base, wrongCert) in group {
+                if let base {
+                    group.cancelAll()
+                    return base
+                }
+                mismatch = mismatch || wrongCert
+            }
+            return nil
+        }
+        if let answered {
+            client.path = .lan
+            client.lanBase = answered
+            return (client, false)
         }
         // None answered: forget the LAN addresses until discovery sees the peer again, so the next
         // send away from home goes straight to Tailscale.
@@ -100,20 +115,57 @@ struct DroprrClient {
         return (client, mismatch)
     }
 
-    /// Fails fast (about 3 s) when the Tailscale address doesn't answer, instead of waiting out a send's timeout.
+    /// The plain HTTP path, checked before any token goes out: the host must resolve to Tailscale
+    /// (100.64.0.0/10, fd7a:115c:a1e0::/48) or loopback, and answer /ping with a 2xx within about 3 s.
+    /// "Tokens and file contents never travel over plain HTTP outside Tailscale."
     private func checkReachable(token: String) async throws {
-        guard let base = peer.baseURL, let url = URL(string: base.absoluteString + "/ping") else {
+        guard let base = peer.baseURL, let host = base.host, let url = URL(string: base.absoluteString + "/ping") else {
             throw DroprrError.unreachable(peer.name)
         }
+        guard await Self.resolvesInsideTailnet(host) else { throw DroprrError.unreachable(peer.name) }
         var request = URLRequest(url: url, timeoutInterval: 3)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let response: URLResponse
         do {
-            _ = try await Self.session.data(for: request)
+            (_, response) = try await Self.session.data(for: request)
         } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()
         } catch {
             throw DroprrError.unreachable(peer.name)
         }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw DroprrError.unreachable(peer.name)
+        }
+    }
+
+    /// True when every address `host` resolves to is Tailscale or loopback (and there is at least one).
+    static func resolvesInsideTailnet(_ host: String) async -> Bool {
+        await Task.detached {
+            var hints = addrinfo()
+            hints.ai_socktype = SOCK_STREAM
+            var list: UnsafeMutablePointer<addrinfo>?
+            guard getaddrinfo(host.trimmingCharacters(in: CharacterSet(charactersIn: "[]")), nil, &hints, &list) == 0,
+                  let first = list else { return false }
+            defer { freeaddrinfo(list) }
+            var any = false
+            for entry in sequence(first: first, next: { $0.pointee.ai_next }) {
+                guard let addr = entry.pointee.ai_addr else { continue }
+                any = true
+                switch Int32(addr.pointee.sa_family) {
+                case AF_INET:
+                    let b = withUnsafeBytes(of: addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr }) { Array($0) }
+                    guard b[0] == 127 || (b[0] == 100 && (b[1] & 0xc0) == 64) else { return false }
+                case AF_INET6:
+                    let b = withUnsafeBytes(of: addr.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { $0.pointee.sin6_addr }) { Array($0) }
+                    let loopback = b[0..<15].allSatisfy { $0 == 0 } && b[15] == 1
+                    let tailscale = b[0] == 0xfd && b[1] == 0x7a && b[2] == 0x11 && b[3] == 0x5c && b[4] == 0xa1 && b[5] == 0xe0
+                    guard loopback || tailscale else { return false }
+                default:
+                    return false
+                }
+            }
+            return any
+        }.value
     }
 
     private static let session: URLSession = {
@@ -278,7 +330,10 @@ struct DroprrClient {
         for file in files {
             let name = file.lastPathComponent.replacingOccurrences(of: "\"", with: "'")
             let mime = UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-            let header = "--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(name)\"\r\nContent-Type: \(mime)\r\n\r\n"
+            // An ASCII fallback in filename (no quotes or backslashes) plus the exact name in filename* (RFC 5987).
+            let ascii = String(String.UnicodeScalarView(name.unicodeScalars.filter { $0.isASCII && $0 != "\"" && $0 != "\\" && $0.value >= 0x20 }))
+            let encoded = name.addingPercentEncoding(withAllowedCharacters: CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")) ?? ascii
+            let header = "--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(ascii.isEmpty ? "file" : ascii)\"; filename*=UTF-8''\(encoded)\r\nContent-Type: \(mime)\r\n\r\n"
             try handle.write(contentsOf: Data(header.utf8))
 
             let input = try FileHandle(forReadingFrom: file)

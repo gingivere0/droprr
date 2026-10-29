@@ -55,7 +55,7 @@ enum SharedItems {
     }
 
     private static func copy(_ source: URL, as name: String? = nil) -> URL? {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("droprr-share-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let dest = dir.appendingPathComponent(name ?? source.lastPathComponent)
         let scoped = source.startAccessingSecurityScopedResource()

@@ -188,7 +188,7 @@ struct MacSettingsView: View {
 
     private var devices: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            SectionHeader(title: "Devices", detail: settings.peers.isEmpty ? "None yet" : "\(settings.peers.count) paired") {
+            SectionHeader(title: "Devices", detail: settings.peers.isEmpty ? "None yet" : "\(settings.peers.filter(\.isPaired).count) paired") {
                 Button("Add device") { editingToken = false; editing = Peer(name: "", host: "") }
                     .buttonStyle(SecondaryStyle())
             }
@@ -243,7 +243,7 @@ struct MacSettingsView: View {
                     .labelsHidden()
             }
             SettingRow(title: "Port", detail: "Other devices send here. 53318 is the default.") {
-                TextField("", value: Binding(get: { settings.port }, set: { settings.port = $0 }),
+                TextField("", value: Binding(get: { settings.port }, set: { settings.port = min(max($0, 1024), 65534) }),
                           format: .number.grouping(.never))
                     .textFieldStyle(.plain)
                     .font(.system(size: 13).monospacedDigit())
@@ -285,7 +285,7 @@ struct MacSettingsView: View {
                     .disabled(settings.token.isEmpty)
                 Button("New token") { settings.token = DroprrSettings.generateToken() }
                     .buttonStyle(SecondaryStyle())
-                    .hoverHint("Paired devices will need to pair again")
+                    .hoverHint("Paired devices keep working; only devices you added by hand with the old token need the new one")
             }
             .lookCard(padding: 14)
         }

@@ -107,7 +107,12 @@ struct SendView: View {
     private var devices: some View {
         VStack(alignment: .leading, spacing: Space.md) {
             Kicker("Send to")
-            HStack(alignment: .top, spacing: Look.isAtelier ? 28 : Space.md) {
+            // Atelier tabs scroll sideways when there are many; cards wrap onto more rows (at most 4 per row).
+            let layout = Look.isAtelier
+                ? AnyLayout(HStackLayout(alignment: .top, spacing: 28))
+                : AnyLayout(GridFlowLayout(columns: min(max(model.settings.peers.count, 1), 4), spacing: Space.md))
+            ScrollView(Look.isAtelier ? .horizontal : [], showsIndicators: false) {
+            layout {
                 ForEach(Array(model.settings.peers.enumerated()), id: \.element.id) { index, peer in
                     DeviceTab(peer: peer, selected: peer.id == selected?.id,
                               waiting: model.waiting(for: peer),
@@ -124,8 +129,9 @@ struct SendView: View {
                             }
                         }
                 }
-                if Look.isAtelier { Spacer(minLength: 0) }
             }
+            }
+            .scrollDisabled(!Look.isAtelier)
         }
     }
 
@@ -452,5 +458,37 @@ private struct DropWell: View {
             .modifier(ClayShadow())
             .scaleEffect(targeted ? 1.08 : 1)
             .accessibilityHidden(true)
+    }
+}
+
+/// Equal-width items in rows of `columns`, wrapping as needed (the card styles' device grid).
+private struct GridFlowLayout: Layout {
+    var columns: Int
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 544
+        let itemWidth = (width - spacing * CGFloat(columns - 1)) / CGFloat(columns)
+        var height: CGFloat = 0
+        for row in stride(from: 0, to: subviews.count, by: columns) {
+            let rowHeight = subviews[row..<min(row + columns, subviews.count)]
+                .map { $0.sizeThatFits(ProposedViewSize(width: itemWidth, height: nil)).height }.max() ?? 0
+            height += rowHeight + (row > 0 ? spacing : 0)
+        }
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let itemWidth = (bounds.width - spacing * CGFloat(columns - 1)) / CGFloat(columns)
+        var y = bounds.minY
+        for row in stride(from: 0, to: subviews.count, by: columns) {
+            let items = subviews[row..<min(row + columns, subviews.count)]
+            let rowHeight = items.map { $0.sizeThatFits(ProposedViewSize(width: itemWidth, height: nil)).height }.max() ?? 0
+            for (offset, item) in items.enumerated() {
+                item.place(at: CGPoint(x: bounds.minX + CGFloat(offset) * (itemWidth + spacing), y: y),
+                           proposal: ProposedViewSize(width: itemWidth, height: rowHeight))
+            }
+            y += rowHeight + spacing
+        }
     }
 }

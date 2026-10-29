@@ -31,6 +31,20 @@ struct PairRequest {
     var lan: [String]?
     /// Set when the caller authenticated with a device token: update that peer rather than adding one.
     var existingPeerID: UUID?
+    /// LAN pairing (/pair/request): always a new entry, never matched by name.
+    var viaLAN = false
+}
+
+extension PairRequest {
+    /// A peer-supplied name, safe to show: no control or bidi-override characters, at most 64 characters.
+    static func displayName(_ raw: String) -> String {
+        let cleaned = raw.unicodeScalars.filter { scalar in
+            !CharacterSet.controlCharacters.contains(scalar)
+                && !(0x202A...0x202E).contains(scalar.value) && !(0x2066...0x2069).contains(scalar.value)
+                && scalar.value != 0x200E && scalar.value != 0x200F && scalar.value != 0x061C
+        }
+        return String(String(String.UnicodeScalarView(cleaned)).trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
+    }
 }
 
 /// A device asking to pair over the LAN (POST /pair/request), waiting for the person to confirm.
@@ -84,6 +98,8 @@ final class DroprrReceiver {
         self.settings = settings
         self.inbox = inbox
         server.precheck = { [weak self] request in self?.precheck(request) }
+        server.bodyLimit = Self.bodyLimit
+        server.saveDirectory = inbox
         server.handler = { [weak self] request in
             await self?.handle(request) ?? .json(503, ["ok": false, "error": "shutting down"])
         }
@@ -103,19 +119,37 @@ final class DroprrReceiver {
         server.stop()
         secureServer?.stop()
         secureServer = nil
+        settings.secureListening = false
+    }
+
+    /// 64 KB for pairing, 16 MB for bodies read whole (JSON, forms, plain text); files are streamed and only
+    /// limited by free space.
+    static func bodyLimit(_ request: HTTPServer.Request) -> Int {
+        if Route(request).segments.first == "pair" { return 64 << 10 }
+        let mime = (request.header("content-type") ?? "").split(separator: ";").first
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? ""
+        let named = request.header("x-droprr-filename") != nil || request.header("content-disposition") != nil
+        if mime == "application/json" || mime == "application/x-www-form-urlencoded" || (mime == "text/plain" && !named) {
+            return 16 << 20
+        }
+        return Int.max
     }
 
     /// Starts or stops the HTTPS listener and its Bonjour advertisement to match the Local network setting.
     func startSecure() {
         secureServer?.stop()
         secureServer = nil
+        settings.secureListening = false
         guard settings.localNetwork, let identity = settings.identity?.tlsIdentity else { return }
         let secure = HTTPServer(policy: .lan, identity: identity)
         secure.precheck = server.precheck
         secure.handler = server.handler
+        secure.bodyLimit = server.bodyLimit
+        secure.saveDirectory = inbox
         do {
             try secure.start(port: settings.tlsPort, service: bonjourService)
             secureServer = secure
+            settings.secureListening = true
         } catch {
             NSLog("Droprr: HTTPS listener failed: %@", String(describing: error))
         }
@@ -148,9 +182,6 @@ final class DroprrReceiver {
             return request.secure && onPairRequest != nil ? nil : .json(404, ["ok": false, "error": "not found"])
         }
         guard authorization(request) != nil else {
-            if !settings.hasMainToken && settings.peers.allSatisfy({ ($0.acceptToken ?? "").isEmpty }) {
-                return .json(503, ["ok": false, "error": "no pairing token set on this device"])
-            }
             return .json(401, ["ok": false, "error": "unauthorized"])
         }
         let route = Route(request)
@@ -187,9 +218,9 @@ final class DroprrReceiver {
 
     /// Which token authorized the request: the main token or a paired device's token.
     private func authorization(_ request: HTTPServer.Request) -> DroprrSettings.Authorization? {
-        let header = request.header("authorization") ?? ""
-        guard header.hasPrefix("Bearer ") else { return nil }
-        return settings.authorize(String(header.dropFirst(7)))
+        let header = (request.header("authorization") ?? "").trimmingCharacters(in: .whitespaces)
+        guard header.lowercased().hasPrefix("bearer ") else { return nil }
+        return settings.authorize(String(header.dropFirst(7)).trimmingCharacters(in: .whitespaces))
     }
 
     private func handleInbox(_ request: HTTPServer.Request, _ route: Route, _ outbox: OutboxServing) -> HTTPServer.Response {
@@ -217,7 +248,7 @@ final class DroprrReceiver {
         let fallback = String(String.UnicodeScalarView((file.name.applyingTransform(.stripDiacritics, reverse: false) ?? file.name)
             .unicodeScalars.filter { $0.isASCII && $0 != "\"" }))
         var disposition = "attachment; filename=\"\(ascii ? file.name : (fallback.isEmpty ? "download" : fallback))\""
-        if !ascii, let encoded = file.name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) {
+        if !ascii, let encoded = file.name.addingPercentEncoding(withAllowedCharacters: CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")) {
             disposition += "; filename*=UTF-8''\(encoded)"
         }
         response.headers["Content-Disposition"] = disposition
@@ -237,18 +268,20 @@ final class DroprrReceiver {
                   let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
                 return .json(400, ["ok": false, "error": "expected a JSON body"])
             }
-            guard let name = (json["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+            guard let name = (json["name"] as? String).map(PairRequest.displayName), !name.isEmpty else {
                 return .json(400, ["ok": false, "error": "missing name"])
             }
-            guard let platform = json["platform"] as? String, ["ios", "macos", "windows"].contains(platform) else {
+            guard let platform = (json["platform"] as? String)?.lowercased(), ["ios", "macos", "windows"].contains(platform) else {
                 return .json(400, ["ok": false, "error": "platform must be ios, macos or windows"])
             }
-            let host = (json["host"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            var host = (json["host"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if platform != "ios" && host.isEmpty {
                 return .json(400, ["ok": false, "error": "computers must send host"])
             }
+            // Plain HTTP only ever goes to Tailscale, so only keep a Tailscale host.
+            if !PairingInfo.isTailscaleHost(host) { host = "" }
             var port = DroprrDefaults.port
-            if let raw = json["port"] {
+            if let raw = json["port"], !(raw is NSNull) {
                 guard let value = raw as? Int, (1...65535).contains(value) else {
                     return .json(400, ["ok": false, "error": "bad port"])
                 }
@@ -262,7 +295,7 @@ final class DroprrReceiver {
             if case .device(let id) = authorization(request) { existing = id }
             let pair = PairRequest(name: name, platform: platform, host: host, port: port,
                                    token: callerToken, acceptToken: minted,
-                                   deviceID: json["id"] as? String, fingerprint: Self.fingerprint(json["fp"]),
+                                   deviceID: Self.deviceID(json["id"]), fingerprint: Self.fingerprint(json["fp"]),
                                    tlsPort: json["tlsPort"] as? Int, lan: json["lan"] as? [String], existingPeerID: existing)
             DispatchQueue.main.sync { onPair(pair) }
             return .json(200, responseFields(token: minted))
@@ -284,7 +317,7 @@ final class DroprrReceiver {
         }
         if route.segments.first == "ping" {
             return .json(200, ["name": settings.deviceName, "version": DroprrDefaults.version,
-                               "platform": DroprrSettings.platform, "protocol": 2].merging(settings.ownIdentityFields) { a, _ in a })
+                               "platform": DroprrSettings.platform, "protocol": 2].merging(settings.identityFields(includeLAN: false)) { a, _ in a })
         }
         do {
             let items = try receive(request, into: inbox)
@@ -316,6 +349,13 @@ final class DroprrReceiver {
     private var pairPending = false
     private var pairStrikes: [String: [Date]] = [:]
 
+    /// A protocol device id: 26 lowercase base32 characters.
+    private static func deviceID(_ value: Any?) -> String? {
+        guard let text = (value as? String)?.lowercased(), text.count == 26,
+              text.allSatisfy({ ("a"..."z").contains($0) || ("2"..."7").contains($0) }) else { return nil }
+        return text
+    }
+
     private static func fingerprint(_ value: Any?) -> String? {
         guard let text = (value as? String)?.lowercased(), text.count == 64, text.allSatisfy(\.isHexDigit) else { return nil }
         return text
@@ -346,12 +386,18 @@ final class DroprrReceiver {
 
         guard let body = request.bodyFile, let data = try? Data(contentsOf: body),
               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let id = (json["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty,
-              let name = (json["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
-              let platform = json["platform"] as? String, ["ios", "macos", "windows"].contains(platform),
+              let id = Self.deviceID(json["id"]),
+              let name = (json["name"] as? String).map(PairRequest.displayName), !name.isEmpty,
+              let platform = (json["platform"] as? String)?.lowercased(), ["ios", "macos", "windows"].contains(platform),
               let fp = Self.fingerprint(json["fp"]) else {
             return .json(400, ["ok": false, "error": "expected id, name, platform and fp"])
         }
+        // Already paired (same id or certificate): never re-pair over the LAN, which could hand an existing
+        // device's tokens and pin to someone else. Remove it on this device to pair again.
+        let known = await MainActor.run { [settings] in
+            settings.peers.contains { $0.deviceID == id || $0.fingerprint == fp }
+        }
+        if known { return .json(409, ["ok": false, "error": "already paired"]) }
         let code = Self.pairingCode(ownFP, fp)
         let answer: Bool? = await withTaskGroup(of: Bool?.self) { group in
             group.addTask { @MainActor in await ask(LANPairRequest(name: name, platform: platform, code: code)) }
@@ -370,11 +416,12 @@ final class DroprrReceiver {
         let minted = DroprrSettings.generateToken()
         var port = DroprrDefaults.port
         if let value = json["port"] as? Int, (1...65535).contains(value) { port = value }
+        let host = (json["host"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let pair = PairRequest(name: name, platform: platform,
-                               host: (json["host"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                               host: PairingInfo.isTailscaleHost(host) ? host : "",
                                port: port, token: (json["token"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                                acceptToken: minted, deviceID: id, fingerprint: fp,
-                               tlsPort: json["tlsPort"] as? Int, lan: json["lan"] as? [String])
+                               tlsPort: json["tlsPort"] as? Int, lan: json["lan"] as? [String], viaLAN: true)
         await MainActor.run { onPair(pair) }
         return .json(200, responseFields(token: minted))
     }
@@ -396,7 +443,7 @@ final class DroprrReceiver {
         case "application/x-www-form-urlencoded":
             return try receiveForm(bodyFile, into: dir)
         default:
-            let suppliedName = request.header("x-droprr-filename")?.removingPercentEncoding
+            let suppliedName = request.header("x-droprr-filename").map { $0.removingPercentEncoding ?? $0 }
                 ?? request.header("content-disposition").flatMap(Self.filename(in:))
                 ?? ""
             if mime == "text/plain" && suppliedName.isEmpty {
@@ -405,8 +452,8 @@ final class DroprrReceiver {
             // Lenient input: any other body is a raw file (iOS Shortcuts "File" request bodies).
             var filename = suppliedName.isEmpty ? Self.fallbackName() : suppliedName
             if (filename as NSString).pathExtension.isEmpty { filename += ".\(Self.rawExtensions[mime] ?? "bin")" }
-            let dest = uniqueDestination(for: filename, in: dir)
-            try FileManager.default.moveItem(at: bodyFile, to: dest)
+            let dest = try saveUnique(filename, in: dir) { try FileManager.default.moveItem(at: bodyFile, to: $0) }
+            Links.quarantine(dest)
             return [ReceivedItem(kind: .file(dest))]
         }
 
@@ -466,8 +513,9 @@ final class DroprrReceiver {
                 disposition = line
             }
             if let filename = Self.filename(in: disposition) {
-                let dest = uniqueDestination(for: filename.isEmpty ? Self.fallbackName() + ".bin" : filename, in: dir)
-                try body.write(to: dest)
+                guard !filename.isEmpty else { continue }   // filename="" isn't a file (as on Windows)
+                let dest = try saveUnique(filename, in: dir) { try body.write(to: $0, options: .withoutOverwriting) }
+                Links.quarantine(dest)   // right away, so an error in a later part can't leave it unmarked
                 items.append(ReceivedItem(kind: .file(dest)))
             } else if !body.isEmpty {
                 items.append(try classify(String(decoding: body, as: UTF8.self), into: dir))
@@ -497,10 +545,10 @@ final class DroprrReceiver {
             guard Links.isWeb(url) else { return try textItem(type: "text", content: content, into: dir) }
             let plist: [String: Any] = ["URL": url.absoluteString]
             let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
-            try data.write(to: uniqueDestination(for: "Link \(Self.stamp()).webloc", in: dir))
+            _ = try saveUnique("Link \(Self.stamp()).webloc", in: dir) { try data.write(to: $0, options: .withoutOverwriting) }
             return ReceivedItem(kind: .url(url))
         }
-        try Data(content.utf8).write(to: uniqueDestination(for: "Text \(Self.stamp()).txt", in: dir))
+        _ = try saveUnique("Text \(Self.stamp()).txt", in: dir) { try Data(content.utf8).write(to: $0, options: .withoutOverwriting) }
         return ReceivedItem(kind: .text(content))
     }
 
@@ -511,12 +559,29 @@ final class DroprrReceiver {
         return host == "::1" || host.hasPrefix("127.") || host.hasPrefix("::ffff:127.")
     }
 
+    /// Saves under a free name, never overwriting: if another transfer takes the name first, the next
+    /// " (n)" is tried.
+    private func saveUnique(_ name: String, in dir: URL, _ write: (URL) throws -> Void) throws -> URL {
+        for _ in 0..<20 {
+            let dest = uniqueDestination(for: name, in: dir)
+            do {
+                try write(dest)
+                return dest
+            } catch let error as CocoaError where error.code == .fileWriteFileExists {
+                continue
+            }
+        }
+        throw Failure(500, "receiver error")
+    }
+
     private func uniqueDestination(for rawName: String, in inbox: URL) -> URL {
         try? FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
         var name = (rawName as NSString).lastPathComponent
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: ":", with: "_")
-        if name.isEmpty || name.hasPrefix(".") { name = "Droprr \(Self.stamp())" + name }
+        // No hidden files and no names made only of dots ("..", "..."): drop leading dots.
+        while name.hasPrefix(".") { name.removeFirst() }
+        if name.isEmpty { name = "Droprr \(Self.stamp())" }
         let base = (name as NSString).deletingPathExtension
         let ext = (name as NSString).pathExtension
         var candidate = inbox.appendingPathComponent(name)

@@ -8,6 +8,7 @@ struct DroprrPhoneApp: App {
 
     init() {
         CrashLog.install()
+        CrashLog.cleanTemporaryFiles()
     }
     @Environment(\.scenePhase) private var scenePhase
 
@@ -25,7 +26,7 @@ struct DroprrPhoneApp: App {
                 model.startLocalNetwork()
                 Task { await model.collectInbox() }
             } else if phase == .background {
-                model.stopLocalNetwork()
+                model.enterBackground()
             }
         }
     }
@@ -103,6 +104,23 @@ final class PhoneModel {
         LANDiscovery.shared.stop()
     }
 
+    /// Going to the background: keep listening a little longer so a transfer in progress can finish.
+    func enterBackground() {
+        let task = UIApplication.shared.beginBackgroundTask(withName: "Droprr receive")
+        Task {
+            try? await Task.sleep(for: .seconds(20))
+            if UIApplication.shared.applicationState == .background { stopLocalNetwork() }
+            UIApplication.shared.endBackgroundTask(task)
+        }
+    }
+
+    /// Runs `work` with background time, so leaving the app doesn't cut a send or collection short.
+    func withBackgroundTime<T>(_ name: String, _ work: () async -> T) async -> T {
+        let task = UIApplication.shared.beginBackgroundTask(withName: name)
+        defer { UIApplication.shared.endBackgroundTask(task) }
+        return await work()
+    }
+
     /// Shows the "Pair with …?" question and waits for Pair or Decline.
     private func ask(_ request: LANPairRequest) async -> Bool {
         pairAnswer?.resume(returning: false)
@@ -124,8 +142,16 @@ final class PhoneModel {
 
     /// A computer paired with this phone over the Wi-Fi: add or update it with both tokens and its pin.
     private func paired(_ request: PairRequest) {
-        let match = request.deviceID.flatMap { id in settings.peers.firstIndex { $0.deviceID == id } }
-            ?? settings.peers.firstIndex { $0.matches(deviceName: request.name) }
+        // Same rules as the Mac: a device token updates only its own peer; LAN pairing adds a new entry.
+        let match: Int?
+        if let existing = request.existingPeerID {
+            match = settings.peers.firstIndex { $0.id == existing }
+        } else if request.viaLAN {
+            match = nil
+        } else {
+            match = request.deviceID.flatMap { id in settings.peers.firstIndex { $0.deviceID == id } }
+                ?? settings.peers.firstIndex { $0.matches(deviceName: request.name) }
+        }
         let peerID: UUID
         if let i = match {
             settings.peers[i].platform = request.platform
@@ -135,13 +161,13 @@ final class PhoneModel {
             settings.peers[i].acceptToken = request.acceptToken
             peerID = settings.peers[i].id
         } else {
-            let peer = Peer(name: request.name, host: request.host, port: request.port, platform: request.platform,
+            let peer = Peer(name: settings.uniqueName(request.name), host: request.host, port: request.port, platform: request.platform,
                             remoteName: request.name, token: request.token, acceptToken: request.acceptToken)
             settings.peers.append(peer)
             peerID = peer.id
         }
         settings.learn(peerID, deviceID: request.deviceID, fingerprint: request.fingerprint, tlsPort: request.tlsPort,
-                       lan: request.lan, replacePin: request.fingerprint != nil)
+                       lan: request.lan, replacePin: request.existingPeerID == nil && request.fingerprint != nil)
         pairingStatus = .success("Paired with \(request.name)")
     }
 
@@ -159,11 +185,23 @@ final class PhoneModel {
                        replacePin: client.path == .tailscale)
     }
 
+    /// Inbox items saved here whose DELETE didn't go through yet (kept across launches).
+    private var acknowledgedLocally: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: "acknowledgedLocally") ?? []) }
+        set { UserDefaults.standard.set(Array(newValue.suffix(200)), forKey: "acknowledgedLocally") }
+    }
+
     var newItems: [HistoryEntry] { history.filter(\.isNew) }
     var seenItems: [HistoryEntry] { history.filter { !$0.isNew } }
 
     private func record(_ item: ReceivedItem, from source: String?) {
-        if settings.autoCopy { Clipboard.copy(item) }
+        // Auto-copy skips big files, which would be read whole on the main thread.
+        if settings.autoCopy {
+            if case .file(let url) = item.kind, ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) > 20 << 20 {
+            } else {
+                Clipboard.copy(item)
+            }
+        }
         Motion.perform {
             history.insert(HistoryEntry(item, source: source), at: 0)
             trimAndSave()
@@ -234,10 +272,12 @@ final class PhoneModel {
     var pendingPairing: PairingInfo?
 
     /// Peer that a pairing code would replace, if any.
+    /// The peer a pairing code would replace: the same rule `DroprrSettings.apply` uses (id, address, name).
     func existingPeer(for info: PairingInfo) -> Peer? {
         let addresses = [info.host, info.dns].compactMap { $0 }.filter { !$0.isEmpty }
         return settings.peers.first { peer in
-            addresses.contains { peer.host.caseInsensitiveCompare($0) == .orderedSame } || peer.matches(deviceName: info.name)
+            (info.id != nil && peer.deviceID == info.id)
+                || addresses.contains { peer.host.caseInsensitiveCompare($0) == .orderedSame } || peer.matches(deviceName: info.name)
         }
     }
 
@@ -308,21 +348,39 @@ final class PhoneModel {
 
     /// Pulls items each desktop is holding for this phone (GET /inbox), then acknowledges them.
     func collectInbox() async {
+        await withBackgroundTime("Droprr collect") { await collectInboxNow() }
+    }
+
+    private func collectInboxNow() async {
         let desktops = settings.peers.filter { !$0.isPhone }
         guard !collecting, !desktops.isEmpty else { return }
         collecting = true
         defer { collecting = false }
         var count = 0
         var reached = 0
+        var problems: [String] = []
         for peer in desktops {
-            guard let client = try? await DroprrClient.connect(peer).client,
-                  let items = try? await client.inbox(for: settings.deviceName) else { continue }
+            let client: DroprrClient
+            do {
+                client = try await DroprrClient.connect(peer).client
+            } catch DroprrError.identityChanged(let name) {
+                problems.append("\(name)'s identity changed. Pair again.")
+                continue
+            } catch {
+                continue
+            }
+            guard let items = try? await client.inbox(for: settings.deviceName) else { continue }
             reached += 1
             // Pairings from before protocol 2: learn the computer's id (and pin it over Tailscale), which
             // also merges a computer paired both ways into one entry.
             if peer.deviceID == nil || peer.fingerprint == nil { _ = await settings.ping(peer) }
             await upgradePairing(peer, client: client)
             for entry in items {
+                // Already saved last time; only its acknowledgement failed. Don't save it twice.
+                if acknowledgedLocally.contains(entry.id) {
+                    if (try? await client.acknowledge(entry)) != nil { acknowledgedLocally.remove(entry.id) }
+                    continue
+                }
                 do {
                     let item: ReceivedItem
                     switch entry.type {
@@ -341,16 +399,21 @@ final class PhoneModel {
                     default:
                         item = ReceivedItem(kind: .text(entry.content ?? ""))
                     }
-                    try await client.acknowledge(entry)
+                    // Saved: show it, then acknowledge. If that fails, remember it so it isn't saved again.
                     record(item, from: peer.name)
                     count += 1
+                    if (try? await client.acknowledge(entry)) == nil { acknowledgedLocally.insert(entry.id) }
                 } catch {
                     continue   // left in the outbox; we'll try again next time
                 }
             }
         }
-        if reached == 0 {
-            lastCollect = "Couldn't reach your computers. Are you on the same Wi-Fi, or on Tailscale?"
+        if let problem = problems.first {
+            lastCollect = problem
+        } else if reached == 0 {
+            lastCollect = settings.localNetwork
+                ? "Couldn't reach your computers. Are you on the same Wi-Fi, or on Tailscale?"
+                : "Couldn't reach your computers over Tailscale. Local network is off in Settings."
         } else {
             lastCollect = count == 0 ? "Up to date" : "Collected \(count) item\(count == 1 ? "" : "s")"
         }
@@ -358,7 +421,8 @@ final class PhoneModel {
 
     private static func uniqueDestination(for rawName: String) -> URL {
         try? FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
-        let name = (rawName as NSString).lastPathComponent.replacingOccurrences(of: ":", with: "_")
+        var name = (rawName as NSString).lastPathComponent.replacingOccurrences(of: ":", with: "_")
+        while name.hasPrefix(".") { name.removeFirst() }
         let base = (name as NSString).deletingPathExtension
         let ext = (name as NSString).pathExtension
         var candidate = inbox.appendingPathComponent(name.isEmpty ? "Droprr item" : name)
@@ -406,7 +470,7 @@ final class PhoneModel {
             }
         }
         sendTask = work
-        return await work.value
+        return await withBackgroundTime("Droprr send") { await work.value }
     }
 
     @ObservationIgnored private var sendTask: Task<Bool, Never>?

@@ -375,6 +375,8 @@ private struct SendTab: View {
             HStack(spacing: Space.sm) {
                 if model.sending { ProgressView() } else { Image(systemName: "paperplane.fill") }
                 Text(peer.map { "Send to \($0.name)" } ?? "Send")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
             .font(.headline)
             .frame(maxWidth: .infinity)
@@ -402,7 +404,12 @@ private struct SendTab: View {
         }
         if !attachments.isEmpty { payloads.append(.files(attachments)) }
 
-        if await model.send(payloads, to: peer) {
+        let exported = attachments.filter { !files.contains($0) }
+        let sent = await model.send(payloads, to: peer)
+        // Photo exports are temporary copies; picked files are kept until they're sent.
+        for file in exported { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        if sent {
+            for file in files { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
             Motion.perform {
                 text = ""
                 clipboard = nil
@@ -414,11 +421,9 @@ private struct SendTab: View {
 
     private static func export(_ items: [PhotosPickerItem]) async -> [URL] {
         var files: [URL] = []
-        for (i, item) in items.enumerated() {
-            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
-            let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "dat"
-            let file = FileManager.default.temporaryDirectory.appendingPathComponent("Photo \(i + 1)-\(UUID().uuidString.prefix(4)).\(ext)")
-            if (try? data.write(to: file)) != nil { files.append(file) }
+        // File-backed, so a long video is copied on disk instead of loaded into memory, and keeps its name.
+        for item in items {
+            if let picked = try? await item.loadTransferable(type: PickedFile.self) { files.append(picked.url) }
         }
         return files
     }
@@ -426,7 +431,7 @@ private struct SendTab: View {
     private static func copyToTemp(_ url: URL) -> URL? {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("droprr-pick-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let dest = dir.appendingPathComponent(url.lastPathComponent)
         return (try? FileManager.default.copyItem(at: url, to: dest)) != nil ? dest : nil
@@ -832,5 +837,20 @@ private struct LookTile: View {
             }
         }
         .modifier(ClayShadow())
+    }
+}
+
+/// A photo or video from the Photos picker, copied to its own temporary folder under its original name.
+private struct PickedFile: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .item) { received in
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("droprr-photo-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let dest = dir.appendingPathComponent(received.file.lastPathComponent)
+            try FileManager.default.copyItem(at: received.file, to: dest)
+            return PickedFile(url: dest)
+        }
     }
 }

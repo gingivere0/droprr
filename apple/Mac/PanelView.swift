@@ -169,7 +169,7 @@ private struct DeviceTile: View {
                     .foregroundStyle(hovering ? Look.ink : Look.muted)
                     .frame(width: 18)
                 Text(peer.name).font(Look.name(16)).lineLimit(1).layoutPriority(1)
-                if !peer.isPaired { MissingTokenButton(action: onMissingToken) }
+                if !peer.isPaired { MissingTokenButton(compact: true, action: onMissingToken) }
                 if waiting > 0 {
                     WaitingBadge(count: waiting, peerName: peer.name, onClear: onClearWaiting)
                 }

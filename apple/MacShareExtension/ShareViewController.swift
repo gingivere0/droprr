@@ -6,6 +6,7 @@ final class ShareViewController: NSViewController {
     override var nibName: NSNib.Name? { nil }
 
     override func loadView() {
+        CrashLog.install()
         let model = MacShareModel(context: extensionContext)
         let host = NSHostingView(rootView: MacShareView(model: model))
         host.frame = NSRect(x: 0, y: 0, width: 360, height: 300)
