@@ -15,6 +15,12 @@
   "copyTextToClipboard": true,
   // Also copy received files (and images as pictures).
   "copyFilesToClipboard": false,
+  // Color theme: graphiteLime, sunset, cherry, roseGold, sage, or oliveMustard.
+  "theme": "graphiteLime",
+  // Window style: material (Material You), clay, spatial (always dark), or atelier.
+  "style": "material",
+  // "system" follows Windows' light or dark setting; "light" or "dark" overrides it.
+  "mode": "system",
   // A Start menu shortcut, which is what makes Droprr show up in Windows Search.
   "addToStartMenu": true,
   // Devices this PC can send to. "host" is a Tailscale (MagicDNS) name or 100.x address.

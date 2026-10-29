@@ -10,10 +10,7 @@
     <!-- Theme colors (accent fill, accent text, tint, secondary) come from the selected theme in
          ThemeCatalog.cs; AppTheme sets these brushes, so always use them as DynamicResource. The values
          below are only startup defaults. -->
-    <sys:Double x:Key="AccentTintOpacityLight">0.12</sys:Double>
-    <sys:Double x:Key="AccentTintOpacityDark">0.20</sys:Double>
     <SolidColorBrush x:Key="AccentTintBrush" Color="#808080" Opacity="0.12" />
-    <SolidColorBrush x:Key="ThemeSecondaryBrush" Color="#808080" />
     <!-- color.qrPlate -->
     <SolidColorBrush x:Key="QrPlateBrush" Color="#FFFFFF" />
 
@@ -25,7 +22,6 @@
     <sys:Double x:Key="FontSizeCaption">12</sys:Double>
 
     <!-- radius (Windows): small controls, buttons, and rows use WPF UI's default of 4 -->
-    <CornerRadius x:Key="RadiusCard">8</CornerRadius>
     <CornerRadius x:Key="RadiusFeature">12</CornerRadius>
 
     <!-- space: xs 4, sm 8, md 12, lg 16, xl 24, xxl 32 -->
@@ -51,9 +47,6 @@
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
     </Style>
-    <Style x:Key="SectionHeader" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongText}">
-        <Setter Property="Margin" Value="0,24,0,8" />
-    </Style>
     <Style x:Key="Caption" TargetType="TextBlock">
         <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
         <Setter Property="TextWrapping" Value="Wrap" />
@@ -65,9 +58,8 @@
         <Setter Property="Foreground" Value="{DynamicResource ThemeSecondaryTextBrush}" />
     </Style>
 
-    <!-- Bento layout (tokens.json "bento"): tiles of mixed sizes on the themed surface, 12 px apart,
-         8 px corners on Windows, 16 px padding. -->
-    <sys:Double x:Key="TileGap">12</sys:Double>
+    <!-- Tiles (tokens.json "bento"): 16 px padding, 12 px apart. Their corners, borders, and shadow come from
+         the window style below. RadiusTile is for small icon wells. -->
     <Thickness x:Key="TilePadding">16</Thickness>
     <CornerRadius x:Key="RadiusTile">8</CornerRadius>
     <CornerRadius x:Key="RadiusChip">4</CornerRadius>

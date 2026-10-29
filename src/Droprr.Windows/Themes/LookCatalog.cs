@@ -147,6 +147,7 @@ public sealed record LookDef(string Id, string Name, string Detail)
         return (System.Math.Max(x, y) + 0.05) / (System.Math.Min(x, y) + 0.05);
     }
 
+    // An overlay of `over` at `amount` opacity on top of `color` (accent.hoverOverlay and accent.pressedOverlay).
     public static Color Blend(Color color, Color over, double amount) => Color.FromArgb(color.A,
         (byte)(color.R + (over.R - color.R) * amount),
         (byte)(color.G + (over.G - color.G) * amount),

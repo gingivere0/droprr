@@ -6,6 +6,8 @@ deploy/
 out/
 publish/
 *.binlog
+*.log
+logs/
 
 # IDE and user files
 .vs/

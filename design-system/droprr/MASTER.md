@@ -51,7 +51,7 @@ Use the platform's own values. Don't hard-code grays.
 
 ## Bento themes
 
-Droprr's look is the **Bento Grid**: the window or screen is a light-gray (or charcoal) surface, and everything sits on rounded tiles of mixed sizes with a 12-pt gap. There are six color themes. The user picks one in Settings (Appearance); **Graphite & Lime** (`graphiteLime`) is the default. Every theme has a light and a dark variant that follows the OS appearance. Exact values for every role are in [`tokens.json`](tokens.json) under `themes`.
+Droprr's layout is the **Bento Grid**: the window or screen is a plain surface, and everything sits on tiles of mixed sizes with a 12-pt gap. The user picks a window style (see [Styles](#styles)) and one of six color themes in Settings (Appearance); **Graphite & Lime** (`graphiteLime`) is the default theme. Every theme has a light and a dark variant. The mode follows the OS unless Settings picks Light or Dark, and the Spatial style is always dark. Exact values for every role are in [`tokens.json`](tokens.json) under `themes`.
 
 Contrast: every text pair is at least 4.5:1 and every control or icon well at least 3:1 in both light and dark (checked against `tile` and `surface`).
 
@@ -71,19 +71,32 @@ Contrast: every text pair is at least 4.5:1 and every control or icon well at le
 | `surface` | Window or screen background behind the tiles. |
 | `tile` | Every tile: device cards, the drop area, settings sections, list rows. |
 | `border` | Hairline tile outline and dividers. |
-| `accent` / `onAccent` | The **selected** tile (selected device, selected action), toggles, the app glyph tile. Text and icons on it use `onAccent`. |
+| `accent` / `onAccent` | The app glyph tile and accent fills. Text and icons on it use `onAccent`. |
 | `accentTint` / `accentText` | Unselected icon wells (rounded squares behind glyphs), links, small accent text. |
-| `secondary`, `secondaryTint`, `secondaryText` | One contrasting tile per screen: the message/text tile (`secondaryTint` fill) and "N waiting" badges (`secondaryTint` fill, `secondaryText` text). An icon well on that tile is filled with `secondaryText` and its glyph uses the `tile` color. Raw `secondary` is decorative only (dots, swatches), never a control or text color, because several themes' secondary is too light on white. |
+| `secondary`, `secondaryTint`, `secondaryText` | One contrasting tile per screen: the message/text tile (`secondaryTint` fill), the **selected** device (`secondaryTint` fill, `secondaryText` text; Spatial uses near-white with near-black text), and "N waiting" badges (`secondaryTint` fill, `secondaryText` text). An icon well on that tile is filled with `secondaryText` and its glyph uses the `tile` color. Raw `secondary` is decorative only (dots, swatches), never a control or text color, because several themes' secondary is too light on white. |
 | `primaryButton` / `onPrimaryButton` | The main action (Send, Pair a Phone): always the theme's accent, in light and dark mode (same values as `accent` / `onAccent`). |
-| `textPrimary`, `textSecondary` | Text on `surface` and `tile`. Platforms may use their native label colors if they match. |
+| `textPrimary`, `textSecondary` | Text on `surface` and `tile` in the theme previews. In the apps, the window style's ink and muted colors replace them (see [Styles](#styles)). |
 | `successFill`, `successText` (under `bento`) | The "Sent" status tile. |
 
 ### Layout
 
-- **Send screen:** title row; "Send to" device tiles in a row (selected one filled with `accent`); below, a large drop tile on the left and the `secondary` message tile on the right; status tile; bottom bar with a secondary button on the left and the primary Send button on the right.
-- **Settings:** a "This device" hero tile (name, status chips, Pair a Phone), then Devices, Receiving, Token and **Appearance** tiles. Appearance shows six swatches (accent + secondary dots) with the current one ringed.
+- **Send screen:** title row; "Send to" device tiles in a row (the selected one filled with `secondaryTint`); below, a large drop tile on the left and the `secondary` message tile on the right; status tile; bottom bar with a secondary button on the left and the primary Send button on the right.
+- **Settings:** a "This device" hero tile (name, status chips, Pair a Phone), then Devices, Receiving, Token and **Appearance** tiles. Appearance shows the four styles, the six theme swatches (accent + secondary dots) with the current one ringed, and the Light / Dark / System mode.
 - **Phone Send:** device chips; an action grid with Photos as a tall tile and Clipboard and Files stacked beside it; text tile; status tile; full-width primary Send button above the tab bar.
-- Tiles have no drop shadow beyond a 1-px `border` (light) and no gradients. The brand violet/coral gradient remains only in the app icon and logo.
+- Tiles have no gradients. Their corners, outline, and shadow come from the window style: a 1-px hairline in Material You and Spatial, a soft shadow in Clay, and only a rule under each section in Atelier.
+
+## Styles
+
+Four window styles, the same on every platform (`apple/Shared/Looks.swift` and `src/Droprr.Windows/Themes/LookCatalog.cs` hold the values). The color theme still supplies the accent and secondary colors; the style decides surfaces, text colors, shapes, type, and controls.
+
+| ID | Name | Look |
+| --- | --- | --- |
+| `material` | Material You (default) | Tonal surfaces with a 3% accent wash, 24-pt card corners, a rounded main button, an outlined secondary button |
+| `clay` | Clay | Soft lavender surfaces, 22-pt corners, soft shadows, heavy titles, pill buttons |
+| `spatial` | Spatial | Dark frosted glass, always dark, pill buttons with the main one in the theme's secondary color |
+| `atelier` | Atelier | Ivory paper, no cards (rules between sections), serif titles, square buttons |
+
+Each style's muted and accent text must still reach 4.5:1 on its tiles; adjust a value rather than ship a failing pair.
 
 ## Typography
 
@@ -91,8 +104,8 @@ System fonts only: **Segoe UI Variable** on Windows (WPF UI's default) and **SF 
 
 | Role | Windows (px, weight) | Mac / iPhone (text style) | Use |
 |---|---|---|---|
-| Title | 28, SemiBold | `.title2` (iPhone `.largeTitle` via navigation title) | Window or screen title |
-| Subtitle | 20, SemiBold | `.title3.weight(.semibold)` | Pair window heading, result headline |
+| Title | 28, the style's display weight (serif in Atelier) | `.title2` (iPhone `.largeTitle` via navigation title) | Window or screen title |
+| Subtitle | 20, the style's display weight | `.title3.weight(.semibold)` | Pair window heading, result headline |
 | Body strong | 14, SemiBold | `.headline` | Device names, section headers |
 | Body | 14, Regular | `.body` / `.callout` | Default text |
 | Caption | 12, Regular, secondary color | `.caption` / `.caption2`, secondary | Hints, timestamps, metadata |
@@ -122,14 +135,14 @@ On iPhone, use the system layout margins for screen edges instead of fixed value
 | Small control | 4 (WPF UI default) | 6 | system | Icon buttons, chips |
 | Button | 4 (WPF UI default) | 7 | system (capsule or rounded) | Send, Pair, Settings buttons |
 | List row / hover | 4 | 8 | system list | Recent items, device rows |
-| Card | 8 | 12 | 12 | Drop zone, device tiles, panels |
+| Card | the style's (24, 22, or 0) | the style's | the style's | Drop zone, device tiles, panels |
 | Feature surface | 12 | 14 | 14 | QR plate, large device cards |
 
 Apple shapes always use `style: .continuous`. Windows windows keep the OS's own rounded corners (don't draw custom chrome).
 
 ## Iconography
 
-- **App icon:** the colored icon from `file-swap-icon-pack/` everywhere, including the Windows tray and the Mac menu bar. Don't use the monochrome or template variants.
+- **App icon:** the current theme's colored logo from `file-swap-icon-pack/themes/<theme id>/` everywhere, including the Windows tray, title bars, and shortcuts, the Mac menu bar, and the iPhone home screen. Don't use monochrome or template variants.
 - **UI glyphs:** Fluent System Icons via WPF UI `SymbolIcon` on Windows, SF Symbols on Apple. No emoji as icons.
 - **Shared meanings:**
 

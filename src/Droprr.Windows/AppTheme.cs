@@ -147,24 +147,22 @@ static class AppTheme
         var under = look.EffectiveTile(dark, c.Accent);
         SetBrush("TextFillColorSecondaryBrush", LookDef.EnsureContrast(look.Muted(dark), under));
         var accentText = LookDef.EnsureContrast(c.AccentText, under);
-        ApplyShapes(look, dark, c, accentText);
+        ApplyShapes(look, dark, accentText);
 
         // Accent: the selected tile, toggles, and checkboxes. Hover and press shades follow the design tokens.
-        var hover = Blend(c.Accent, Colors.White, 0.18);
-        var pressed = Blend(c.Accent, Colors.Black, 0.15);
+        var hover = LookDef.Blend(c.Accent, Colors.White, 0.18);
+        var pressed = LookDef.Blend(c.Accent, Colors.Black, 0.15);
         ApplicationAccentColorManager.Apply(c.Accent, c.Accent, hover, pressed);
         SetBrush("AccentFillColorDefaultBrush", c.Accent);
         SetBrush("AccentFillColorSecondaryBrush", hover);
         SetBrush("AccentFillColorTertiaryBrush", pressed);
         SetBrush("TextOnAccentFillColorPrimaryBrush", c.OnAccent);
-        SetBrush("OnAccentWellBrush", c.OnAccent, 0.16);
         SetBrush("AccentTextFillColorPrimaryBrush", accentText);
         SetBrush("AccentTintBrush", c.AccentTint);
 
-        // Secondary: one contrasting tile per screen (the message tile) and the "N waiting" badges. Raw
-        // secondary is decorative only (dots, swatches); controls and text use secondaryText, and an icon well
-        // on the secondary tile is filled with secondaryText with its glyph in the tile color.
-        SetBrush("ThemeSecondaryBrush", c.Secondary);
+        // Secondary: one contrasting tile per screen (the message tile) and the "N waiting" badges. Controls and
+        // text use secondaryText, and an icon well on the secondary tile is filled with secondaryText with its
+        // glyph in the tile color.
         SetBrush("ThemeSecondaryTintBrush", c.SecondaryTint);
         SetBrush("ThemeSecondaryTextBrush", c.SecondaryText);
 
@@ -173,8 +171,8 @@ static class AppTheme
         // Spatial's is a glowing pill in the theme's second color, with black text.
         var primary = look.IsSpatial ? c.Secondary : c.PrimaryButton;
         SetBrush("PrimaryButtonBrush", primary);
-        SetBrush("PrimaryButtonHoverBrush", Blend(primary, Colors.White, 0.18));
-        SetBrush("PrimaryButtonPressedBrush", Blend(primary, Colors.Black, 0.15));
+        SetBrush("PrimaryButtonHoverBrush", LookDef.Blend(primary, Colors.White, 0.18));
+        SetBrush("PrimaryButtonPressedBrush", LookDef.Blend(primary, Colors.Black, 0.15));
         SetBrush("OnPrimaryButtonBrush", look.IsSpatial ? Colors.Black : c.OnPrimaryButton);
 
         // A selected device: the secondary tint with secondaryText (Spatial: near-white with near-black text).
@@ -187,8 +185,8 @@ static class AppTheme
         // Switches: the main action's color, or the second color in Clay and Spatial, with a white knob there.
         var on = look.IsClay || look.IsSpatial ? c.Secondary : c.PrimaryButton;
         SetBrush("ToggleSwitchFillOn", on);
-        SetBrush("ToggleSwitchFillOnPointerOver", Blend(on, Colors.White, 0.12));
-        SetBrush("ToggleSwitchFillOnPressed", Blend(on, Colors.Black, 0.15));
+        SetBrush("ToggleSwitchFillOnPointerOver", LookDef.Blend(on, Colors.White, 0.12));
+        SetBrush("ToggleSwitchFillOnPressed", LookDef.Blend(on, Colors.Black, 0.15));
         SetBrush("ToggleSwitchStrokeOn", on);
         SetBrush("ToggleSwitchKnobFillOn", look.IsClay || look.IsSpatial ? Colors.White : c.OnPrimaryButton);
 
@@ -200,7 +198,7 @@ static class AppTheme
     }
 
     // Corners, borders, shadows, title type, and the secondary button, which differ by style.
-    static void ApplyShapes(LookDef look, bool dark, ThemeColors c, Color accentText)
+    static void ApplyShapes(LookDef look, bool dark, Color accentText)
     {
         var resources = Application.Current.Resources;
         resources["LookTileRadius"] = new CornerRadius(look.CardRadius);
@@ -227,7 +225,7 @@ static class AppTheme
         var clear = Colors.Transparent;
         var (fill, hover, pressed, text, border, thickness, radius) = look.Id switch
         {
-            "clay" => (look.Container(dark), look.Background(dark), Blend(look.Background(dark), Colors.Black, 0.06), ink, clear, new Thickness(0), 18.0),
+            "clay" => (look.Container(dark), look.Background(dark), LookDef.Blend(look.Background(dark), Colors.Black, 0.06), ink, clear, new Thickness(0), 18.0),
             "spatial" => (Color.FromArgb(36, 255, 255, 255), Color.FromArgb(56, 255, 255, 255), Color.FromArgb(26, 255, 255, 255), ink, clear, new Thickness(0), 18.0),
             "atelier" => (clear, clear, clear, ink, ink, new Thickness(0, 0, 0, 1), 0.0),
             _ => (clear, WithAlpha(accentText, 0.08), WithAlpha(accentText, 0.14), accentText, WithAlpha(look.Muted(dark), 0.7), new Thickness(1), 18.0),
@@ -249,12 +247,6 @@ static class AppTheme
         brush.Freeze();
         Application.Current.Resources[key] = brush;
     }
-
-    // An overlay of `over` at `amount` opacity on top of `color` (accent.hoverOverlay and accent.pressedOverlay).
-    static Color Blend(Color color, Color over, double amount) => Color.FromArgb(color.A,
-        (byte)(color.R + (over.R - color.R) * amount),
-        (byte)(color.G + (over.G - color.G) * amount),
-        (byte)(color.B + (over.B - color.B) * amount));
 
     // A WPF UI message box (never the classic Win32 one), for the rare errors with no window to show them in.
     public static async System.Threading.Tasks.Task ShowMessageAsync(string title, string message)
