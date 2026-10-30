@@ -82,7 +82,9 @@ struct SettingsForm: View {
                 Toggle("Local network", isOn: $settings.localNetwork)
                 Toggle("Auto-copy received items to clipboard", isOn: $settings.autoCopy)
                 TextField("Port", value: $settings.port, format: .number.grouping(.never))
-                    .keyboardType(.numberPad)
+                    // Not the number pad: this keyboard has a Return key to finish with.
+                    .keyboardType(.numbersAndPunctuation)
+                    .submitLabel(.done)
             } header: {
                 Text("This device")
             } footer: {
@@ -93,7 +95,6 @@ struct SettingsForm: View {
         .scrollContentBackground(.hidden)
         .background { LookBackground().ignoresSafeArea() }
         .scrollDismissesKeyboard(.immediately)
-        .keyboardDoneButton()
         .confirmationDialog("Remove \(removing?.name ?? "device")?", isPresented: Binding(
             get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Remove", role: .destructive) {

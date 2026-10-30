@@ -221,9 +221,11 @@ private struct SendTab: View {
             }
             .padding(.horizontal, Space.lg)
             .padding(.bottom, Space.lg)
+            // Tapping outside the text box ends editing (as does scrolling); buttons still get their taps.
+            .contentShape(Rectangle())
+            .onTapGesture { typing = false }
         }
         .scrollDismissesKeyboard(.interactively)
-        .keyboardDoneButton()
         // While typing, keep the whole message box in view above the Send button and keyboard.
         .onChange(of: typing) { _, isTyping in
             guard isTyping else { return }

@@ -182,7 +182,6 @@ struct PeerEditor: View {
             }
             #endif
             #if os(iOS)
-            .keyboardDoneButton()
             .scrollDismissesKeyboard(.immediately)
             #endif
             .toolbar {
