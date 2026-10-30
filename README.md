@@ -11,7 +11,7 @@ Download everything from the [latest release](https://github.com/gingivere0/drop
 | Platform | What to get | First run |
 | --- | --- | --- |
 | **Windows 10 or 11** | `DroprrSetup-<version>.exe` | It isn't code-signed yet, so SmartScreen says "Windows protected your PC". Choose **More info**, then **Run anyway**. It installs just for you, with no administrator rights and no separate .NET install. |
-| **Mac** (macOS 14 or later, Apple silicon or Intel) | `Droprr-<version>-unsigned.dmg` | Open the disk image and drag Droprr to Applications. It isn't notarized yet, so macOS blocks it the first time: open **System Settings › Privacy & Security**, scroll down, and choose **Open Anyway** (or right-click Droprr in Applications and choose **Open**). |
+| **Mac** (macOS 14 or later, Apple silicon or Intel) | `Droprr-<version>.dmg` | Open the disk image and drag Droprr to Applications. It's signed and notarized by Apple, so it opens like any other app. |
 | **iPhone** | Nothing to install | The iPhone app is waiting for App Store approval. Until then, use the [Droprr website](https://gingivere0.github.io/droprr/) in Safari, as shown in [In a browser](#in-a-browser). You can also send from the share sheet with the optional [Shortcuts](#iphone-shortcuts-optional). |
 
 Then, on the computer, choose **Add a device** (the plus after the device tiles in the Send window) and scan the code with your phone's camera.
