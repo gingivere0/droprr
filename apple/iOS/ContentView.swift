@@ -28,12 +28,7 @@ struct ContentView: View {
                 SettingsForm(settings: model.settings)
                     .scrollContentBackground(.hidden)
                     .background { LookBackground().ignoresSafeArea() }
-                    .navigationTitle("Settings")
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button { scanning = true } label: { Label("Scan Pairing Code", systemImage: "qrcode.viewfinder") }
-                        }
-                    }
+                    .toolbar(.hidden, for: .navigationBar)
             }
             .tabItem { Label("Settings", systemImage: "gearshape.fill") }
             .tag(2)
@@ -169,7 +164,6 @@ private struct PairingStatusCard: View {
 
 private struct SendTab: View {
     @Bindable var model: PhoneModel
-    @Environment(\.startPairing) private var startPairing
     @State private var peerID: UUID?
     @State private var text = ""
     @State private var photos: [PhotosPickerItem] = []
@@ -237,13 +231,7 @@ private struct SendTab: View {
         }
         .sensoryFeedback(.selection, trigger: peerID)
         .background(backdrop)
-        // The same scan button, in the same place, as Settings: the navigation bar's trailing item.
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { startPairing() } label: { Label("Scan Pairing Code", systemImage: "qrcode.viewfinder") }
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .motion(Motion.standard, value: model.lastSendResult)
         .onChange(of: model.justAdded) { _, id in if let id { peerID = id } }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
@@ -258,13 +246,7 @@ private struct SendTab: View {
 
     /// Logo and a large "Send to" title, like the Mac's Send window.
     private var header: some View {
-        HStack(spacing: Space.md) {
-            LogoBadge(size: 44).id(model.settings.theme)
-            Text("Send to").font(Look.display(34, weight: Look.style == .material ? .regular : nil))
-            Spacer(minLength: 0)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
+        TabTitle(title: "Send to", showsScan: true) { LogoBadge(size: 44).id(model.settings.theme) }
         .padding(.top, Space.sm)
     }
 
@@ -588,6 +570,8 @@ private struct ReceivedTab: View {
                     if model.collecting { ProgressView() }
                 }
                 .listRowBackground(Look.container)
+            } header: {
+                TabTitle(title: "Received").listRowInsets(EdgeInsets()).padding(.bottom, Space.sm)
             }
 
             if model.history.isEmpty {
@@ -628,7 +612,7 @@ private struct ReceivedTab: View {
                 }
             }
         }
-        .navigationTitle("Received")
+        .toolbar(.hidden, for: .navigationBar)
         .scrollContentBackground(.hidden)
         .background { LookBackground().ignoresSafeArea() }
         .refreshable { await model.collectInbox() }
@@ -868,6 +852,49 @@ private struct PickedFile: Transferable {
             let dest = dir.appendingPathComponent(received.file.lastPathComponent)
             try FileManager.default.copyItem(at: received.file, to: dest)
             return PickedFile(url: dest)
+        }
+    }
+}
+
+/// A tab's title row (Send to, Received, Settings): the style's display font at the top of the screen, with no
+/// navigation bar above it, and the scan button on the same row where a tab has one.
+struct TabTitle<Leading: View>: View {
+    var title: String
+    var showsScan = false
+    @ViewBuilder var leading: () -> Leading
+    @Environment(\.startPairing) private var startPairing
+
+    init(title: String, showsScan: Bool = false, @ViewBuilder leading: @escaping () -> Leading = { EmptyView() }) {
+        self.title = title
+        self.showsScan = showsScan
+        self.leading = leading
+    }
+
+    var body: some View {
+        HStack(spacing: Space.md) {
+            leading()
+            Text(title)
+                .font(Look.display(34, weight: Look.style == .material ? .regular : nil))
+                .foregroundStyle(Look.ink)
+                .textCase(nil)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 0)
+            if showsScan { scanButton }
+        }
+        .padding(.top, Space.sm)
+    }
+
+    @ViewBuilder private var scanButton: some View {
+        let button = Button(action: startPairing) {
+            Image(systemName: "qrcode.viewfinder")
+                .font(.system(size: 17, weight: .medium))
+                .frame(width: 32, height: 32)
+        }
+        .accessibilityLabel("Scan Pairing Code")
+        if #available(iOS 26, *) {
+            button.buttonStyle(.glass).buttonBorderShape(.circle)
+        } else {
+            button.buttonStyle(.bordered).buttonBorderShape(.circle)
         }
     }
 }

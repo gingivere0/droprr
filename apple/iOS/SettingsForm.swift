@@ -22,6 +22,8 @@ struct SettingsForm: View {
                         Label("Appearance", systemImage: "paintpalette")
                     }
                 }
+            } header: {
+                TabTitle(title: "Settings", showsScan: true).listRowInsets(EdgeInsets()).padding(.bottom, Space.sm)
             }
             Section {
                 ForEach(settings.peers) { peer in
@@ -221,6 +223,7 @@ struct AppearanceSettings: View {
         .scrollContentBackground(.hidden)
         .background { LookBackground().ignoresSafeArea() }
         .navigationTitle("Appearance")
+        .toolbar(.visible, for: .navigationBar)
         .navigationBarTitleDisplayMode(.inline)
     }
 }
