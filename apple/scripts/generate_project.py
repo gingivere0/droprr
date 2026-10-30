@@ -42,7 +42,7 @@ def ftype(f):
     return {'xcconfig':'text.xcconfig','plist':'text.plist.xml','entitlements':'text.plist.entitlements','example':'text'}[f.rsplit('.',1)[1]]
 
 common = dict(
- CODE_SIGN_STYLE='Automatic', CURRENT_PROJECT_VERSION='3', MARKETING_VERSION='0.3.1',
+ CODE_SIGN_STYLE='Automatic', CURRENT_PROJECT_VERSION='4', MARKETING_VERSION='0.3.2',
  GENERATE_INFOPLIST_FILE='YES', SWIFT_VERSION='5.0', SWIFT_EMIT_LOC_STRINGS='YES',
  ENABLE_PREVIEWS='YES',
 )
