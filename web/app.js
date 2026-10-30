@@ -147,7 +147,6 @@ function showApp(you) {
   $("app").hidden = false;
   $("signout").hidden = false;
   $("where").textContent = you ? `Connected to ${computer} as ${you}` : `Connected to ${computer}`;
-  $("send-title").textContent = `Send to ${computer}`;
   $("inbox-title").textContent = `From ${computer}`;
   document.title = `Droprr · ${computer}`;
   startPolling();

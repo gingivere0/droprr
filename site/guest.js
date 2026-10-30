@@ -513,7 +513,6 @@ function showApp(name) {
   $("app").hidden = false;
   $("disconnect").hidden = false;
   $("where").textContent = `Connected to ${name}`;
-  $("send-title").textContent = `Send to ${name}`;
   $("inbox-title").textContent = `From ${name}`;
   document.title = `Droprr · ${name}`;
   setStatus($("start-status"), "");
