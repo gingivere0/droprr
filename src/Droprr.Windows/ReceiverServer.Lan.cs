@@ -38,10 +38,20 @@ sealed partial class ReceiverServer
     int _promptOpen;
     readonly Dictionary<IPAddress, List<DateTime>> _refusals = new();
 
-    // The peer this device already is, if any: pairing again needs the person to remove it first, so a pairing
-    // can never take over (or move the pin of) an existing device.
+    // The peer this device already is, if any.
     Peer? AlreadyPaired(string deviceId, string fingerprint) =>
         Settings.Peers.Find(p => p.Id == deviceId || p.Fingerprint.Equals(fingerprint, StringComparison.OrdinalIgnoreCase));
+
+    // A device pairing again is the same peer again (fresh tokens, nothing to remove first) when its TLS client
+    // certificate is the one pinned for that peer (or the peer has no pin yet, say it was paired over Tailscale; the
+    // person still confirms, and its certificate is pinned then). A different certificate claiming a pinned peer's
+    // id, or a peer of another kind, is refused, so a pairing can never take over (or move the pin of) another device.
+    Peer? Blocking(string deviceId, string fingerprint, string platform) =>
+        AlreadyPaired(deviceId, fingerprint) is { } existing
+        && !((existing.Fingerprint.Length == 0 || existing.Fingerprint.Equals(fingerprint, StringComparison.OrdinalIgnoreCase)) && !existing.IsBrowser
+             && existing.IsPhone == (platform == "ios") && (existing.Id.Length == 0 || existing.Id == deviceId))
+            ? existing
+            : null;
 
     static IPAddress RemoteOf(HttpContext context)
     {
@@ -84,7 +94,7 @@ sealed partial class ReceiverServer
             return Error("name and platform are required", StatusCodes.Status400BadRequest);
         if (body!.Fp is { Length: > 0 } claimed && !claimed.Trim().Equals(fingerprint, StringComparison.OrdinalIgnoreCase))
             return Error("fp doesn't match the client certificate", StatusCodes.Status400BadRequest);
-        if (AlreadyPaired(id, fingerprint) is { } existing)
+        if (Blocking(id, fingerprint, platform) is { } existing)
             return Error($"already paired as {existing.Name}: remove it on {Settings.DeviceName} to pair again", StatusCodes.Status409Conflict);
 
         var session = new PairSession(Guid.NewGuid().ToString("N"), remote, fingerprint, id, name, platform, commit,
@@ -128,8 +138,10 @@ sealed partial class ReceiverServer
         }
         if (body.Port is < 1 or > 65535 || body.TlsPort is < 1 or > 65535)
             return Error("port must be from 1 to 65535", StatusCodes.Status400BadRequest);
-        if (AlreadyPaired(session.DeviceId, session.Fingerprint) is { } existing)
+        if (Blocking(session.DeviceId, session.Fingerprint, session.Platform) is { } existing)
             return Error($"already paired as {existing.Name}: remove it on {Settings.DeviceName} to pair again", StatusCodes.Status409Conflict);
+        // Pairing again: the same peer, with fresh tokens.
+        var repair = AlreadyPaired(session.DeviceId, session.Fingerprint)?.Name;
 
         if (Interlocked.CompareExchange(ref _promptOpen, 1, 0) != 0)
             return Error("another pairing request is waiting", StatusCodes.Status429TooManyRequests);
@@ -161,7 +173,7 @@ sealed partial class ReceiverServer
             var sendToken = body.Token?.Trim();
             PairRequested?.Invoke(new PairRequest(session.Name, session.Platform, phone ? null : body.Host?.Trim(), body.Port,
                 string.IsNullOrEmpty(sendToken) ? null : sendToken, acceptToken, session.DeviceId, session.Fingerprint,
-                body.TlsPort, body.Lan, FromLan: true));
+                body.TlsPort, body.Lan, ExistingPeer: repair, FromLan: repair is null));
             return Results.Json(LanPairResponse(acceptToken));
         }
         finally

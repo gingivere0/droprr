@@ -302,18 +302,29 @@ sealed partial class ReceiverServer : IAsyncDisposable
             return Error("port must be from 1 to 65535", StatusCodes.Status400BadRequest);
 
         var phone = platform == "ios";
-        // With the one code's join secret, like LAN pairing: always a new peer, and a device that's already paired
-        // must be removed first, so a code shown to a guest can't take over another device's record.
+        // With the one code's join secret: a new peer, or, for a device that's already paired, that same peer again
+        // with fresh tokens (pairing again just works). An existing record is reused only when the caller proves it's
+        // that device: its TLS client certificate is the one pinned for it, or it calls over Tailscale, which already
+        // authenticates the device. Anyone else claiming an existing device's id or fingerprint is refused, so a code
+        // shown to a guest can't take over another device's record.
         var joined = context.Items[JoinKey] is true;
+        string? repair = null;
         if (joined && Settings.Peers.Find(p => (ValidId(body.Id) is { } id && p.Id == id)
                 || (ValidFingerprint(body.Fp) is { } fp && p.Fingerprint.Equals(fp, StringComparison.OrdinalIgnoreCase))) is { } existing)
-            return Error($"already paired as {existing.Name}: remove it on {Settings.DeviceName} to pair again", StatusCodes.Status409Conflict);
+        {
+            var proven = (ClientFingerprint(context) is { } client
+                    && (existing.Fingerprint.Length == 0 || client.Equals(existing.Fingerprint, StringComparison.OrdinalIgnoreCase)))
+                || (context.Connection.LocalPort != TlsPort && RemoteOf(context) is var remote && (LanNetwork.IsTailscale(remote) || IPAddress.IsLoopback(remote)));
+            if (!proven || existing.IsBrowser || existing.IsPhone != phone)
+                return Error($"already paired as {existing.Name}: remove it on {Settings.DeviceName} to pair again", StatusCodes.Status409Conflict);
+            repair = existing.Name;
+        }
         // Phones send one too when they can receive directly over the local network.
         var sendToken = body.Token?.Trim();
         var acceptToken = SettingsStore.NewToken();
         PairRequested?.Invoke(new PairRequest(name, platform, phone ? null : host, body.Port,
             string.IsNullOrEmpty(sendToken) ? null : sendToken, acceptToken,
-            ValidId(body.Id), ValidFingerprint(body.Fp), body.TlsPort, body.Lan, DevicePeer(context), FromLan: joined));
+            ValidId(body.Id), ValidFingerprint(body.Fp), body.TlsPort, body.Lan, repair ?? DevicePeer(context), FromLan: joined && repair is null));
         return Results.Json(LanPairResponse(acceptToken));
     }
 
