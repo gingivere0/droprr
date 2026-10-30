@@ -214,6 +214,8 @@ struct SendStatusView: View {
     var progress: Double?
     /// Shows a Cancel button while a send is in progress.
     var onCancel: (() -> Void)?
+    /// Shows an X to clear the line once it's finished.
+    var onDismiss: (() -> Void)?
 
     enum Kind { case working, success, failure, info }
 
@@ -240,6 +242,13 @@ struct SendStatusView: View {
                         Button("Cancel", action: onCancel)
                             .font(.callout.weight(.semibold))
                             .buttonStyle(.borderless)
+                    } else if kind != .working, let onDismiss {
+                        Button(action: onDismiss) {
+                            Image(systemName: "xmark").font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Dismiss")
                     }
                 }
                 if let progress, kind == .working {

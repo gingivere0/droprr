@@ -52,6 +52,8 @@ struct ContentView: View {
         .onChange(of: model.settings.localNetwork) { _, on in if on { model.startLocalNetwork() } else { model.stopLocalNetwork() } }
         .onChange(of: model.settings.tokenRequest) { _, id in if id != nil { tab = 2 } }
         .onChange(of: model.justAdded) { _, id in if id != nil { tab = 0 } }
+        // A finished send's line doesn't follow you to another tab.
+        .onChange(of: tab) { if !model.sending { model.lastSendResult = nil } }
         .environment(\.startPairing, { scanning = true })
         .environment(\.pairWithCode, { model.pair(with: $0) })
         .sheet(isPresented: $scanning) {
@@ -216,7 +218,8 @@ private struct SendTab: View {
                     devicePicker
                     actionGrid
                     composer.id("composer")
-                    SendStatusView(message: model.lastSendResult, progress: model.progress, onCancel: model.cancelSend)
+                    SendStatusView(message: model.lastSendResult, progress: model.progress, onCancel: model.cancelSend,
+                               onDismiss: { model.lastSendResult = nil })
                 }
             }
             .padding(.horizontal, Space.lg)

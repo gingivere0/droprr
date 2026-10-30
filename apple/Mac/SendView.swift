@@ -31,7 +31,8 @@ struct SendView: View {
                 dropArea
                 composer
                 received
-                SendStatusView(message: model.lastSendResult, progress: model.progress, onCancel: model.cancelSend)
+                SendStatusView(message: model.lastSendResult, progress: model.progress, onCancel: model.cancelSend,
+                               onDismiss: { model.lastSendResult = nil })
                 bottomBar
             }
         }
@@ -43,6 +44,8 @@ struct SendView: View {
         .lookRoot()
         .motion(Motion.standard, value: model.lastSendResult)
         .onChange(of: model.justAdded) { _, id in if let id { selectedID = id } }
+        // A finished send's line is cleared when the window closes.
+        .onDisappear { if !model.isSending { model.lastSendResult = nil } }
         .motion(Motion.fast, value: files)
         .motion(Motion.standard, value: model.recent.map(\.id))
     }
