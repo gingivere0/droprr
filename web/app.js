@@ -208,7 +208,7 @@ function renderChosen() {
   });
   $("drop-hint").textContent = chosenFiles.length
     ? `${chosenFiles.length} chosen · tap to add more`
-    : (matchMedia("(pointer: coarse)").matches ? "Photos, videos, or any file" : "or drop or paste them here");
+    : "";
 }
 
 function addFiles(files) {

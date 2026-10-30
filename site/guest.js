@@ -608,7 +608,7 @@ function renderChosen() {
     row.append(name, size, remove);
     list.append(row);
   });
-  $("drop-hint").textContent = chosenFiles.length ? `${chosenFiles.length} chosen · tap to add more` : "Photos, videos, or any file";
+  $("drop-hint").textContent = chosenFiles.length ? `${chosenFiles.length} chosen · tap to add more` : "";
 }
 
 function addFiles(files) {

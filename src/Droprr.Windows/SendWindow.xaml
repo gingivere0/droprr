@@ -88,9 +88,7 @@
                                     Background="{DynamicResource AccentTintBrush}" Margin="0,0,0,12">
                                 <ui:SymbolIcon Symbol="Add24" FontSize="16" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                             </Border>
-                            <TextBlock Text="Add a device" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="Phone or browser" FontSize="{StaticResource FontSizeCaption}" TextTrimming="CharacterEllipsis" Opacity="0.8" />
-                        </StackPanel>
+                            <TextBlock Text="Add a device" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />                        </StackPanel>
                     </DataTemplate>
                     <DataTemplate DataType="{x:Type local:Peer}">
                         <StackPanel>
@@ -132,10 +130,7 @@
                                 </ui:Button>
                             </DockPanel>
                             <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
-                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
-                            <TextBlock Text="{Binding Note}" FontSize="{StaticResource FontSizeCaption}" TextTrimming="CharacterEllipsis" Opacity="0.8"
-                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />
-                        </StackPanel>
+                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" />                        </StackPanel>
                     </DataTemplate>
                 </ListBox.Resources>
             </ListBox>
@@ -164,9 +159,7 @@
                         <Border Width="40" Height="40" CornerRadius="{StaticResource RadiusTile}" Background="{DynamicResource AccentTintBrush}">
                             <ui:SymbolIcon Symbol="ArrowDownload24" FontSize="20" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                         </Border>
-                        <TextBlock Text="Drop files or paste" Style="{StaticResource BodyStrongText}" Margin="0,8,0,0" HorizontalAlignment="Center" />
-                        <TextBlock Text="Ctrl+V pastes files or text" Style="{StaticResource Caption}" HorizontalAlignment="Center" />
-                    </StackPanel>
+                        <TextBlock Text="Drop files or paste" Style="{StaticResource BodyStrongText}" Margin="0,8,0,0" HorizontalAlignment="Center" />                    </StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" Margin="8">
                         <ui:Button Content="Add files…" Icon="{ui:SymbolIcon Add24}" Appearance="Transparent" Click="OnAddFiles" />
                         <ui:Button Content="Clear" Icon="{ui:SymbolIcon Delete24}" Appearance="Transparent" Margin="4,0,0,0" Click="OnClearFiles" />
@@ -182,12 +175,12 @@
                                     Background="{DynamicResource ThemeSecondaryTextBrush}" Margin="0,0,8,0">
                                 <ui:SymbolIcon Symbol="TextAlignLeft24" FontSize="16" Foreground="{DynamicResource ThemeTileBrush}" />
                             </Border>
-                            <TextBlock Text="Text or link" Style="{StaticResource BodyStrongText}" VerticalAlignment="Center"
+                            <TextBlock Text="Text" Style="{StaticResource BodyStrongText}" VerticalAlignment="Center"
                                        Foreground="{DynamicResource ThemeSecondaryTextBrush}" />
                         </DockPanel>
                         <ui:TextBox x:Name="MessageText" AcceptsReturn="True" TextWrapping="Wrap"
                                     VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto"
-                                    PlaceholderText="Type or paste text or a link" AutomationProperties.Name="Text or link" />
+                                    PlaceholderText="drip... drip... drip..." AutomationProperties.Name="Text" />
                     </DockPanel>
                 </Border>
             </Grid>
