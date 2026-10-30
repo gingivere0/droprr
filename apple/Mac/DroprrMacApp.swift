@@ -280,7 +280,7 @@ final class MacModel {
         // Pairing is where a fingerprint gets pinned (or replaced).
         // A device token may only fill in an id or pin its peer doesn't have yet (protocol 1 upgrade).
         settings.learn(peerID, deviceID: request.deviceID, fingerprint: request.fingerprint, tlsPort: request.tlsPort,
-                       lan: request.lan, replacePin: request.existingPeerID == nil && request.fingerprint != nil)
+                       lan: request.lan, replacePin: (request.existingPeerID == nil || request.repair) && request.fingerprint != nil)
         // A phone upgrading an existing pairing to protocol 2 isn't news.
         guard request.existingPeerID == nil || request.repair else { return }
         lastPaired = request.name

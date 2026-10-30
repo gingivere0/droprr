@@ -175,14 +175,14 @@ final class LANDiscovery {
 /// Both screens show the same six digits; the other device's person confirms.
 enum LANPairing {
     enum Failure: LocalizedError {
-        case unreachable, declined, timedOut, busy, identityMismatch, alreadyPaired(String), other(String)
+        case unreachable, declined, timedOut, busy, identityMismatch, needsUpdate(String), other(String)
         var errorDescription: String? {
             switch self {
             case .unreachable: return "Couldn't reach it on this Wi-Fi."
             case .declined: return "It declined."
             case .timedOut: return "Nobody answered on the other device."
             case .busy: return "It's busy with another pairing. Try again in a few minutes."
-            case .alreadyPaired(let name): return "Already paired with \(name). Remove it there to pair again."
+            case .needsUpdate(let name): return "Update Droprr on \(name), then pair again."
             case .identityMismatch: return "Identity mismatch: the device that answered isn't the one advertised on this Wi-Fi."
             case .other(let message): return message
             }
@@ -223,6 +223,15 @@ enum LANPairing {
             }
         }
 
+        // An older Droprr answers 409 for a device it already has. If this device can already send to it, that's
+        // connected; otherwise only an update there helps (newer versions pair again instead).
+        func alreadyConnected() throws -> Peer {
+            if let peer = settings.peers.first(where: {
+                ($0.deviceID == device.id || $0.fingerprint == device.fingerprint) && !($0.token ?? "").isEmpty
+            }) { return peer }
+            throw Failure.needsUpdate(PairRequest.displayName(device.name))
+        }
+
         // Step 1: commit to a random nonce before seeing the other device's (pairing v2).
         var nonceR = Data(count: 32)
         _ = nonceR.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
@@ -231,7 +240,7 @@ enum LANPairing {
                                                                "platform": DroprrSettings.platform, "commit": commit, "fp": ownFP])
         switch first {
         case 200: break
-        case 409: throw Failure.alreadyPaired(PairRequest.displayName(device.name))
+        case 409: return try alreadyConnected()
         case 429: throw Failure.busy
         default: throw Failure.other(opened["error"] as? String ?? "It answered \(first).")
         }
@@ -257,7 +266,7 @@ enum LANPairing {
         case 403: throw Failure.declined
         case 408: throw Failure.timedOut
         case 429: throw Failure.busy
-        case 409: throw Failure.alreadyPaired(PairRequest.displayName(device.name))
+        case 409: return try alreadyConnected()
         default: throw Failure.other(json["error"] as? String ?? "It answered \(status).")
         }
         guard let token = (json["token"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) else {

@@ -359,30 +359,22 @@ final class DroprrReceiver {
                 }
                 port = value
             }
-            // With the join secret, like LAN pairing: always a new peer, and a device that's already paired must be
-            // removed first, so a code shown to a guest can't take over another device's record.
+            // With the join secret, like LAN pairing: a new peer, or the same device pairing again (below).
             let joined = isJoin(request)
             let deviceID = Self.deviceID(json["id"])
             let fingerprint = request.clientFingerprint ?? Self.fingerprint(json["fp"])
-            // Pairing again just works when the caller proves it's that device: its client certificate is the pinned
-            // one (or nothing is pinned yet), or it came over Tailscale. Same kind only, never a browser.
+            // Pairing again just works (docs/PROTOCOL.md, "Pairing rules"): the open code is the authorization, so a
+            // peer of the same kind with the caller's id or certificate gets fresh tokens and the caller's current id
+            // and pin. A match of another kind (or a browser) is left alone and the caller is added as a new peer.
             var repairID: UUID?
             if joined {
-                let overTailnet = !request.secure && (PairingInfo.isTailscaleHost(request.remoteHost ?? "") || Self.isLoopback(request.remoteHost))
-                let (match, conflict) = DispatchQueue.main.sync { () -> (UUID?, String?) in
-                    guard let peer = settings.peers.first(where: { peer in
-                        (deviceID != nil && peer.deviceID == deviceID)
-                            || (fingerprint != nil && peer.fingerprint?.lowercased() == fingerprint?.lowercased())
-                    }) else { return (nil, nil) }
-                    let proven = (request.clientFingerprint.map { client in peer.fingerprint == nil || peer.fingerprint?.lowercased() == client } ?? false)
-                        || overTailnet
-                    guard proven, !peer.isBrowser, peer.isPhone == (platform == "ios") else {
-                        return (nil, "already paired as \(peer.name): remove it on \(settings.deviceName) to pair again")
-                    }
-                    return (peer.id, nil)
+                repairID = DispatchQueue.main.sync {
+                    settings.peers.first { peer in
+                        ((deviceID != nil && peer.deviceID == deviceID)
+                            || (fingerprint != nil && peer.fingerprint?.lowercased() == fingerprint?.lowercased()))
+                            && !peer.isBrowser && peer.isPhone == (platform == "ios")
+                    }?.id
                 }
-                if let conflict { return .json(409, ["ok": false, "error": conflict]) }
-                repairID = match
             }
             let callerToken = (json["token"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             let minted = DroprrSettings.generateToken()
@@ -525,18 +517,6 @@ final class DroprrReceiver {
             return .json(400, ["ok": false, "error": "fp doesn't match the client certificate"])
         } }
         if isBlocked(address) { return .json(429, ["ok": false, "error": "try again later"]) }
-        // Already paired (same id or certificate): pairing again updates that peer only when it's the same device,
-        // proven by its certificate (the pinned one, or none pinned yet) and the same kind; otherwise 409.
-        let blocking = await MainActor.run { [settings] in
-            settings.peers.first { $0.deviceID == id || $0.fingerprint == clientFP }.flatMap { peer -> String? in
-                let same = (peer.fingerprint == nil || peer.fingerprint == clientFP) && !peer.isBrowser
-                    && peer.isPhone == (platform == "ios") && (peer.deviceID == nil || peer.deviceID == id)
-                return same ? nil : peer.name
-            }
-        }
-        if let blocking {
-            return .json(409, ["ok": false, "error": "already paired as \(blocking): remove it on \(settings.deviceName) to pair again"])
-        }
 
         var nonceS = Data(count: 32)
         _ = nonceS.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
@@ -601,9 +581,13 @@ final class DroprrReceiver {
                                port: port, token: (json["token"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                                acceptToken: minted, deviceID: session.requesterID, fingerprint: session.clientFingerprint,
                                tlsPort: json["tlsPort"] as? Int, lan: json["lan"] as? [String], viaLAN: true)
-        // The same device pairing again (checked at /pair/request): its existing peer gets the fresh tokens.
+        // Pairing again (the person just confirmed the code): a peer of the same kind with this id or certificate gets
+        // the fresh tokens and the caller's current id and pin, instead of a second entry.
         let existing = await MainActor.run { [settings] in
-            settings.peers.first { $0.deviceID == session.requesterID || $0.fingerprint == session.clientFingerprint }?.id
+            settings.peers.first {
+                ($0.deviceID == session.requesterID || $0.fingerprint == session.clientFingerprint)
+                    && !$0.isBrowser && $0.isPhone == (session.platform == "ios")
+            }?.id
         }
         if let existing {
             pair.existingPeerID = existing

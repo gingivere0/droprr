@@ -197,7 +197,7 @@ final class PhoneModel {
             peerID = peer.id
         }
         settings.learn(peerID, deviceID: request.deviceID, fingerprint: request.fingerprint, tlsPort: request.tlsPort,
-                       lan: request.lan, replacePin: request.existingPeerID == nil && request.fingerprint != nil)
+                       lan: request.lan, replacePin: (request.existingPeerID == nil || request.repair) && request.fingerprint != nil)
         pairingStatus = .success("Paired with \(request.name)")
     }
 
@@ -411,7 +411,7 @@ final class PhoneModel {
                                lan: result.lan, host: result.host, replacePin: result.fingerprint != nil)
                 added(peer.id)
                 await collectInbox()
-            } catch DroprrError.server(409, let message) {
+            } catch DroprrError.server(409, _) {
                 // Already paired with each other: nothing to do, so it's a success like any pairing.
                 if let known = settings.peers.first(where: { peer in
                     (info.id != nil && peer.deviceID == info.id) || (info.fp != nil && peer.fingerprint == info.fp)
@@ -419,7 +419,7 @@ final class PhoneModel {
                     added(known.id)
                     return
                 }
-                pairingStatus = .failure("\(info.name) says this iPhone is \(message).")
+                pairingStatus = .failure("Update Droprr on \(info.name), then pair again.")
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             } catch DroprrError.server(401, _) {
                 pairingStatus = .failure("That code has expired. Open Pair a phone on \(info.name) again and scan the new code.")
