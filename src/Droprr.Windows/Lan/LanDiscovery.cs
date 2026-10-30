@@ -146,6 +146,10 @@ static class LanDiscovery
                     var known = Found.TryGetValue(device.Id, out var before)
                         && before.Fingerprint == device.Fingerprint && before.Name == device.Name
                         && before.Addresses.SequenceEqual(device.Addresses) && before.IsFresh;
+                    // Windows keeps a registration whose process exited without withdrawing it (a crashed test run,
+                    // or a renamed "Name (1)"), until it restarts. Only a device that answers on its port is listed.
+                    if (!known && !await AnswersAsync(device, cancel))
+                        continue;
                     Found[device.Id] = device;
                     changed |= !known;
                 }
@@ -167,6 +171,35 @@ static class LanDiscovery
                 try { await Task.Delay(BrowseEvery, cancel); } catch (OperationCanceledException) { return; }
             }
         }
+    }
+
+    // Advertisements that didn't answer, by id, port, and addresses, so they aren't tried on every browse.
+    static readonly ConcurrentDictionary<string, DateTime> Silent = new();
+    static readonly TimeSpan SilentFor = TimeSpan.FromMinutes(5);
+
+    // Whether anything accepts a TCP connection on one of the device's addresses, within 1.5 seconds each.
+    static async Task<bool> AnswersAsync(LanDevice device, CancellationToken cancel)
+    {
+        var key = $"{device.Id}|{device.Port}|{string.Join(",", device.Addresses)}";
+        if (Silent.TryGetValue(key, out var since) && DateTime.UtcNow - since < SilentFor)
+            return false;
+        foreach (var endpoint in device.Endpoints.Where(LanDevice.IsUsable))
+        {
+            using var client = new TcpClient(endpoint.AddressFamily);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+            timeout.CancelAfter(TimeSpan.FromSeconds(1.5));
+            try
+            {
+                await client.ConnectAsync(endpoint, timeout.Token);
+                Silent.TryRemove(key, out _);
+                return true;
+            }
+            catch (Exception ex) when (ex is SocketException or OperationCanceledException && !cancel.IsCancellationRequested)
+            {
+            }
+        }
+        Silent[key] = DateTime.UtcNow;
+        return false;
     }
 
     // A protocol 2 instance with an id, a full fingerprint, and at least one address Droprr will talk to.
