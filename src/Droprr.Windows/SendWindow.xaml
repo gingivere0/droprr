@@ -269,6 +269,9 @@
                         <!-- While sending: stops the send and gives the buttons back. -->
                         <ui:Button x:Name="CancelSendButton" DockPanel.Dock="Right" Content="Cancel" Appearance="Transparent" Padding="8,2"
                                    Visibility="Collapsed" AutomationProperties.Name="Cancel sending" Click="OnCancelSend" />
+                        <!-- Dismisses a finished status; while sending, Cancel takes its place. -->
+                        <ui:Button x:Name="DismissStatusButton" DockPanel.Dock="Right" Icon="{ui:SymbolIcon Dismiss16}" Appearance="Transparent"
+                                   Padding="6" ToolTip="Dismiss" AutomationProperties.Name="Dismiss" Click="OnDismissStatus" />
                         <TextBlock x:Name="SuccessText" VerticalAlignment="Center" FontWeight="SemiBold" TextWrapping="Wrap"
                                    Foreground="{DynamicResource SuccessTextBrush}" />
                     </DockPanel>

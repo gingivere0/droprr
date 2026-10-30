@@ -209,7 +209,11 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         SuccessIcon.SetResourceReference(ForegroundProperty, text);
         SuccessText.SetResourceReference(TextBlock.ForegroundProperty, text);
         CancelSendButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        DismissStatusButton.Visibility = busy ? Visibility.Collapsed : Visibility.Visible;
+        DismissStatusButton.SetResourceReference(ForegroundProperty, text);
     }
+
+    void OnDismissStatus(object sender, RoutedEventArgs e) => HideStatus();
 
     System.Threading.CancellationTokenSource? _sendCancel;
 
