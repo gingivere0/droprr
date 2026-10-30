@@ -67,6 +67,10 @@ public sealed class Peer
     [JsonIgnore]
     public string ClearWaitingLabel => $"Clear {Waiting} item{(Waiting == 1 ? "" : "s")} waiting for {Name}";
 
+    // Computers have an address, port, and token to edit in Settings; phones and browsers don't.
+    [JsonIgnore]
+    public bool HasDetails => !IsPhone;
+
     // A computer needs a token to be sent to; phones are queued instead.
     [JsonIgnore]
     public bool IsPaired => IsPhone || Token.Length > 0;

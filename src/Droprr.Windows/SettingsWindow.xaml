@@ -9,6 +9,7 @@
     <ui:FluentWindow.Resources>
         <local:MaskedTokenConverter x:Key="MaskedToken" />
         <local:PlatformSymbolConverter x:Key="PlatformSymbol" />
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         <!-- A labeled on/off row inside a tile. -->
         <Style x:Key="ToggleRow" TargetType="DockPanel">
             <Setter Property="Margin" Value="0,12,0,0" />
@@ -80,71 +81,72 @@
                     <StackPanel>
                         <TextBlock Text="Devices" Style="{StaticResource TileTitle}" Margin="0,0,0,4" />
                         <TextBlock Style="{StaticResource Caption}" Margin="0,0,0,12"
-                                   Text="Computers by Tailscale name. Turn on iPhone for phones: items for them wait on this PC until the phone collects them." />
-                        <DataGrid x:Name="PeerGrid" AutomationProperties.Name="Devices" AutoGenerateColumns="False" CanUserAddRows="False"
-                                  HeadersVisibility="Column" MinHeight="96" GridLinesVisibility="None" SelectionMode="Single">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn x:Name="NameColumn" Header="Name" Binding="{Binding Name}" Width="2*" />
-                                <!-- The Tailscale host; a device paired over Wi-Fi without one shows its Wi-Fi address, dimmed. -->
-                                <DataGridTemplateColumn Header="Tailscale host" Width="2*">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding Address}" VerticalAlignment="Center" Margin="12,0" TextTrimming="CharacterEllipsis">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding Host.Length}" Value="0">
-                                                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-                                                                <Setter Property="ToolTip" Value="Paired over Wi-Fi; no Tailscale host" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                    <DataGridTemplateColumn.CellEditingTemplate>
-                                        <DataTemplate>
-                                            <TextBox Text="{Binding Host, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Tailscale host" />
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellEditingTemplate>
-                                </DataGridTemplateColumn>
-                                <DataGridTextColumn Header="Port" Binding="{Binding Port}" Width="70" />
-                                <!-- The path the last send took: Wi-Fi or Tailscale. -->
-                                <DataGridTextColumn Header="Last path" Binding="{Binding PathLabel, Mode=OneWay}" IsReadOnly="True" Width="90" />
-                                <DataGridCheckBoxColumn Header="iPhone" Binding="{Binding IsPhone, UpdateSourceTrigger=PropertyChanged}" Width="70"
-                                                        ElementStyle="{StaticResource {x:Type CheckBox}}" EditingElementStyle="{StaticResource {x:Type CheckBox}}" />
-                                <!-- Shown as dots until Show tokens is on; editing a cell shows that one token. -->
-                                <DataGridTemplateColumn x:Name="TokenColumn" Header="Token" Width="2*">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <TextBlock VerticalAlignment="Center" Margin="12,0" TextTrimming="CharacterEllipsis">
-                                                <TextBlock.Text>
-                                                    <MultiBinding Converter="{StaticResource MaskedToken}">
-                                                        <Binding Path="Token" />
-                                                        <Binding Path="PeerTokensVisible" RelativeSource="{RelativeSource AncestorType=local:SettingsWindow}" />
-                                                    </MultiBinding>
-                                                </TextBlock.Text>
-                                            </TextBlock>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                    <DataGridTemplateColumn.CellEditingTemplate>
-                                        <DataTemplate>
-                                            <TextBox Text="{Binding Token, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Token" />
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellEditingTemplate>
-                                </DataGridTemplateColumn>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                            <ui:Button Content="Add device" Icon="{ui:SymbolIcon Add24}" Click="OnAddPeer" />
-                            <ui:Button Content="Remove" Icon="{ui:SymbolIcon Delete24}" Margin="8,0,0,0" Click="OnRemovePeer" />
-                            <ui:Button x:Name="ShowPeerTokensButton" Content="Show tokens" Icon="{ui:SymbolIcon Eye24}" Margin="8,0,0,0"
-                                       Click="OnShowPeerTokens" />
-                            <ui:Button x:Name="TestButton" Content="Test" Icon="{ui:SymbolIcon PlugConnected24}" Margin="8,0,0,0"
-                                       ToolTip="Check that the selected device answers, and over which path" Click="OnTestPeer" />
-                            <TextBlock x:Name="TestResult" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="12,0,0,0" />
-                        </StackPanel>
+                                   Text="Click a name to rename it. Add a device shows the code phones and browsers scan." />
+                        <!-- One row per device: its glyph, an editable name, what it is, and its actions. Computers keep their
+                             address, port, and token under Details. -->
+                        <ItemsControl x:Name="PeerList" AutomationProperties.Name="Devices">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type local:Peer}">
+                                    <Border BorderBrush="{DynamicResource ThemeBorderBrush}" BorderThickness="0,0,0,1" Padding="0,8">
+                                        <StackPanel>
+                                            <DockPanel>
+                                                <ui:Button DockPanel.Dock="Right" Appearance="Transparent" Icon="{ui:SymbolIcon Delete24}"
+                                                           ToolTip="Remove" AutomationProperties.Name="{Binding Name, StringFormat='Remove {0}'}"
+                                                           Click="OnRemovePeer" Margin="4,0,0,0" />
+                                                <ui:Button DockPanel.Dock="Right" Appearance="Transparent" Icon="{ui:SymbolIcon PlugConnected24}"
+                                                           ToolTip="Test: check that it answers, and over which path"
+                                                           AutomationProperties.Name="{Binding Name, StringFormat='Test {0}'}" Click="OnTestPeer" />
+                                                <Border DockPanel.Dock="Left" Width="32" Height="32" CornerRadius="{StaticResource RadiusTile}"
+                                                        Background="{DynamicResource AccentTintBrush}" Margin="0,0,12,0" VerticalAlignment="Center">
+                                                    <ui:SymbolIcon Symbol="{Binding Platform, Converter={StaticResource PlatformSymbol}}" FontSize="16"
+                                                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                                </Border>
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <!-- Looks like text until clicked; then it's a normal box to rename in. -->
+                                                    <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" FontWeight="SemiBold"
+                                                             BorderThickness="0" Background="Transparent" Padding="0" MinHeight="0"
+                                                             Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                             CaretBrush="{DynamicResource TextFillColorPrimaryBrush}"
+                                                             ToolTip="Click to rename" AutomationProperties.Name="Device name" />
+                                                    <TextBlock Text="{Binding Note}" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                            </DockPanel>
+                                            <Expander Header="Details" Margin="44,4,0,0" Visibility="{Binding HasDetails, Converter={StaticResource BoolToVisibility}}">
+                                                <Grid Margin="0,8,0,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                    </Grid.RowDefinitions>
+                                                    <TextBlock Text="Tailscale host" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="0,0,12,8" />
+                                                    <ui:TextBox Grid.Column="1" Text="{Binding Host, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"
+                                                                PlaceholderText="Its Tailscale name (empty if paired over Wi-Fi)" AutomationProperties.Name="Tailscale host" />
+                                                    <TextBlock Grid.Row="1" Text="Port" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="0,0,12,8" />
+                                                    <ui:TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}" Width="100"
+                                                                HorizontalAlignment="Left" Margin="0,0,0,8" AutomationProperties.Name="Port" />
+                                                    <TextBlock Grid.Row="2" Text="Token" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                                    <ui:PasswordBox Grid.Row="2" Grid.Column="1" x:Name="TokenBox" Password="{Binding Token, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                    PlaceholderText="From that computer's Settings" AutomationProperties.Name="Token" />
+                                                </Grid>
+                                            </Expander>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock x:Name="EmptyDevices" Style="{StaticResource Caption}" Margin="0,8,0,0" Visibility="Collapsed"
+                                   Text="No devices yet. Choose Add a device and scan the code with a phone." />
+                        <WrapPanel Margin="0,12,0,0">
+                            <ui:Button Content="Add a device" Icon="{ui:SymbolIcon Add24}" Style="{StaticResource TonalButton}" Click="OnPair" />
+                            <ui:Button Content="Add a computer by address" Icon="{ui:SymbolIcon Desktop24}" Margin="8,0,0,0" Click="OnAddPeer" />
+                            <ui:Button x:Name="RemoveBrowsersButton" Icon="{ui:SymbolIcon Globe24}" Margin="8,0,0,0" Click="OnRemoveBrowsers"
+                                       Visibility="Collapsed" ToolTip="Browsers that connected from the website" />
+                        </WrapPanel>
+                        <TextBlock x:Name="TestResult" Style="{StaticResource Caption}" Margin="0,8,0,0" TextWrapping="Wrap" />
 
                         <!-- Droprr devices discovered on this network that aren't paired yet (LAN pairing). -->
                         <StackPanel x:Name="NearbyPanel" Visibility="Collapsed" Margin="0,16,0,0">

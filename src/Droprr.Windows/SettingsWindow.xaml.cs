@@ -51,8 +51,8 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
             _savedName[peer] = peer.Name;
         _originalTokens = _settings.Peers.GroupBy(p => p.Name.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Token, StringComparer.OrdinalIgnoreCase);
-        PeerGrid.ItemsSource = _peers;
-        DeviceCountChip.Text = _peers.Count == 1 ? "1 device" : $"{_peers.Count} devices";
+        PeerList.ItemsSource = _peers;
+        ShowPeers();
         ShowToken();
 
         // Appearance: picking a swatch restyles every window at once; Cancel (or closing) puts it back.
@@ -106,12 +106,8 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
             running.Cancel();
             return;
         }
-        PeerGrid.CommitEdit(DataGridEditingUnit.Row, true);
-        if (PeerGrid.SelectedItem is not Peer peer)
-        {
-            TestResult.Text = "Select a device first.";
+        if ((sender as FrameworkElement)?.DataContext is not Peer peer)
             return;
-        }
         if (peer.IsPhone && peer.Token.Length == 0)
         {
             TestResult.Text = peer.IsBrowser
@@ -121,8 +117,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         }
         using var cancel = new System.Threading.CancellationTokenSource();
         _testCancel = cancel;
-        TestButton.Content = "Cancel";
-        TestResult.Text = $"Testing {peer.Name}…";
+        TestResult.Text = $"Testing {peer.Name}… (click Test again to cancel)";
         try
         {
             var (ok, text) = await Sender.TestAsync(peer, cancel.Token);
@@ -137,7 +132,6 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         finally
         {
             _testCancel = null;
-            TestButton.Content = "Test";
         }
     }
 
@@ -214,6 +208,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
             _peers[_peers.IndexOf(existing)] = paired;
         else
             _peers.Add(paired);
+        ShowPeers();
         _savedName[paired] = paired.Name;
     }
 
@@ -300,31 +295,58 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
             SaveFolder.Text = dialog.FolderName;
     }
 
+    // A computer added by hand (Tailscale name and token): a new row with its details open and its name ready to type.
     void OnAddPeer(object sender, RoutedEventArgs e)
     {
-        var peer = new Peer { Name = "New device" };
+        var peer = new Peer { Name = "New computer" };
         _peers.Add(peer);
-        EditCell(peer, NameColumn);
+        ShowPeers();
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => OpenRow(peer, focusToken: false));
     }
 
-    // Peer tokens show as dots until revealed here.
-    public static readonly DependencyProperty PeerTokensVisibleProperty =
-        DependencyProperty.Register(nameof(PeerTokensVisible), typeof(bool), typeof(SettingsWindow));
-
-    public bool PeerTokensVisible
+    // Removes every browser that connected from the website at once (they pile up when guests use it).
+    void OnRemoveBrowsers(object sender, RoutedEventArgs e)
     {
-        get => (bool)GetValue(PeerTokensVisibleProperty);
-        set => SetValue(PeerTokensVisibleProperty, value);
+        foreach (var browser in _peers.Where(p => p.IsBrowser).ToList())
+            _peers.Remove(browser);
+        ShowPeers();
     }
 
-    void OnShowPeerTokens(object sender, RoutedEventArgs e)
+    // The empty state, the device count, and the Remove browsers button follow the list.
+    void ShowPeers()
     {
-        PeerTokensVisible = !PeerTokensVisible;
-        ShowPeerTokensButton.Content = PeerTokensVisible ? "Hide tokens" : "Show tokens";
-        ShowPeerTokensButton.Icon = new Wpf.Ui.Controls.SymbolIcon(PeerTokensVisible ? Wpf.Ui.Controls.SymbolRegular.EyeOff24 : Wpf.Ui.Controls.SymbolRegular.Eye24);
+        var browsers = _peers.Count(p => p.IsBrowser);
+        RemoveBrowsersButton.Visibility = browsers > 1 ? Visibility.Visible : Visibility.Collapsed;
+        RemoveBrowsersButton.Content = $"Remove {browsers} browsers";
+        EmptyDevices.Visibility = _peers.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        DeviceCountChip.Text = _peers.Count == 1 ? "1 device" : $"{_peers.Count} devices";
     }
 
-    // From the Send window's "Missing Token" tile: start editing that device's token.
+    // Opens a row's Details and puts the cursor in its token box, or in its name when focusToken is false.
+    void OpenRow(Peer peer, bool focusToken)
+    {
+        if (PeerList.ItemContainerGenerator.ContainerFromItem(peer) is not FrameworkElement row)
+            return;
+        row.BringIntoView();
+        if (FindChild<System.Windows.Controls.Expander>(row) is { } details)
+            details.IsExpanded = true;
+        row.UpdateLayout();
+        System.Windows.Controls.Control? box = focusToken ? FindChild<Wpf.Ui.Controls.PasswordBox>(row) : FindChild<System.Windows.Controls.TextBox>(row);
+        box?.Focus();
+        (box as System.Windows.Controls.TextBox)?.SelectAll();
+    }
+
+    static T? FindChild<T>(DependencyObject? element) where T : DependencyObject
+    {
+        if (element is T found)
+            return found;
+        for (var i = 0; element is not null && i < VisualTreeHelper.GetChildrenCount(element); i++)
+            if (FindChild<T>(VisualTreeHelper.GetChild(element, i)) is { } child)
+                return child;
+        return null;
+    }
+
+    // From the Send window's "Missing Token" tile: open that device's details at its token.
     internal void FocusPeerToken(string name)
     {
         if (!IsLoaded)
@@ -338,46 +360,19 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
             return;
         }
         if (_peers.FirstOrDefault(p => p.Name.Trim().Equals(name.Trim(), StringComparison.OrdinalIgnoreCase)) is { } peer)
-            EditCell(peer, TokenColumn);
-    }
-
-    // Selects the cell, starts editing it, and puts the cursor in its text box with the text selected.
-    void EditCell(Peer peer, DataGridColumn column)
-    {
-        PeerGrid.SelectedItem = peer;
-        PeerGrid.ScrollIntoView(peer, column);
-        PeerGrid.UpdateLayout();
-        PeerGrid.CurrentCell = new DataGridCellInfo(peer, column);
-        PeerGrid.Focus();
-        PeerGrid.BeginEdit();
-        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
-        {
-            if (FindTextBox(column.GetCellContent(peer)) is not { } box)
-                return;
-            box.Focus();
-            box.SelectAll();
-            box.BringIntoView();
-        });
-    }
-
-    static System.Windows.Controls.TextBox? FindTextBox(DependencyObject? element)
-    {
-        if (element is System.Windows.Controls.TextBox box)
-            return box;
-        for (var i = 0; element is not null && i < VisualTreeHelper.GetChildrenCount(element); i++)
-            if (FindTextBox(VisualTreeHelper.GetChild(element, i)) is { } found)
-                return found;
-        return null;
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => OpenRow(peer, focusToken: true));
     }
 
     // Uses the saved settings, so the code carries the token and port this PC is actually using.
     void OnPair(object sender, RoutedEventArgs e) =>
         (Application.Current as App)?.ShowPairWindow();
 
+    // Removed from the list at once; nothing is saved until Save, so Cancel brings it back.
     void OnRemovePeer(object sender, RoutedEventArgs e)
     {
-        if (PeerGrid.SelectedItem is Peer peer)
+        if ((sender as FrameworkElement)?.DataContext is Peer peer)
             _peers.Remove(peer);
+        ShowPeers();
     }
 
     // Opens settings.json in the default .json editor, or Notepad when nothing is associated with .json.
@@ -438,7 +433,6 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
 
     async void OnSave(object sender, RoutedEventArgs e)
     {
-        PeerGrid.CommitEdit(System.Windows.Controls.DataGridEditingUnit.Row, true);
         if (string.IsNullOrWhiteSpace(DeviceName.Text))
         {
             Error.Text = "Give this PC a name.";
