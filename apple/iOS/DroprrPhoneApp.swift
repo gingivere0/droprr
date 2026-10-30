@@ -9,6 +9,7 @@ struct DroprrPhoneApp: App {
     init() {
         CrashLog.install()
         CrashLog.cleanTemporaryFiles()
+        Look.applyNavigationFonts()
     }
     @Environment(\.scenePhase) private var scenePhase
 

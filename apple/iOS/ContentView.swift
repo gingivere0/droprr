@@ -40,10 +40,13 @@ struct ContentView: View {
         }
         .tint(Look.accentText)
         .foregroundStyle(Look.ink)
-        .fontDesign(Look.style == .clay ? .rounded : .default)
+        .fontDesign(Look.style == .clay ? .rounded : nil)
         .preferredColorScheme(Look.colorScheme)
         // The home-screen icon follows the theme too (alternate app icons).
         .onAppear { AppIconSwitcher.apply(model.settings.theme) }
+        // Every screen's titles use the style's font, like the Send screen.
+        .onAppear { Look.applyNavigationFonts() }
+        .onChange(of: model.settings.style) { Look.applyNavigationFonts() }
         .onChange(of: model.settings.theme) { _, theme in AppIconSwitcher.apply(theme) }
         // "Missing Token" on the Send tab opens that device in Settings.
         .onChange(of: model.settings.localNetwork) { _, on in if on { model.startLocalNetwork() } else { model.stopLocalNetwork() } }
@@ -263,15 +266,11 @@ private struct SendTab: View {
         LookBackground().ignoresSafeArea()
     }
 
-    /// Logo, a large "Send" title and who it's going to, like the Mac's Send window.
+    /// Logo and a large "Send to" title, like the Mac's Send window.
     private var header: some View {
         HStack(spacing: Space.md) {
             LogoBadge(size: 44).id(model.settings.theme)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Send").font(Look.display(34, weight: Look.style == .material ? .regular : nil))
-                Text(peer.map { "To \($0.name)" } ?? "Pair a computer to start")
-                    .font(.subheadline).foregroundStyle(Look.muted).lineLimit(1)
-            }
+            Text("Send to").font(Look.display(34, weight: Look.style == .material ? .regular : nil))
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
@@ -284,7 +283,6 @@ private struct SendTab: View {
     /// Device tiles like the Mac's: the selected one fills with the theme color.
     private var devicePicker: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            SectionLabel("Send to")
             LazyVGrid(columns: [GridItem(.flexible(), spacing: Space.md), GridItem(.flexible(), spacing: Space.md)],
                       spacing: Space.md) {
                 ForEach(desktops) { device in
@@ -333,7 +331,7 @@ private struct SendTab: View {
         HStack(alignment: .top, spacing: Space.md) {
             PhotosPicker(selection: $photos, matching: .any(of: [.images, .videos])) {
                 ActionCardLabel(title: "Photos", symbol: "photo.fill.on.rectangle.fill",
-                                detail: photos.isEmpty ? "Pick photos or videos" : "\(photos.count) selected", selected: !photos.isEmpty)
+                                detail: photos.isEmpty ? nil : "\(photos.count) selected", selected: !photos.isEmpty)
             }
             .buttonStyle(PressableStyle())
             .frame(height: 260)

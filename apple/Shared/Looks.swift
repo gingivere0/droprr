@@ -691,3 +691,43 @@ func dismissKeyboard() {
     app?.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 }
 #endif
+
+#if os(iOS)
+import UIKit
+
+extension Look {
+    /// The style's display font for navigation titles too (Received, Settings and every sheet), so each screen's
+    /// title matches the Send screen's.
+    static func applyNavigationFonts() {
+        func font(_ size: CGFloat) -> UIFont {
+            let weight: UIFont.Weight
+            var design: UIFontDescriptor.SystemDesign = .default
+            switch style {
+            case .material: weight = .regular
+            case .clay: weight = .heavy; design = .rounded
+            case .spatial: weight = .bold
+            case .atelier: weight = .regular; design = .serif
+            }
+            let base = UIFont.systemFont(ofSize: size, weight: weight)
+            return base.fontDescriptor.withDesign(design).map { UIFont(descriptor: $0, size: size) } ?? base
+        }
+        let large: [NSAttributedString.Key: Any] = [.font: font(34)]
+        let small: [NSAttributedString.Key: Any] = [.font: font(17)]
+        let proxy = UINavigationBar.appearance()
+        proxy.largeTitleTextAttributes = large
+        proxy.titleTextAttributes = small
+        // Bars already on screen don't follow the proxy: update them in place.
+        func visit(_ view: UIView) {
+            if let bar = view as? UINavigationBar {
+                bar.largeTitleTextAttributes = large
+                bar.titleTextAttributes = small
+            }
+            view.subviews.forEach(visit)
+        }
+        let app = UIApplication.value(forKey: "sharedApplication") as? UIApplication
+        for case let scene as UIWindowScene in app?.connectedScenes ?? [] {
+            scene.windows.forEach(visit)
+        }
+    }
+}
+#endif

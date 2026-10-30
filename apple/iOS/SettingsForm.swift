@@ -45,8 +45,6 @@ struct SettingsForm: View {
                 .buttonStyle(.borderless)
             } header: {
                 Text("Devices")
-            } footer: {
-                Text("Add Device lists computers on this Wi-Fi. Or use a computer's Tailscale name (e.g. my-pc) or 100.x address.")
             }
 
             Section {
@@ -77,8 +75,6 @@ struct SettingsForm: View {
                 .buttonStyle(.borderless)
             } header: {
                 Text("Default token")
-            } footer: {
-                Text("Used only for devices you add by hand. Devices paired with a QR code keep their own token.")
             }
 
             Section {

@@ -55,7 +55,7 @@ struct SendView: View {
                 HStack(alignment: .bottom, spacing: Space.lg) {
                     VStack(alignment: .leading, spacing: 6) {
                         Kicker("Droprr")
-                        Text("Send").font(Look.display(40))
+                        Text("Send to").font(Look.display(40))
                     }
                     Spacer()
                     LogoBadge(size: 40).padding(.bottom, 6)
@@ -63,11 +63,7 @@ struct SendView: View {
             } else {
                 HStack(spacing: Space.md) {
                     LogoBadge(size: 42)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Send").font(Look.display(32))
-                        Text(selected.map { "To \($0.name)" } ?? "Choose a device")
-                            .font(.system(size: 13)).foregroundStyle(Look.muted)
-                    }
+                    Text("Send to").font(Look.display(32))
                     Spacer()
                 }
             }
@@ -111,7 +107,6 @@ struct SendView: View {
 
     private var devices: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            Kicker("Send to")
             // Atelier tabs scroll sideways when there are many; cards wrap onto more rows (at most 4 per row).
             let layout = Look.isAtelier
                 ? AnyLayout(HStackLayout(alignment: .top, spacing: 28))
