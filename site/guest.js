@@ -194,6 +194,12 @@ function connect(target) {
           fail(`${name} didn't accept this browser${message.e ? ` (${message.e})` : ""}. Scan its code again.`);
         } else if (message.t === "invite") {
           showInvite(message);
+        } else if (message.t === "bye") {
+          // The other side disconnected this browser and forgot its token.
+          remember(current.room, { token: "" });
+          disconnect(false);
+          showStart();
+          setStatus($("start-status"), `${current.name} disconnected this browser. Scan its code to connect again.`, "error");
         }
       },
       onItem: async (item) => addReceived(item),
@@ -217,11 +223,26 @@ function connect(target) {
   };
 }
 
-function disconnect(show = true) {
+// show: back to the start screen (the Disconnect button). Only then is a device that connected to this browser
+// forgotten; replacing one connection with another isn't a disconnect.
+function disconnect(show = true, forget = show) {
   const current = session;
+  const currentLink = link;
   session = null;
   link = null;
-  if (current) {
+  if (current?.hosted && current.id && forget) {
+    // Disconnect from a device that connected to this browser forgets it: its token stops working, so it can't
+    // reconnect (or send) without scanning this browser's code again. It's told why first.
+    const peers = hostPeers();
+    delete peers[current.id];
+    storage(HOST_PEERS, JSON.stringify(peers));
+    currentLink?.control({ t: "bye" });
+    setTimeout(() => current.pc?.close(), 300);
+    if (!Object.keys(peers).length && hosting && !hosting.secret) {
+      hosting.relay.close();
+      hosting = null;
+    }
+  } else if (current) {
     current.relay?.close();
     current.pc?.close();
   }
@@ -425,6 +446,7 @@ function acceptGuest(h, cid, guest, channel) {
       guest.link.control({ t: "welcome", name: guessBrowserName(), token });
       if (session && session !== current) disconnect(false);
       current.name = name;
+      current.id = id;
       current.done = true;
       session = current;
       link = guest.link;
