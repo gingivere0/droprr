@@ -377,10 +377,15 @@ private struct SendTab: View {
                         .foregroundStyle(Theme.tile)
                 }
                 .accessibilityHidden(true)
-            TextField("drip... drip... drip...", text: $text, axis: .vertical)
-                .lineLimit(2...8)
-                .focused($typing)
-                .padding(.top, 6)
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Text("Text").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.secondaryText)
+                    .accessibilityHidden(true)
+                TextField("drip... drip... drip...", text: $text, axis: .vertical)
+                    .lineLimit(2...8)
+                    .focused($typing)
+                    .accessibilityLabel("Text")
+            }
+            .padding(.top, 6)
         }
         .padding(Space.lg)
         .background {

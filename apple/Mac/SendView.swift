@@ -215,27 +215,30 @@ struct SendView: View {
         .accessibilityLabel(files.isEmpty ? "Drop area. Drop files here or choose files." : "\(files.count) files ready")
     }
 
-    /// A message or link to send along, written on an underlined line.
+    /// Text or a link to send along, under the heading "Text".
     @ViewBuilder private var composer: some View {
         if Look.isAtelier { underlinedComposer } else { fieldComposer }
     }
 
     /// The other styles: a rounded field in the style's container.
     private var fieldComposer: some View {
-        TextField("", text: $text, prompt: Text("drip... drip... drip...").foregroundStyle(Look.muted), axis: .vertical)
-            .lineLimit(1...6)
-            .textFieldStyle(.plain)
-            .font(.system(size: 14))
-            .focused($typing)
-            .lookCard(padding: 16)
-            .overlay(RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous)
-                .strokeBorder(Theme.secondaryText, lineWidth: typing ? 2 : 0))
-            .motion(Motion.fast, value: typing)
+        VStack(alignment: .leading, spacing: Space.xs) {
+            Kicker("Text")
+            TextField("", text: $text, prompt: Text("drip... drip... drip...").foregroundStyle(Look.muted), axis: .vertical)
+                .lineLimit(1...6)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14))
+                .focused($typing)
+                .lookCard(padding: 16)
+                .overlay(RoundedRectangle(cornerRadius: Look.cardRadius, style: .continuous)
+                    .strokeBorder(Theme.secondaryText, lineWidth: typing ? 2 : 0))
+                .motion(Motion.fast, value: typing)
+        }
     }
 
     private var underlinedComposer: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
-            Kicker("Message")
+            Kicker("Text")
             TextField("", text: $text,
                       prompt: Text("drip... drip... drip...").font(Look.display(16)).italic(),
                       axis: .vertical)
