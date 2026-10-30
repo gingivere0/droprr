@@ -594,7 +594,8 @@ final class DroprrReceiver {
             pair.viaLAN = false
             pair.repair = true
         }
-        await MainActor.run { onPair(pair) }
+        let confirmed = pair
+        await MainActor.run { onPair(confirmed) }
         return .json(200, responseFields(token: minted))
     }
 

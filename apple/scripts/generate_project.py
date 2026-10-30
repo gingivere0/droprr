@@ -59,6 +59,7 @@ tset = {
    ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES='"AppIcon-sunset AppIcon-cherry AppIcon-roseGold AppIcon-graphiteLime AppIcon-oliveMustard"',
    INFOPLIST_KEY_UILaunchScreen_Generation='YES', INFOPLIST_KEY_UIApplicationSceneManifest_Generation='YES',
    INFOPLIST_KEY_UISupportedInterfaceOrientations='"UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"',
+   INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad='"UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"',
    LD_RUNPATH_SEARCH_PATHS='"@executable_path/Frameworks"'),
  'DroprrShare': dict(SDKROOT='iphoneos', IPHONEOS_DEPLOYMENT_TARGET='17.0', PRODUCT_NAME='DroprrShare', TARGETED_DEVICE_FAMILY='"1,2"',
    PRODUCT_BUNDLE_IDENTIFIER='"$(DROPRR_BUNDLE_PREFIX).droprr.share"', INFOPLIST_FILE='Config/Share-Info.plist',
