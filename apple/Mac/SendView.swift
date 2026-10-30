@@ -222,7 +222,7 @@ struct SendView: View {
 
     /// The other styles: a rounded field in the style's container.
     private var fieldComposer: some View {
-        TextField("", text: $text, prompt: Text("Add a message or paste a link").foregroundStyle(Look.muted), axis: .vertical)
+        TextField("", text: $text, prompt: Text("drip... drip... drip...").foregroundStyle(Look.muted), axis: .vertical)
             .lineLimit(1...6)
             .textFieldStyle(.plain)
             .font(.system(size: 14))
@@ -237,7 +237,7 @@ struct SendView: View {
         VStack(alignment: .leading, spacing: Space.sm) {
             Kicker("Message")
             TextField("", text: $text,
-                      prompt: Text("Add a message or paste a link").font(Look.display(16)).italic(),
+                      prompt: Text("drip... drip... drip...").font(Look.display(16)).italic(),
                       axis: .vertical)
                 .lineLimit(1...6)
                 .textFieldStyle(.plain)
@@ -371,10 +371,11 @@ private struct DeviceTab: View {
                     .font(.system(size: 18, weight: .medium))
                 Spacer(minLength: Space.xs)
                 Text(peer.name).font(.system(size: 14, weight: Look.style == .clay ? .bold : .semibold)).lineLimit(1)
-                Text(targeted ? "Release to send now" : Theme.platformName(peer.platform))
-                    .font(.system(size: 11))
-                    .opacity(peer.isPaired || targeted ? 1 : 0)
-                    .foregroundStyle(active ? Look.selectedInk.opacity(0.75) : Look.muted)
+                if targeted {
+                    Text("Release to send now")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Look.selectedInk.opacity(0.75))
+                }
             }
             .foregroundStyle(active ? Look.selectedInk : Look.ink)
             .padding(14)
@@ -436,8 +437,6 @@ private struct DeviceTab: View {
                 MissingTokenButton(action: onMissingToken)
             } else if waiting > 0 {
                 WaitingBadge(count: waiting, peerName: peer.name, onClear: onClearWaiting)
-            } else {
-                Text(Theme.platformName(peer.platform)).font(.system(size: 11)).foregroundStyle(Look.muted)
             }
         }
     }
@@ -465,7 +464,6 @@ private struct AddDeviceTile: View {
                 Image(systemName: "plus").font(.system(size: 18, weight: .medium))
                 Spacer(minLength: Space.xs)
                 Text("Add a device").font(.system(size: 14, weight: Look.style == .clay ? .bold : .semibold)).lineLimit(1)
-                Text("Phone or browser").font(.system(size: 11)).foregroundStyle(Look.muted)
             }
             .foregroundStyle(hovering ? Look.ink : Look.muted)
             .padding(14)
@@ -494,7 +492,6 @@ private struct AddDeviceTile: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            Text("Phone or browser").font(.system(size: 11)).foregroundStyle(Look.muted)
         }
     }
 }

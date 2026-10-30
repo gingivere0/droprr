@@ -303,9 +303,6 @@ private struct SendTab: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(device.name).font(.subheadline.weight(.semibold))
                                     .lineLimit(1).minimumScaleFactor(0.7)
-                                Text(Theme.platformName(device.platform)).font(.caption)
-                                    .opacity(device.isPaired ? 1 : 0)
-                                    .foregroundStyle(selected ? Look.selectedInk.opacity(0.75) : Look.muted)
                             }
                             Spacer(minLength: 0)
                         }
@@ -380,7 +377,7 @@ private struct SendTab: View {
                         .foregroundStyle(Theme.tile)
                 }
                 .accessibilityHidden(true)
-            TextField("Add a message or paste a link", text: $text, axis: .vertical)
+            TextField("drip... drip... drip...", text: $text, axis: .vertical)
                 .lineLimit(2...8)
                 .focused($typing)
                 .padding(.top, 6)
