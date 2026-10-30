@@ -33,6 +33,8 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler {
 
     /// An item a browser sent: text or a link, or a file saved to a temporary location.
     var onReceive: (_ room: String, _ item: ReceivedItem) -> Void = { _, _ in }
+    /// A browser disconnected this phone on purpose and forgot its token.
+    var onBye: (_ room: String) -> Void = { _ in }
     /// A browser's connection ended (its page closed or the network dropped).
     var onClosed: (_ room: String) -> Void = { _ in }
     var onProgress: (Double) -> Void = { _ in }
@@ -129,6 +131,9 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler {
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any], let type = body["t"] as? String else { return }
         let room = body["room"] as? String ?? ""
+        #if DEBUG
+        if type != "filePart" && type != "progress" { NSLog("Droprr guest: %@", type) }
+        #endif
         switch type {
         case "ready":
             ready = true
@@ -137,6 +142,9 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler {
         case "welcome":
             connected.insert(room)
             joins.removeValue(forKey: room)?.resume(returning: Welcome(name: body["name"] as? String ?? "", token: body["token"] as? String ?? ""))
+        case "bye":
+            connected.remove(room)
+            onBye(room)
         case "denied":
             connected.remove(room)
             joins.removeValue(forKey: room)?.resume(throwing: GuestError.denied(body["e"] as? String ?? ""))

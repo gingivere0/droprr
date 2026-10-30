@@ -91,6 +91,11 @@
           if (message.t === "welcome") {
             current.done = true;
             post({ t: "welcome", room, name: String(message.name || "").slice(0, 64), token: String(message.token || "") });
+          } else if (message.t === "bye") {
+            // The browser disconnected this phone and forgot its token: don't reconnect.
+            current.done = true;
+            close(room);
+            post({ t: "bye", room });
           } else if (message.t === "denied") {
             current.done = true;
             close(room);

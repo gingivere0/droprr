@@ -69,6 +69,7 @@ final class PhoneModel {
         let guest = BrowserGuest.shared
         guest.onReceive = { [weak self] room, item in self?.receivedFromBrowser(room, item) }
         guest.onProgress = { [weak self] value in if self?.sending == true { self?.progress = value } }
+        guest.onBye = { [weak self] room in self?.browserDisconnected(room) }
     }
 
     // MARK: Local network (protocol 2)
@@ -475,12 +476,24 @@ final class PhoneModel {
             throw DroprrError.notPaired
         }
         if BrowserGuest.shared.connected.contains(room) { return }
-        let welcome = try await BrowserGuest.shared.join(room: room, fingerprint: fp, secret: nil, token: token,
+        let welcome: BrowserGuest.Welcome
+        do {
+            welcome = try await BrowserGuest.shared.join(room: room, fingerprint: fp, secret: nil, token: token,
                                                          name: settings.deviceName)
+        } catch BrowserGuest.GuestError.denied {
+            // The browser forgot this phone (it disconnected it): the same as a goodbye.
+            browserDisconnected(room)
+            throw DroprrError.notPaired
+        }
         if let i = settings.peers.firstIndex(where: { $0.id == peer.id }), !welcome.token.isEmpty { settings.peers[i].token = welcome.token }
     }
 
     private func sendToBrowser(_ payloads: [SendPayload], peer: Peer, label: String) async -> Bool {
+        if (peer.token ?? "").isEmpty {
+            lastSendResult = "Couldn't send to \(peer.name): it disconnected this iPhone. Scan its code again."
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return false
+        }
         do {
             try await connectBrowser(peer)
             for payload in payloads {
@@ -495,6 +508,16 @@ final class PhoneModel {
             if !Task.isCancelled { UINotificationFeedbackGenerator().notificationOccurred(.error) }
             return false
         }
+    }
+
+    /// A browser disconnected this phone: forget its token, so it's never reconnected until its code is scanned again.
+    private func browserDisconnected(_ room: String) {
+        guard let i = settings.peers.firstIndex(where: { $0.isBrowser && $0.deviceID == room }) else { return }
+        settings.peers[i].token = nil
+        lastSendResult = "\(settings.peers[i].name) disconnected"
+        #if DEBUG
+        NSLog("Droprr test: %@", lastSendResult ?? "")
+        #endif
     }
 
     private func receivedFromBrowser(_ room: String, _ item: ReceivedItem) {
