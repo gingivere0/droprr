@@ -9,7 +9,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>Droprr</AssemblyName>
     <RootNamespace>Droprr</RootNamespace>
-    <Version>0.3.1</Version>
+    <Version>0.3.2</Version>
     <!-- The exe's icon (Explorer, Start menu, Alt+Tab before the app runs) is made from the default theme's logo
          by the MakeAppIcon target below. -->
     <AppIconSource>..\..\file-swap-icon-pack\themes\sage\logo-1024.png</AppIconSource>
