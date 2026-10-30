@@ -181,6 +181,10 @@ struct PeerEditor: View {
                 }
             }
             #endif
+            #if os(iOS)
+            .keyboardDoneButton()
+            .scrollDismissesKeyboard(.immediately)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { done(nil) } }
                 ToolbarItem(placement: .confirmationAction) {

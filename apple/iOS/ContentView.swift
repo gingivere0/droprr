@@ -220,6 +220,7 @@ private struct SendTab: View {
             .padding(.bottom, Space.lg)
         }
         .scrollDismissesKeyboard(.interactively)
+        .keyboardDoneButton()
         // While typing, keep the whole message box in view above the Send button and keyboard.
         .onChange(of: typing) { _, isTyping in
             guard isTyping else { return }

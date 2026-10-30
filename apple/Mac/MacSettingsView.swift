@@ -7,6 +7,7 @@ struct MacSettingsView: View {
     @State private var editing: Peer?
     @State private var editingToken = false
     @State private var removing: Peer?
+    @State private var removingBrowsers = false
     @State private var pingResults: [UUID: PingResult] = [:]
     @State private var showToken = false
     @State private var showingAppearance = false
@@ -167,10 +168,6 @@ struct MacSettingsView: View {
         editing = peer
     }
 
-    /// Return (or opening the window) leaves no field focused, so no cursor lingers.
-    private func endEditing() {
-        NSApp.keyWindow?.makeFirstResponder(nil)
-    }
 
     private var style: some View {
         VStack(alignment: .leading, spacing: Space.md) {
@@ -188,29 +185,66 @@ struct MacSettingsView: View {
 
     private var devices: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            SectionHeader(title: "Devices", detail: settings.peers.isEmpty ? "None yet" : "\(settings.peers.filter(\.isPaired).count) paired") {
-                Button("Add device") { editingToken = false; editing = Peer(name: "", host: "") }
-                    .buttonStyle(SecondaryStyle())
-            }
+            SectionHeader(title: "Devices", detail: settings.peers.isEmpty ? "None yet" : "\(settings.peers.count) added")
             VStack(alignment: .leading, spacing: 0) {
-            if settings.peers.isEmpty {
-                RowSeparator()
-                Text("Pair your iPhone with the QR code above, or add your PC by its Tailscale name.")
-                    .font(.system(size: 12)).foregroundStyle(Look.muted)
-                    .padding(.vertical, Space.md)
-            }
-            ForEach(settings.peers) { peer in
-                RowSeparator()
-                DeviceRow(peer: peer, result: pingResults[peer.id],
-                          onTest: { Task { await ping(peer) } },
-                          onEdit: { editingToken = false; editing = peer },
-                          onRemove: { removing = peer },
-                          onFixToken: { editingToken = true; editing = peer })
-                    .padding(.vertical, Space.md)
-            }
-            Hairline()
+                if settings.peers.isEmpty {
+                    Text("Add your iPhone, a browser or another computer with the buttons below.")
+                        .font(.system(size: 12)).foregroundStyle(Look.muted)
+                        .padding(.vertical, Space.md)
+                }
+                ForEach(Array(settings.peers.enumerated()), id: \.element.id) { index, peer in
+                    if index > 0 { RowSeparator() }
+                    DeviceRow(peer: binding(for: peer.id), result: pingResults[peer.id],
+                              onTest: { Task { await ping(peer) } },
+                              onRemove: { removing = peer },
+                              onFixToken: { editingToken = true; editing = peer },
+                              onChanged: { changed(peer.id) })
+                        .padding(.vertical, Space.md)
+                }
             }
             .lookCard(list: true)
+            HStack(spacing: Space.sm) {
+                Button {
+                    openWindow(id: "pair")
+                    bringToFront()
+                } label: { Label("Add a device", systemImage: "plus") }
+                    .buttonStyle(SecondaryStyle())
+                    .hoverHint("Show the code a phone or browser scans")
+                Button("Add a computer by address") { editingToken = false; editing = Peer(name: "", host: "") }
+                    .buttonStyle(SecondaryStyle())
+                    .hoverHint("A computer on Tailscale, by its name or 100.x address")
+                Spacer()
+                let browsers = settings.peers.filter(\.isBrowser)
+                if browsers.count > 1 {
+                    Button("Remove \(browsers.count) browsers") { removingBrowsers = true }
+                        .buttonStyle(SecondaryStyle())
+                        .hoverHint("Browsers that scan the code again are added back")
+                }
+            }
+        }
+        .confirmationDialog("Remove all \(settings.peers.filter(\.isBrowser).count) browsers?", isPresented: $removingBrowsers,
+                            titleVisibility: .visible) {
+            Button("Remove", role: .destructive) {
+                for peer in settings.peers where peer.isBrowser { model.outbox.clear(for: peer) }
+                settings.peers.removeAll(where: \.isBrowser)
+            }
+        } message: {
+            Text("They can scan the code again to come back.")
+        }
+    }
+
+    /// A device's row edits it in place.
+    private func binding(for id: UUID) -> Binding<Peer> {
+        Binding(get: { settings.peers.first { $0.id == id } ?? Peer(name: "", host: "") },
+                set: { new in if let i = settings.peers.firstIndex(where: { $0.id == id }) { settings.peers[i] = new } })
+    }
+
+    /// After a computer's address or token changed: switch to per-device tokens, then check it answers.
+    private func changed(_ id: UUID) {
+        guard let peer = settings.peers.first(where: { $0.id == id }), !peer.isPhone, !peer.isBrowser else { return }
+        Task {
+            await settings.exchangeTokens(with: peer)
+            if let current = settings.peers.first(where: { $0.id == id }) { await ping(current) }
         }
     }
 
@@ -297,58 +331,106 @@ struct MacSettingsView: View {
     }
 }
 
+/// One device: its glyph, a name you can rename in place, one line about it, and Test and Remove. Computers also
+/// have a collapsed Details section with their Tailscale host, port and token.
 private struct DeviceRow: View {
-    var peer: Peer
+    @Binding var peer: Peer
     var result: PingResult?
     var onTest: () -> Void
-    var onEdit: () -> Void
     var onRemove: () -> Void
     var onFixToken: () -> Void
+    var onChanged: () -> Void
+    @State private var showDetails = false
+    @State private var showToken = false
+
+    private var isComputer: Bool { !peer.isPhone && !peer.isBrowser }
+
+    private var caption: String {
+        if peer.isPhone { return "iPhone" }
+        if peer.isBrowser { return "Browser" }
+        return peer.addressLine
+    }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Space.md) {
-            Image(systemName: Theme.symbol(for: peer))
-                .font(.system(size: 14))
-                .foregroundStyle(Look.muted)
-                .frame(width: 20)
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-                    Text(peer.name).font(Look.display(18))
-                    Text(Theme.platformName(peer.platform).uppercased())
-                        .font(.system(size: 9.5, weight: .semibold)).tracking(1.4)
+        VStack(alignment: .leading, spacing: Space.sm) {
+            HStack(alignment: .center, spacing: Space.md) {
+                Image(systemName: Theme.symbol(for: peer))
+                    .font(.system(size: 15))
+                    .foregroundStyle(Look.muted)
+                    .frame(width: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    TextField("Name", text: Binding(get: { peer.name }, set: { peer.name = $0 }))
+                        .textFieldStyle(.plain)
+                        .font(Look.display(17))
+                        .accessibilityLabel("Name of \(peer.name)")
+                        .hoverHint("Click to rename")
+                        .onSubmit(endEditing)
+                    Text(caption)
+                        .font(isComputer ? .system(size: 11).monospaced() : .system(size: 11))
                         .foregroundStyle(Look.muted)
+                        .lineLimit(1)
                 }
-                Group {
-                    if peer.isPhone {
-                        Text("Collects items when Droprr opens on it").font(.system(size: 11))
-                    } else {
-                        Text(peer.addressLine).font(.system(size: 11).monospaced())
-                    }
+                Spacer()
+                if isComputer {
+                    Button(action: onTest) { Image(systemName: "dot.radiowaves.left.and.right") }
+                        .buttonStyle(HoverButtonStyle(.plain))
+                        .foregroundStyle(Look.muted)
+                        .accessibilityLabel("Test \(peer.name)")
+                        .hoverHint("Check that \(peer.name) answers")
                 }
-                .foregroundStyle(Look.muted).lineLimit(1)
-                status
-                if !peer.isPaired { MissingTokenButton(action: onFixToken) }
+                Button(action: onRemove) { Image(systemName: "trash") }
+                    .buttonStyle(HoverButtonStyle(.plain))
+                    .foregroundStyle(Look.muted)
+                    .accessibilityLabel("Remove \(peer.name)")
+                    .hoverHint("Remove this device")
             }
-            Spacer()
-            if !peer.isPhone {
-                Button("Test", action: onTest)
-                    .buttonStyle(SecondaryStyle())
-                    .hoverHint("Check that \(peer.name) answers")
+            if !peer.isPaired { MissingTokenButton(action: onFixToken).padding(.leading, 34) }
+            status.padding(.leading, 34)
+            if isComputer {
+                DisclosureGroup(isExpanded: $showDetails) {
+                    details.padding(.top, Space.sm)
+                } label: {
+                    Text("Details").font(.system(size: 12)).foregroundStyle(Look.muted)
+                }
+                .padding(.leading, 34)
             }
-            Button(action: onEdit) { Image(systemName: "pencil") }
-                .buttonStyle(HoverButtonStyle(.plain))
-                .foregroundStyle(Look.muted)
-                .accessibilityLabel("Edit \(peer.name)")
-                .hoverHint("Edit or rename")
-            Button(action: onRemove) { Image(systemName: "trash") }
-                .buttonStyle(HoverButtonStyle(.plain))
-                .foregroundStyle(Look.muted)
-                .accessibilityLabel("Remove \(peer.name)")
-                .hoverHint("Remove this device")
         }
         .contextMenu {
-            Button("Edit…", action: onEdit)
             Button("Remove \(peer.name)", role: .destructive, action: onRemove)
+        }
+    }
+
+    private var details: some View {
+        Grid(alignment: .leading, horizontalSpacing: Space.md, verticalSpacing: Space.sm) {
+            GridRow {
+                Text("Tailscale host").font(.system(size: 12)).foregroundStyle(Look.muted)
+                TextField("my-pc or 100.x.y.z", text: Binding(get: { peer.host }, set: { peer.host = $0.trimmingCharacters(in: .whitespaces) }))
+                    .textFieldStyle(.roundedBorder).font(.system(size: 12).monospaced())
+                    .onSubmit { onChanged(); endEditing() }
+            }
+            GridRow {
+                Text("Port").font(.system(size: 12)).foregroundStyle(Look.muted)
+                TextField("", value: Binding(get: { peer.port }, set: { peer.port = min(max($0, 1), 65535) }),
+                          format: .number.grouping(.never))
+                    .textFieldStyle(.roundedBorder).font(.system(size: 12).monospacedDigit())
+                    .frame(width: 80)
+                    .onSubmit { onChanged(); endEditing() }
+            }
+            GridRow {
+                Text("Token").font(.system(size: 12)).foregroundStyle(Look.muted)
+                HStack(spacing: Space.sm) {
+                    Group {
+                        let token = Binding(get: { peer.token ?? "" }, set: { peer.token = $0.isEmpty ? nil : $0 })
+                        if showToken { TextField("Token", text: token) } else { SecureField("Token", text: token) }
+                    }
+                    .textFieldStyle(.roundedBorder).font(.system(size: 12).monospaced())
+                    .onSubmit { onChanged(); endEditing() }
+                    Button { showToken.toggle() } label: { Image(systemName: showToken ? "eye.slash" : "eye") }
+                        .buttonStyle(HoverButtonStyle(.plain))
+                        .foregroundStyle(Look.muted)
+                        .accessibilityLabel(showToken ? "Hide token" : "Show token")
+                }
+            }
         }
     }
 
@@ -360,6 +442,12 @@ private struct DeviceRow: View {
         case nil: EmptyView()
         }
     }
+}
+
+/// Return (or opening the window) leaves no field focused, so no cursor lingers.
+@MainActor
+private func endEditing() {
+    NSApp.keyWindow?.makeFirstResponder(nil)
 }
 
 /// A section label in spaced capitals, a short note, and an optional action on the right.

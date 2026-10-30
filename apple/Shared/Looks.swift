@@ -670,3 +670,24 @@ enum Contrast {
         return (max(x, y) + 0.05) / (min(x, y) + 0.05)
     }
 }
+
+#if os(iOS)
+extension View {
+    /// A Done button above the keyboard, since the number pad has no return key.
+    func keyboardDoneButton() -> some View {
+        toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { dismissKeyboard() }.fontWeight(.semibold)
+            }
+        }
+    }
+}
+
+/// Ends editing in whatever field has the keyboard (extensions can't reach UIApplication.shared, so it's looked up).
+@MainActor
+func dismissKeyboard() {
+    let app = UIApplication.value(forKey: "sharedApplication") as? UIApplication
+    app?.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
+#endif

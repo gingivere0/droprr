@@ -96,6 +96,8 @@ struct SettingsForm: View {
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .background { LookBackground().ignoresSafeArea() }
+        .scrollDismissesKeyboard(.immediately)
+        .keyboardDoneButton()
         .confirmationDialog("Remove \(removing?.name ?? "device")?", isPresented: Binding(
             get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Remove", role: .destructive) {

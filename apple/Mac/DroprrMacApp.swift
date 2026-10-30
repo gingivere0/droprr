@@ -282,7 +282,7 @@ final class MacModel {
         settings.learn(peerID, deviceID: request.deviceID, fingerprint: request.fingerprint, tlsPort: request.tlsPort,
                        lan: request.lan, replacePin: request.existingPeerID == nil && request.fingerprint != nil)
         // A phone upgrading an existing pairing to protocol 2 isn't news.
-        guard request.existingPeerID == nil else { return }
+        guard request.existingPeerID == nil || request.repair else { return }
         lastPaired = request.name
         added(peerID)
         let content = UNMutableNotificationContent()
