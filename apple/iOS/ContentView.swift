@@ -84,28 +84,6 @@ struct ContentView: View {
     }
 }
 
-/// A round scan button for screens without a navigation bar, matching the toolbar's.
-private struct ScanCodeButton: View {
-    @Environment(\.startPairing) private var startPairing
-
-    var body: some View {
-        if #available(iOS 26, *) {
-            button.buttonStyle(.glass).buttonBorderShape(.circle)
-        } else {
-            button.buttonStyle(.bordered).buttonBorderShape(.circle)
-        }
-    }
-
-    private var button: some View {
-        Button(action: startPairing) {
-            Image(systemName: "qrcode.viewfinder")
-                .font(.system(size: 17, weight: .medium))
-                .frame(width: 32, height: 32)
-        }
-        .accessibilityLabel("Scan Pairing Code")
-    }
-}
-
 /// Shown when a pairing link is opened from outside the app: nothing changes until Pair is tapped.
 private struct ConfirmPairingSheet: View {
     var info: PairingInfo
@@ -191,6 +169,7 @@ private struct PairingStatusCard: View {
 
 private struct SendTab: View {
     @Bindable var model: PhoneModel
+    @Environment(\.startPairing) private var startPairing
     @State private var peerID: UUID?
     @State private var text = ""
     @State private var photos: [PhotosPickerItem] = []
@@ -258,7 +237,13 @@ private struct SendTab: View {
         }
         .sensoryFeedback(.selection, trigger: peerID)
         .background(backdrop)
-        .toolbar(.hidden, for: .navigationBar)
+        // The same scan button, in the same place, as Settings: the navigation bar's trailing item.
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { startPairing() } label: { Label("Scan Pairing Code", systemImage: "qrcode.viewfinder") }
+            }
+        }
         .motion(Motion.standard, value: model.lastSendResult)
         .onChange(of: model.justAdded) { _, id in if let id { peerID = id } }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
@@ -280,8 +265,6 @@ private struct SendTab: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
-        // The same scan button as Settings' toolbar: pair a computer from its code.
-        .overlay(alignment: .topTrailing) { ScanCodeButton().offset(y: -Space.sm) }
         .padding(.top, Space.sm)
     }
 
