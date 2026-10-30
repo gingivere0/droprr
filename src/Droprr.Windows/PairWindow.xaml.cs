@@ -46,6 +46,9 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
 
     void OnHostReady() => Dispatcher.BeginInvoke(ShowCode);
 
+    // The window opens with Show (not as a dialog), so IsCancel alone doesn't close it.
+    void OnDone(object sender, RoutedEventArgs e) => Close();
+
     void OnReveal(object sender, RoutedEventArgs e)
     {
         Code.Effect = null;

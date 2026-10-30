@@ -51,7 +51,7 @@
             </Border>
 
             <ui:Button Content="Done" HorizontalAlignment="Right" Style="{StaticResource PrimaryActionButton}" Margin="0,16,0,0"
-                       IsCancel="True" IsDefault="True" />
+                       IsCancel="True" IsDefault="True" Click="OnDone" />
         </StackPanel>
     </StackPanel>
 </ui:FluentWindow>
