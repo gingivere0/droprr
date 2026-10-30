@@ -1,4 +1,4 @@
-﻿<ui:FluentWindow x:Class="Droprr.SendWindow"
+<ui:FluentWindow x:Class="Droprr.SendWindow"
                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
@@ -175,7 +175,7 @@
                                     Background="{DynamicResource ThemeSecondaryTextBrush}" Margin="0,0,8,0">
                                 <ui:SymbolIcon Symbol="TextAlignLeft24" FontSize="16" Foreground="{DynamicResource ThemeTileBrush}" />
                             </Border>
-                            <TextBlock Text="Text" Style="{StaticResource BodyStrongText}" VerticalAlignment="Center"
+                            <TextBlock Text="Text" Style="{StaticResource TileTitle}" Margin="0" VerticalAlignment="Center"
                                        Foreground="{DynamicResource ThemeSecondaryTextBrush}" />
                         </DockPanel>
                         <ui:TextBox x:Name="MessageText" AcceptsReturn="True" TextWrapping="Wrap"

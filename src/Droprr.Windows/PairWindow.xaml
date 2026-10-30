@@ -43,7 +43,7 @@
             <!-- Wi-Fi pairing needs the local network listener: when it's off, say why, and offer the fix here. -->
             <Border x:Name="WifiPanel" Style="{StaticResource Tile}" Margin="0,8,0,0" Visibility="Collapsed">
                 <StackPanel>
-                    <TextBlock x:Name="WifiTitle" Style="{StaticResource BodyStrongText}" TextWrapping="Wrap" Margin="0,0,0,4" />
+                    <TextBlock x:Name="WifiTitle" Style="{StaticResource TileTitle}" TextWrapping="Wrap" Margin="0,0,0,4" />
                     <TextBlock x:Name="WifiText" Style="{StaticResource Caption}" Margin="0,0,0,8" />
                     <ui:Button x:Name="AllowButton" Content="Allow Droprr on your private network" Icon="{ui:SymbolIcon ShieldCheckmark24}"
                                Style="{StaticResource TonalButton}" Click="OnAllow" />

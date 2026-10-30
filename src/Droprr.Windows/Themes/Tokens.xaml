@@ -82,8 +82,10 @@
         <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
     </Style>
+    <!-- Section titles in every window use the style's display family too, so a window never mixes title fonts. -->
     <Style x:Key="TileTitle" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongText}">
         <Setter Property="Margin" Value="0,0,0,12" />
+        <Setter Property="FontFamily" Value="{DynamicResource DisplayFontFamily}" />
     </Style>
 
 

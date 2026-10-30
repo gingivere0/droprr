@@ -252,6 +252,8 @@ static class AppTheme
     public static async System.Threading.Tasks.Task ShowMessageAsync(string title, string message)
     {
         var box = new Wpf.Ui.Controls.MessageBox { Title = title, Content = message, CloseButtonText = "OK" };
+        // The same surface, colors, and icon as every other window.
+        Setup(box);
         await box.ShowDialogAsync();
     }
 

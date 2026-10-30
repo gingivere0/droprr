@@ -150,7 +150,7 @@
 
                         <!-- Droprr devices discovered on this network that aren't paired yet (LAN pairing). -->
                         <StackPanel x:Name="NearbyPanel" Visibility="Collapsed" Margin="0,16,0,0">
-                            <TextBlock Text="Nearby on this network" Style="{StaticResource BodyStrongText}" Margin="0,0,0,4" />
+                            <TextBlock Text="Nearby on this network" Style="{StaticResource TileTitle}" Margin="0,0,0,4" />
                             <TextBlock Style="{StaticResource Caption}" Margin="0,0,0,8"
                                        Text="Droprr devices on this Wi-Fi. Pairing shows the same code on both screens." />
                             <ItemsControl x:Name="NearbyList" AutomationProperties.Name="Nearby devices">

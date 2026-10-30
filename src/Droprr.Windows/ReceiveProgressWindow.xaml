@@ -10,7 +10,7 @@
         <Border Style="{StaticResource Tile}" Margin="16,0,16,16"><StackPanel>
             <DockPanel>
                 <ui:SymbolIcon Symbol="ArrowDownload24" FontSize="20" Margin="0,0,8,0" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
-                <TextBlock Text="Receiving…" Style="{StaticResource BodyStrongText}" VerticalAlignment="Center" />
+                <TextBlock Text="Receiving…" Style="{StaticResource TileTitle}" Margin="0" VerticalAlignment="Center" />
             </DockPanel>
             <ProgressBar x:Name="Bar" Style="{StaticResource BrandProgressBar}" Margin="0,12,0,8" Maximum="100" />
             <TextBlock x:Name="Detail" Style="{StaticResource Caption}" />
