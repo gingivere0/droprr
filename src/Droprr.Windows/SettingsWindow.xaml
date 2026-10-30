@@ -79,9 +79,7 @@
                 <!-- Devices -->
                 <Border Grid.Row="3" Grid.ColumnSpan="3" Style="{StaticResource Tile}">
                     <StackPanel>
-                        <TextBlock Text="Devices" Style="{StaticResource TileTitle}" Margin="0,0,0,4" />
-                        <TextBlock Style="{StaticResource Caption}" Margin="0,0,0,12"
-                                   Text="Click a name to rename it. Add a device shows the code phones and browsers scan." />
+                        <TextBlock Text="Devices" Style="{StaticResource TileTitle}" />
                         <!-- One row per device: its glyph, an editable name, what it is, and its actions. Computers keep their
                              address, port, and token under Details. -->
                         <ItemsControl x:Name="PeerList" AutomationProperties.Name="Devices">
@@ -217,9 +215,7 @@
                 <!-- Token -->
                 <Border Grid.Row="5" Grid.Column="2" Style="{StaticResource Tile}">
                     <StackPanel>
-                        <TextBlock Text="Token" Style="{StaticResource TileTitle}" Margin="0,0,0,4" />
-                        <TextBlock Style="{StaticResource Caption}" Margin="0,0,0,12"
-                                   Text="Devices that send to this PC use it. Pairing a phone hands it over for you. Keep it private." />
+                        <TextBlock Text="Token" Style="{StaticResource TileTitle}" />
                         <ui:TextBox x:Name="TokenText" IsReadOnly="True" AutomationProperties.Name="Token"
                                     FontFamily="{StaticResource MonoFont}" FontSize="{StaticResource FontSizeCaption}" />
                         <WrapPanel Margin="0,8,0,0">
