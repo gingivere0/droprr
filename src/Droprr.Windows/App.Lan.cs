@@ -242,11 +242,22 @@ public partial class App
         if (cancel.IsCancellationRequested)
             return;
         var shownName = FileNames.Printable(device.Name, 64);
+        // An older Droprr there that still refuses a device it already has (409). If this PC can already send to it,
+        // they're connected, so say nothing; otherwise a quiet note rather than a dialog.
+        if (status == 409)
+        {
+            if (Settings.Peers.Find(Matches) is { Token.Length: > 0 } known)
+            {
+                DevicePaired?.Invoke(known);
+                return;
+            }
+            _tray?.Notify($"Couldn't finish pairing with {shownName}", $"Update Droprr on {shownName}, then choose Pair again.");
+            return;
+        }
         var reason = status switch
         {
             403 => $"{shownName} declined.",
             408 => $"Nobody confirmed on {shownName} in time.",
-            409 => $"{shownName} already has this PC paired. Remove it in Droprr's settings there, then pair again.",
             429 => $"{shownName} is busy with another pairing request. Try again in a moment.",
             0 => $"Couldn't reach {shownName}.",
             _ => $"{shownName} didn't pair{(error is { Length: > 0 } e ? $": {FileNames.Printable(e, 200)}" : ".")}",

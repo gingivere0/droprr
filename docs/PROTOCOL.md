@@ -51,7 +51,7 @@ Every error response, on any endpoint, has a 4xx or 5xx status and this body:
 | `400` | Bad request: empty content, unknown `type`, invalid URL, malformed JSON, no items, a missing `?for=`, or invalid `/pair` fields. |
 | `401` | Missing or wrong token. |
 | `404` | Unknown path. |
-| `409` | LAN pairing with a device that's already paired. See [Pairing rules](#pairing-rules). |
+| `409` | Only from older apps, for a device that's already paired; current apps pair it again instead. See [Pairing rules](#pairing-rules). |
 | `413` | Too large: a `/pair`, `/pair/request`, or `/pair/confirm` body over 64 KB, or a JSON text item over 16 MB. |
 | `500` | The receiver failed. The body says `"receiver error"`; details stay in the receiver's local log, never in the response. |
 | `507` | Not enough disk space: a `/send` body with a known `Content-Length` would leave less than 1 GB free on the drive it saves to. |
@@ -384,7 +384,7 @@ Pairing by picking a device that discovery found, without a QR code and without 
    { "ok": true, "session": "<opaque string>", "nonce": "<nonceS: 32 random bytes, hex>" }
    ```
 
-   Or `409` with `"already paired …"` when the requester's `id` **or** certificate fingerprint already belongs to a paired peer (see [Rules](#pairing-rules)), `429` while another pairing is in progress, and `400` for a missing certificate or bad fields.
+   Or `429` while another pairing is in progress, and `400` for a missing certificate or bad fields. A requester that's already paired isn't refused: it pairs again (see [Rules](#pairing-rules)).
 3. Only now, holding `nonceS`, does the requester reveal `nonceR`, on a connection with the same client certificate, along with what [`POST /pair`](#post-pair) carries for it (`token`, `host`, `port`, `tlsPort`, `lan`):
 
    ```http
@@ -414,7 +414,7 @@ Pairing by picking a device that discovery found, without a QR code and without 
 
 These keep one paired device from taking over another's record. They apply to every way of pairing.
 
-- **Pairing again just works, without takeover.** A device that pairs again (LAN pairing, or `/pair` with the [one code](#one-code)'s join secret) gets the **same** peer back with fresh tokens, with nothing to remove first, but only when it proves it's that device: its TLS client certificate is the one pinned for that peer (or the peer has no pin yet, and is then pinned to it), or, for `/pair`, it calls over Tailscale. It must also be the same kind (phone or computer, never a browser peer). Anyone else whose `id` or fingerprint belongs to an existing peer gets `409`. A new device whose name is already taken gets a new entry with a suffix (`MacBook (2)`), never the existing one.
+- **Pairing again just works.** No pairing path ever answers "already paired", and no app ever tells the person to remove a device first. A device that pairs again (LAN pairing, which the person confirms, or `/pair` with the [one code](#one-code)'s join secret, which the person has open) gets the **same** peer back with fresh tokens, and its current id and certificate replace the old ones (a reinstalled app has a new certificate). The person's confirmation is what authorizes it. A record of another kind (a browser peer, or a phone versus a computer) is never reused; the device is added as a new peer instead. A new device whose name is already taken gets a new entry with a suffix (`MacBook (2)`), never the existing one. A requester that still gets `409` from an older app treats the device as connected if it can already send to it, and otherwise shows a quiet note to update Droprr there, never a dialog.
 - **The requester matches only by identity.** When the requester saves the result, it updates an existing peer only if that peer has the discovered device's `id` or pinned fingerprint, never by the name in the response, and it changes nothing until pairing succeeds. The device token it offered is accepted only while the pairing is in progress.
 - **A device token can't change who a peer is.** A `/pair` authenticated with a device token updates only that token's peer. It can fill in a missing `id` or fingerprint (a protocol 1 pairing upgrading), but never replace one, never take one that belongs to another peer, and never change the peer between phone and computer.
 - **Merging.** Two records are the same device only when they share a device id or a pinned fingerprint and don't have two different pins. A shared host alone is never enough. A merge only adds a pin to a record that has none; it never moves one.
@@ -596,7 +596,7 @@ A computer shows **one** QR code, in **Pair a phone** (from its tray or menu bar
 - **Contents:** the [website code](#identity-and-the-code) `<website>#<room>.<secret>.<fp>.<app>`, where `<app>` is base64url JSON with what the app needs: `{ "v": 1, "n": name, "p": platform, "port", "id", "f": LAN certificate fingerprint (hex), "l": [LAN "host:port", …], "h": Tailscale address, "d": MagicDNS name }`. `h` and `d` are left out without Tailscale, and `l` is empty without the local network.
 - **The join secret** is valid while that window is open, for at most 10 minutes. Closing the window ends it.
 - **Browsers:** the website connects as above. On an iPhone, iPad, or Mac, when the code has `<app>`, it also offers **Open in Droprr**, a link to `droprr://join?code=<the fragment, percent-encoded>`.
-- **The app** gets the code from that link or from its own scanner (the website URL). It calls [`POST /pair`](#post-pair) on the computer as usual (LAN HTTPS pinned to `f`, or Tailscale), but with the header `X-Droprr-Join: <secret>` and **no** `Authorization` header. The computer treats a `/pair` with its open join secret like a confirmed [LAN pairing](#pairing-rules): a new peer (a unique name), or the caller's existing peer with fresh tokens when it proves it's that device, as in [Pairing rules](#pairing-rules); `409` with `"already paired …"` only when it can't. The response's device token is the app's from then on. A wrong or expired secret is `401`.
+- **The app** gets the code from that link or from its own scanner (the website URL). It calls [`POST /pair`](#post-pair) on the computer as usual (LAN HTTPS pinned to `f`, or Tailscale), but with the header `X-Droprr-Join: <secret>` and **no** `Authorization` header. The computer treats a `/pair` with its open join secret like a confirmed [LAN pairing](#pairing-rules): a new peer (a unique name), or the caller's existing peer with fresh tokens, as in [Pairing rules](#pairing-rules). It never answers `409`. The response's device token is the app's from then on. A wrong or expired secret is `401`.
 - **Without WebView2** (no website code), Windows falls back to the [pairing QR](#pairing-qr), which carries the token, with its warning.
 
 The [pairing QR](#pairing-qr) and the computer's own page's typed codes still work for older apps and for computers without the website, but computers no longer show them by default.

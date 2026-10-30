@@ -30,11 +30,12 @@ sealed record PairBody(string? Name, string? Platform, string? Host, int? Port, 
 // SendToken: the token the caller minted for this PC to use when calling it (computers, and phones that receive
 // directly over the local network). AcceptToken: the device token this PC minted for the caller, returned in the
 // response. Id, Fingerprint, TlsPort, and Lan: the caller's local network identity and addresses (protocol 2).
-// ExistingPeer: the peer whose device token authenticated the request, which is updated rather than matched by name.
-// FromLan: a confirmed LAN pairing, which always adds a new peer (the receiver refuses devices already paired).
+// ExistingPeer: the peer to update rather than match by name: the one whose device token authenticated the request,
+// or the device itself pairing again. FromLan: a confirmed new pairing, which adds a new peer. Replace: the device is
+// pairing again with the person's consent (a confirmed code, or the open one code), so its id and pin are replaced.
 public sealed record PairRequest(string Name, string Platform, string? Host, int? Port, string? SendToken, string? AcceptToken,
     string? Id = null, string? Fingerprint = null, int? TlsPort = null, IReadOnlyList<string>? Lan = null, string? ExistingPeer = null,
-    bool FromLan = false);
+    bool FromLan = false, bool Replace = false);
 
 // The receiver described in docs/PROTOCOL.md: plain HTTP on loopback and Tailscale addresses, plus HTTPS on the
 // next port for the local network when it's turned on and the firewall allows it.
@@ -303,28 +304,21 @@ sealed partial class ReceiverServer : IAsyncDisposable
 
         var phone = platform == "ios";
         // With the one code's join secret: a new peer, or, for a device that's already paired, that same peer again
-        // with fresh tokens (pairing again just works). An existing record is reused only when the caller proves it's
-        // that device: its TLS client certificate is the one pinned for it, or it calls over Tailscale, which already
-        // authenticates the device. Anyone else claiming an existing device's id or fingerprint is refused, so a code
-        // shown to a guest can't take over another device's record.
+        // with fresh tokens and its current certificate (pairing again just works; the person has the code open).
+        // A record of another kind (a browser, or a phone versus a computer) is never reused: that device is added.
         var joined = context.Items[JoinKey] is true;
         string? repair = null;
         if (joined && Settings.Peers.Find(p => (ValidId(body.Id) is { } id && p.Id == id)
-                || (ValidFingerprint(body.Fp) is { } fp && p.Fingerprint.Equals(fp, StringComparison.OrdinalIgnoreCase))) is { } existing)
-        {
-            var proven = (ClientFingerprint(context) is { } client
-                    && (existing.Fingerprint.Length == 0 || client.Equals(existing.Fingerprint, StringComparison.OrdinalIgnoreCase)))
-                || (context.Connection.LocalPort != TlsPort && RemoteOf(context) is var remote && (LanNetwork.IsTailscale(remote) || IPAddress.IsLoopback(remote)));
-            if (!proven || existing.IsBrowser || existing.IsPhone != phone)
-                return Error($"already paired as {existing.Name}: remove it on {Settings.DeviceName} to pair again", StatusCodes.Status409Conflict);
+                || (ValidFingerprint(body.Fp) is { } fp && p.Fingerprint.Equals(fp, StringComparison.OrdinalIgnoreCase))) is { } existing
+            && !existing.IsBrowser && existing.IsPhone == phone)
             repair = existing.Name;
-        }
         // Phones send one too when they can receive directly over the local network.
         var sendToken = body.Token?.Trim();
         var acceptToken = SettingsStore.NewToken();
         PairRequested?.Invoke(new PairRequest(name, platform, phone ? null : host, body.Port,
             string.IsNullOrEmpty(sendToken) ? null : sendToken, acceptToken,
-            ValidId(body.Id), ValidFingerprint(body.Fp), body.TlsPort, body.Lan, repair ?? DevicePeer(context), FromLan: joined && repair is null));
+            ValidId(body.Id), (joined ? ClientFingerprint(context) : null) ?? ValidFingerprint(body.Fp), body.TlsPort, body.Lan, repair ?? DevicePeer(context),
+            FromLan: joined && repair is null, Replace: repair is not null));
         return Results.Json(LanPairResponse(acceptToken));
     }
 

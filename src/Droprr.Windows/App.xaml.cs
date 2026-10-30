@@ -454,7 +454,7 @@ public partial class App : Application
             // Local network identity and addresses (protocol 2). The fingerprint comes from an authenticated
             // /pair or a confirmed LAN pairing, so it's pinned. A device token can only fill them in (a protocol 1
             // pairing upgrading), never replace them, and never with another peer's.
-            var mayReplace = existing is null;
+            var mayReplace = existing is null || request.Replace;
             if (request.Id is not null && (mayReplace || peer.Id.Length == 0) && !OwnedByOther(peer, request.Id, null))
                 peer.Id = request.Id;
             if (request.Fingerprint is not null && (mayReplace || peer.Fingerprint.Length == 0) && !OwnedByOther(peer, null, request.Fingerprint))
