@@ -147,9 +147,9 @@ public class PeerBookTests
 
         Assert.Null(peers.AddCheckedInPhone("desk"));
         Assert.Null(peers.AddCheckedInPhone(""));
-        var phone = peers.AddCheckedInPhone("Seth's iPhone");
+        var phone = peers.AddCheckedInPhone("Test iPhone");
         Assert.Equal(DevicePlatform.IOS, phone?.Platform);
-        Assert.Null(peers.AddCheckedInPhone("Seth's iPhone"));
+        Assert.Null(peers.AddCheckedInPhone("Test iPhone"));
         Assert.Equal(DevicePlatform.Windows, peers.FindByName("Desk")!.Platform);
     }
 
