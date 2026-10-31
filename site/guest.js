@@ -4,7 +4,6 @@
 // connection, so the relay can't pose as the computer. Everything from the network is shown as text, never HTML.
 "use strict";
 
-const $ = (id) => document.getElementById(id);
 const { RelaySocket, Link, randomId, sdpFingerprint, ICE_SERVERS } = self.DroprrRtc;
 
 // A local relay for development, only when the page itself is served from this machine.
@@ -18,7 +17,6 @@ const SECRET = /^[A-Za-z0-9_-]{22}$/;
 
 let link = null;
 let session = null;
-let chosenFiles = [];
 const received = new Map();
 
 function storage(key, value) {
@@ -54,46 +52,6 @@ function remember(room, values) {
   if (values === null) delete list[room];
   else list[room] = { ...(list[room] || {}), ...values, room, seen: Date.now() };
   storage(STORE, JSON.stringify(list));
-}
-
-function setStatus(element, text, kind) {
-  element.textContent = text;
-  element.className = "status" + (kind ? " " + kind : "");
-}
-
-function guessBrowserName() {
-  const ua = navigator.userAgent;
-  const device = /iPhone/.test(ua) ? "iPhone"
-    : /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? "iPad"
-    : /Android/.test(ua) ? "Android"
-    : /Macintosh/.test(ua) ? "Mac"
-    : /Windows/.test(ua) ? "Windows"
-    : "Browser";
-  const browser = /CriOS|Chrome\//.test(ua) && !/Edg/.test(ua) ? "Chrome"
-    : /FxiOS|Firefox\//.test(ua) ? "Firefox"
-    : /EdgiOS|Edg\//.test(ua) ? "Edge"
-    : /Safari\//.test(ua) ? "Safari"
-    : "";
-  return browser ? `${device} (${browser})` : device;
-}
-
-function formatSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
-  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
-}
-
-function isWebUrl(text) {
-  if (/\s/.test(text.trim())) return false;
-  try {
-    const url = new URL(text.trim());
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 // "<room>.<secret>.<fp>" from a code or link, or null.
@@ -586,65 +544,6 @@ $("stop-scan").addEventListener("click", stopScan);
 
 // --- Sending --------------------------------------------------------------------------------------------------
 
-function renderChosen() {
-  const list = $("chosen");
-  list.replaceChildren();
-  chosenFiles.forEach((file, index) => {
-    const row = document.createElement("li");
-    const name = document.createElement("span");
-    name.textContent = file.name || "File";
-    const size = document.createElement("span");
-    size.className = "item-meta";
-    size.textContent = formatSize(file.size);
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "link";
-    remove.textContent = "Remove";
-    remove.addEventListener("click", () => {
-      chosenFiles.splice(index, 1);
-      renderChosen();
-    });
-    row.append(name, size, remove);
-    list.append(row);
-  });
-  $("drop-hint").textContent = chosenFiles.length ? `${chosenFiles.length} chosen · tap to add more` : "";
-}
-
-function addFiles(files) {
-  for (const file of files) chosenFiles.push(file);
-  renderChosen();
-}
-
-$("files").addEventListener("change", () => {
-  addFiles($("files").files);
-  $("files").value = "";
-});
-
-const drop = $("drop");
-drop.addEventListener("dragover", (event) => { event.preventDefault(); drop.classList.add("over"); });
-drop.addEventListener("dragleave", () => drop.classList.remove("over"));
-drop.addEventListener("drop", (event) => {
-  event.preventDefault();
-  drop.classList.remove("over");
-  if (event.dataTransfer?.files?.length) addFiles(event.dataTransfer.files);
-});
-
-document.addEventListener("paste", (event) => {
-  if ($("app").hidden || event.target === $("text")) return;
-  const files = [...(event.clipboardData?.files || [])];
-  if (files.length) {
-    event.preventDefault();
-    addFiles(files);
-  }
-});
-
-$("clear").addEventListener("click", () => {
-  chosenFiles = [];
-  $("text").value = "";
-  renderChosen();
-  setStatus($("send-status"), "");
-});
-
 function showProgress(progress) {
   if (progress.direction !== "out") return;
   $("progress").hidden = false;
@@ -655,7 +554,7 @@ function showProgress(progress) {
 $("send-button").addEventListener("click", async () => {
   if (!link) return;
   const text = $("text").value;
-  const files = chosenFiles.slice();
+  const files = chosen.files.slice();
   if (!files.length && !text.trim()) {
     setStatus($("send-status"), "Choose a file or type something first.", "error");
     return;
@@ -668,8 +567,7 @@ $("send-button").addEventListener("click", async () => {
     for (const file of files) {
       await link.sendFile(file, file.name);
       sent++;
-      chosenFiles.splice(chosenFiles.indexOf(file), 1);
-      renderChosen();
+      chosen.remove(file);
     }
     if (text.trim()) {
       await link.sendText(isWebUrl(text) ? text.trim() : text, isWebUrl(text) ? "url" : "text");
@@ -787,7 +685,6 @@ function offerApp(code) {
   link.hidden = false;
 }
 
-renderChosen();
 showStart();
 connectFromLink();
 addEventListener("hashchange", connectFromLink);

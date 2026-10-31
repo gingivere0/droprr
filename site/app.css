@@ -1,4 +1,4 @@
-﻿/* Droprr's browser page in the default look, Light Atelier Sage (design-system/droprr/MASTER.md): ivory paper,
+/* Droprr's browser page in the default look, Light Atelier Sage (design-system/droprr/MASTER.md): ivory paper,
    no cards (a rule under each section), serif titles, square buttons, and the Sage accent. */
 :root {
   --paper: #FBFAF6;
@@ -194,23 +194,3 @@ progress { width: 100%; height: 4px; margin-top: 12px; accent-color: var(--accen
 @media (prefers-reduced-motion: no-preference) {
   button, .drop, .item-actions a { transition: background-color 120ms ease, border-color 120ms ease, opacity 120ms ease; }
 }
-
-/* Website only: the QR scanner and the list of computers. */
-[hidden] { display: none !important; }
-.wide { width: 100%; margin-top: 16px; }
-#share .wide { margin-top: 0; }
-#host-qr { margin-top: 12px; }
-.share-code { display: grid; justify-items: center; gap: 12px; margin-top: 16px; text-align: center; }
-.qr-plate { position: relative; padding: 16px; background: #FFFFFF; border: 1px solid var(--rule); border-radius: 0; min-height: 0; line-height: 0; }
-.qr-plate img { display: block; image-rendering: pixelated; }
-.qr-plate.blurred img { filter: blur(14px); }
-.qr-reveal { display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 12px 16px;
-  white-space: nowrap; line-height: 1.45; font-weight: 600; background: var(--accent); color: var(--on-accent); }
-.qr-plate.blurred .qr-reveal { display: block; }
-.banner { display: block; margin-top: 16px; padding: 12px 16px; background: var(--accent-tint); color: var(--accent-text); text-decoration: none; font-size: 14px; }
-.spaced { margin-top: 24px; }
-.scanner { margin-top: 16px; display: grid; gap: 12px; }
-.scanner video { width: 100%; aspect-ratio: 1; object-fit: cover; background: #000; border: 1px solid var(--rule); }
-a { color: var(--accent-text); }
-.computer { display: flex; align-items: center; gap: 8px; }
-.computer .item-name { flex: 1; }

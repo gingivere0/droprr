@@ -33,12 +33,14 @@ sealed partial class ReceiverServer
     // This PC's MagicDNS name, looked up once when the receiver starts: a host name a browser may use.
     string? _magicDns;
 
-    // The page's files, embedded from web/ at build time: published path -> (resource, content type).
+    // The page's files, embedded at build time from web/ and the website's shared common.js and app.css:
+    // published path -> (resource, content type).
     static readonly Dictionary<string, (string Resource, string ContentType)> WebFiles = new(StringComparer.OrdinalIgnoreCase)
     {
         ["/web"] = ("Droprr.web.index.html", "text/html; charset=utf-8"),
         ["/web/"] = ("Droprr.web.index.html", "text/html; charset=utf-8"),
         ["/web/app.js"] = ("Droprr.web.app.js", "text/javascript; charset=utf-8"),
+        ["/web/common.js"] = ("Droprr.web.common.js", "text/javascript; charset=utf-8"),
         ["/web/app.css"] = ("Droprr.web.app.css", "text/css; charset=utf-8"),
         ["/web/icon.png"] = ("Droprr.web.icon.png", "image/png"),
     };

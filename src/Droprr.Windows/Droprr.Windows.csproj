@@ -34,10 +34,11 @@
     <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\roseGold\logo-1024.png" LogicalName="Droprr.logo.roseGold.png" />
     <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\sage\logo-1024.png" LogicalName="Droprr.logo.sage.png" />
     <EmbeddedResource Include="..\..\file-swap-icon-pack\themes\oliveMustard\logo-1024.png" LogicalName="Droprr.logo.oliveMustard.png" />
-    <!-- Browser access's page, the same files the Mac app serves. -->
+    <!-- Browser access's page, the same files the Mac app serves. Its style and shared code are the website's. -->
     <EmbeddedResource Include="..\..\web\index.html" LogicalName="Droprr.web.index.html" />
     <EmbeddedResource Include="..\..\web\app.js" LogicalName="Droprr.web.app.js" />
-    <EmbeddedResource Include="..\..\web\app.css" LogicalName="Droprr.web.app.css" />
+    <EmbeddedResource Include="..\..\site\common.js" LogicalName="Droprr.web.common.js" />
+    <EmbeddedResource Include="..\..\site\app.css" LogicalName="Droprr.web.app.css" />
     <EmbeddedResource Include="..\..\web\icon.png" LogicalName="Droprr.web.icon.png" />
     <!-- Browser access over the internet: the page the hidden WebView2 runs (BrowserHost), with the website's shared
          WebRTC code. -->

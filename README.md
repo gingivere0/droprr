@@ -143,7 +143,7 @@ Without the iPhone app, you can still send to a computer from the share sheet, a
 | --- | --- |
 | `src/Droprr.Windows/` | The Windows app (WPF on .NET 10, styled with [WPF UI](https://github.com/lepoco/wpfui)) |
 | `apple/` | The Mac and iPhone apps and their share extensions (SwiftUI, Xcode project) |
-| `web/` | The browser page both computer apps serve (see [In a browser](#in-a-browser)) |
+| `web/` | The browser page both computer apps serve (see [In a browser](#in-a-browser)), with `site/common.js` and `site/app.css` |
 | `site/`, `relay/`, `host/` | The Droprr website, its introduction server (a Cloudflare Worker), and the page the computer apps run to answer it |
 | `design-system/droprr/` | The shared design system: colors, themes, type, spacing, and contrast rules |
 | `docs/PROTOCOL.md` | The HTTP protocol every Droprr app speaks |

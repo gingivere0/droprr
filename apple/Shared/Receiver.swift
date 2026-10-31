@@ -837,6 +837,7 @@ extension DroprrReceiver {
         "/web": ("index.html", "text/html; charset=utf-8"),
         "/web/": ("index.html", "text/html; charset=utf-8"),
         "/web/app.js": ("app.js", "text/javascript; charset=utf-8"),
+        "/web/common.js": ("common.js", "text/javascript; charset=utf-8"),
         "/web/app.css": ("app.css", "text/css; charset=utf-8"),
         "/web/icon.png": ("icon.png", "image/png"),
     ]
