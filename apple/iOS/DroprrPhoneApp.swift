@@ -171,34 +171,10 @@ final class PhoneModel {
         pairAnswer = nil
     }
 
-    /// A computer paired with this phone over the Wi-Fi: add or update it with both tokens and its pin.
+    /// A computer paired with this phone over the Wi-Fi: add or update it with both tokens and its pin, by the same
+    /// rules as the Mac (DroprrSettings.applyPairing).
     private func paired(_ request: PairRequest) {
-        // Same rules as the Mac: a device token updates only its own peer; LAN pairing adds a new entry.
-        let match: Int?
-        if let existing = request.existingPeerID {
-            match = settings.peers.firstIndex { $0.id == existing }
-        } else if request.viaLAN {
-            match = nil
-        } else {
-            match = request.deviceID.flatMap { id in settings.peers.firstIndex { $0.deviceID == id } }
-                ?? settings.peers.firstIndex { $0.matches(deviceName: request.name) }
-        }
-        let peerID: UUID
-        if let i = match {
-            settings.peers[i].platform = request.platform
-            settings.peers[i].remoteName = request.name
-            if settings.peers[i].host.isEmpty { settings.peers[i].host = request.host }
-            if let token = request.token { settings.peers[i].token = token }
-            settings.peers[i].acceptToken = request.acceptToken
-            peerID = settings.peers[i].id
-        } else {
-            let peer = Peer(name: settings.uniqueName(request.name), host: request.host, port: request.port, platform: request.platform,
-                            remoteName: request.name, token: request.token, acceptToken: request.acceptToken)
-            settings.peers.append(peer)
-            peerID = peer.id
-        }
-        settings.learn(peerID, deviceID: request.deviceID, fingerprint: request.fingerprint, tlsPort: request.tlsPort,
-                       lan: request.lan, replacePin: (request.existingPeerID == nil || request.repair) && request.fingerprint != nil)
+        settings.applyPairing(request)
         pairingStatus = .success("Paired with \(request.name)")
     }
 
