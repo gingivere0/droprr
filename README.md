@@ -142,11 +142,13 @@ Without the iPhone app, you can still send to a computer from the share sheet, a
 | Path | What's there |
 | --- | --- |
 | `src/Droprr.Windows/` | The Windows app (WPF on .NET 10, styled with [WPF UI](https://github.com/lepoco/wpfui)) |
+| `tests/Droprr.Windows.Tests/` | Unit tests for the Windows app's pairing rules; `dotnet test tests/Droprr.Windows.Tests` runs them on any OS |
 | `apple/` | The Mac and iPhone apps and their share extensions (SwiftUI, Xcode project) |
 | `web/` | The browser page both computer apps serve (see [In a browser](#in-a-browser)), with `site/common.js` and `site/app.css` |
 | `site/`, `relay/`, `host/` | The Droprr website, its introduction server (a Cloudflare Worker), and the page the computer apps run to answer it |
 | `design-system/droprr/` | The shared design system: colors, themes, type, spacing, and contrast rules |
 | `docs/PROTOCOL.md` | The HTTP protocol every Droprr app speaks |
+| `docs/adr/`, `GLOSSARY.md` | Decisions about how the code is organized, and the words the code and docs use |
 | `docs/ios-shortcut.md` | Optional iPhone Shortcuts |
 | `scripts/` | `build-installer.ps1` (the Windows installer), `deploy.ps1` (publishes a Windows build for the self-updating app), and `make-app-icon.ps1` |
 | `file-swap-icon-pack/` | App, tray, and per-theme icons for every platform |
