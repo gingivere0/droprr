@@ -245,44 +245,11 @@ final class MacModel {
     /// The name of the last device that paired, so an open Pair window can confirm and close.
     var lastPaired: String?
 
-    /// A device paired with this Mac (POST /pair): add it, or update the peer with that name.
+    /// A device paired with this Mac (POST /pair): add it, or update its peer (DroprrSettings.applyPairing).
     private func paired(_ request: PairRequest) {
-        // The same device: a device token updates only its own peer; LAN pairing always adds a new entry
-        // (it answered 409 for a known id or certificate); the main token (QR pairing) matches id, then name.
-        let match: Int?
-        if let existing = request.existingPeerID {
-            match = settings.peers.firstIndex { $0.id == existing }
-        } else if request.viaLAN {
-            match = nil
-        } else {
-            match = request.deviceID.flatMap { id in settings.peers.firstIndex { $0.deviceID == id } }
-                ?? settings.peers.firstIndex { $0.matches(deviceName: request.name) }
-        }
-        let peerID: UUID
-        if let i = match {
-            settings.peers[i].platform = request.platform
-            settings.peers[i].remoteName = request.name
-            // Keep a host we already have for a known computer.
-            if settings.peers[i].host.isEmpty { settings.peers[i].host = request.host }
-            if request.platform != "ios" && settings.peers[i].host == request.host { settings.peers[i].port = request.port }
-            // Re-pairing replaces the device token, so the old one stops working.
-            settings.peers[i].acceptToken = request.acceptToken
-            if let token = request.token { settings.peers[i].token = token }
-            else if request.platform == "ios" { settings.peers[i].token = nil }
-            peerID = settings.peers[i].id
-        } else {
-            let peer = Peer(name: settings.uniqueName(request.name), host: request.host, port: request.port,
-                            platform: request.platform, remoteName: request.name,
-                            token: request.token, acceptToken: request.acceptToken)
-            settings.peers.append(peer)
-            peerID = peer.id
-        }
-        // Pairing is where a fingerprint gets pinned (or replaced).
-        // A device token may only fill in an id or pin its peer doesn't have yet (protocol 1 upgrade).
-        settings.learn(peerID, deviceID: request.deviceID, fingerprint: request.fingerprint, tlsPort: request.tlsPort,
-                       lan: request.lan, replacePin: (request.existingPeerID == nil || request.repair) && request.fingerprint != nil)
+        let peerID = settings.applyPairing(request)
         // A phone upgrading an existing pairing to protocol 2 isn't news.
-        guard request.existingPeerID == nil || request.repair else { return }
+        if case .update = request.target { return }
         lastPaired = request.name
         added(peerID)
         let content = UNMutableNotificationContent()

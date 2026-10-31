@@ -384,8 +384,9 @@
 			inputPaths = (
 				"$(SRCROOT)/../web/index.html",
 				"$(SRCROOT)/../web/app.js",
-				"$(SRCROOT)/../web/app.css",
 				"$(SRCROOT)/../web/icon.png",
+				"$(SRCROOT)/../site/common.js",
+				"$(SRCROOT)/../site/app.css",
 				"$(SRCROOT)/../host/host.html",
 				"$(SRCROOT)/../host/host.js",
 				"$(SRCROOT)/../site/rtc.js",
@@ -396,15 +397,16 @@
 			outputPaths = (
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/index.html",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/app.js",
-				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/app.css",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/icon.png",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/common.js",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/web/app.css",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/host/host.html",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/host/host.js",
 				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/host/rtc.js",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# The browser page is shared with Windows: web/ in the repository, copied as is.\nmkdir -p \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/web\"\ncp \"$SRCROOT\"/../web/* \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/web/\"\nmkdir -p \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/host\"\ncp \"$SRCROOT\"/../host/host.html \"$SRCROOT\"/../host/host.js \"$SRCROOT\"/../site/rtc.js \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/host/\"\n";
+			shellScript = "# The browser page is shared with Windows: web/ in the repository, copied as is, with common.js and app.css from\n# site/\nmkdir -p \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/web\"\ncp \"$SRCROOT\"/../web/* \"$SRCROOT\"/../site/common.js \"$SRCROOT\"/../site/app.css \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/web/\"\nmkdir -p \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/host\"\ncp \"$SRCROOT\"/../host/host.html \"$SRCROOT\"/../host/host.js \"$SRCROOT\"/../site/rtc.js \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/host/\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
