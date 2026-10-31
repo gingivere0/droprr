@@ -1,3 +1,4 @@
+import CryptoKit
 import SwiftUI
 import UIKit
 import UserNotifications
@@ -71,6 +72,7 @@ final class PhoneModel {
         guest.onReceive = { [weak self] room, item in self?.receivedFromBrowser(room, item) }
         guest.onProgress = { [weak self] value in if self?.sending == true { self?.progress = value } }
         guest.onBye = { [weak self] room in self?.browserDisconnected(room) }
+        guest.onGuest = { [weak self] id, name, token, kind, isNew in self?.guestConnected(id, name: name, token: token, kind: kind, isNew: isNew) }
     }
 
     // MARK: Local network (protocol 2)
@@ -87,6 +89,13 @@ final class PhoneModel {
         }
         receiver?.startSecure()
         #if DEBUG
+        // Tests: DROPRR_SHOW_CODE=1 opens this phone's code and logs it.
+        if ProcessInfo.processInfo.environment["DROPRR_SHOW_CODE"] != nil {
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                NSLog("Droprr test: code %@", await openCode() ?? "none")
+            }
+        }
         // Tests: DROPRR_JOIN=<one code link> pairs with it as if scanned.
         if let code = ProcessInfo.processInfo.environment["DROPRR_JOIN"] {
             Task {
@@ -448,12 +457,14 @@ final class PhoneModel {
                     settings.peers[i].token = welcome.token
                     settings.peers[i].fingerprint = fp
                     settings.peers[i].remoteName = name
+                    settings.peers[i].deviceKind = welcome.kind == "ios" ? "ios" : nil
                     id = settings.peers[i].id
                 } else {
                     var peer = Peer(name: settings.uniqueName(name), host: "", port: DroprrDefaults.port, platform: "web",
                                     remoteName: name, token: welcome.token)
                     peer.deviceID = room
                     peer.fingerprint = fp
+                    peer.deviceKind = welcome.kind == "ios" ? "ios" : nil
                     settings.peers.append(peer)
                     id = peer.id
                 }
@@ -467,12 +478,76 @@ final class PhoneModel {
 
     /// Reconnects to remembered browsers whose pages are open (they stay on the relay), so they can send here.
     func connectBrowsers() async {
-        for peer in settings.peers where peer.isBrowser && !BrowserGuest.shared.connected.contains(peer.deviceID ?? "") {
+        for peer in settings.peers where peer.isBrowser && peer.fingerprint != nil
+            && !BrowserGuest.shared.connected.contains(peer.deviceID ?? "") {
             _ = try? await connectBrowser(peer)
         }
+        // Devices that connected to this phone come back by themselves, while it's on the relay.
+        if settings.peers.contains(where: { $0.isBrowser && $0.fingerprint == nil }) { _ = await startHosting() }
+    }
+
+    // MARK: Phones as hosts (docs/PROTOCOL.md)
+
+    /// Starts this phone's own room; returns its fingerprint for the code.
+    private func startHosting() async -> String {
+        let key = settings.browserHostKey
+        let known = Dictionary(settings.peers.filter { $0.isBrowser && $0.fingerprint == nil }
+            .compactMap { peer in peer.deviceID.flatMap { id in peer.token.map { (id, $0) } } }) { a, _ in a }
+        return await BrowserGuest.shared.host(key: key, room: hostRoom, name: settings.deviceName, known: known)
+    }
+
+    private var hostRoom: String {
+        Data(SHA256.hash(data: Data(base64URL: settings.browserHostKey) ?? Data())).base64URL
+    }
+
+    /// Opens this phone's code: a website link with a new secret, for another iPhone or any phone's camera.
+    func openCode() async -> String? {
+        let fingerprint = await startHosting()
+        guard !fingerprint.isEmpty else { return nil }
+        var bytes = [UInt8](repeating: 0, count: 16)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        let secret = Data(bytes).base64URL
+        BrowserGuest.shared.openCode(secret: secret)
+        let info: [String: Any] = ["v": 1, "p": "web", "n": settings.deviceName, "k": "ios"]
+        guard let json = try? JSONSerialization.data(withJSONObject: info) else { return nil }
+        return "\(DroprrWeb.site)#\(hostRoom).\(secret).\(fingerprint).\(json.base64URL)"
+    }
+
+    func closeCode() { BrowserGuest.shared.closeCode() }
+
+    /// A device connected to this phone: remember it (pairing again just updates it), and show it if it's new.
+    private func guestConnected(_ id: String, name: String, token: String, kind: String, isNew: Bool) {
+        let clean = PairRequest.displayName(name)
+        let peerID: UUID
+        if let i = settings.peers.firstIndex(where: { $0.isBrowser && $0.deviceID == id }) {
+            settings.peers[i].token = token
+            settings.peers[i].deviceKind = kind == "ios" ? "ios" : nil
+            peerID = settings.peers[i].id
+        } else {
+            var peer = Peer(name: settings.uniqueName(clean.isEmpty ? "Device" : clean), host: "", port: DroprrDefaults.port,
+                            platform: "web", remoteName: clean, token: token)
+            peer.deviceID = id
+            peer.deviceKind = kind == "ios" ? "ios" : nil
+            settings.peers.append(peer)
+            peerID = peer.id
+        }
+        if isNew { added(peerID) }
+        #if DEBUG
+        if let text = ProcessInfo.processInfo.environment["DROPRR_GUEST_SEND"], let peer = settings.peers.first(where: { $0.id == peerID }) {
+            Task {
+                let ok = await send([.text(text)], to: peer)
+                NSLog("Droprr test: guest sent %@ %@", ok ? "ok" : "failed", lastSendResult ?? "")
+            }
+        }
+        #endif
     }
 
     private func connectBrowser(_ peer: Peer) async throws {
+        // A device that connected to this phone: it has to come back itself.
+        if peer.fingerprint == nil, let id = peer.deviceID {
+            guard BrowserGuest.shared.connected.contains(id) else { throw BrowserGuest.GuestError.failed("offline") }
+            return
+        }
         guard let room = peer.deviceID, let fp = peer.fingerprint, let token = peer.token, !token.isEmpty else {
             throw DroprrError.notPaired
         }

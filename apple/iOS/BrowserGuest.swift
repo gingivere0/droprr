@@ -14,6 +14,7 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler {
     struct Welcome {
         var name: String
         var token: String
+        var kind: String
     }
 
     enum GuestError: LocalizedError {
@@ -23,10 +24,10 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler {
         var errorDescription: String? {
             switch self {
             case .denied(let reason): return reason.isEmpty ? "The browser didn't accept this iPhone." : "The browser didn't accept this iPhone (\(reason))."
-            case .failed("offline"): return "That browser's page isn't open. Open it and try again."
-            case .failed("wrong key"): return "That isn't the browser whose code you scanned. Scan its code again."
-            case .failed("refused"): return "The browser refused this iPhone. Scan its code again."
-            case .failed(let reason): return "Couldn't reach the browser (\(reason)). Both need to be online."
+            case .failed("offline"): return "It isn't open right now. Open Droprr or its page there and try again."
+            case .failed("wrong key"): return "That isn't the device whose code you scanned. Scan its code again."
+            case .failed("refused"): return "It refused this iPhone. Scan its code again."
+            case .failed(let reason): return "Couldn't reach it (\(reason)). Both need to be online."
             }
         }
     }
@@ -38,10 +39,13 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler {
     /// A browser's connection ended (its page closed or the network dropped).
     var onClosed: (_ room: String) -> Void = { _ in }
     var onProgress: (Double) -> Void = { _ in }
+    /// A device connected to this phone's own room: new (it scanned the code) or back with its token.
+    var onGuest: (_ id: String, _ name: String, _ token: String, _ kind: String, _ isNew: Bool) -> Void = { _, _, _, _, _ in }
 
     private var webView: WKWebView?
     private var ready = false
     private var waitingForReady: [CheckedContinuation<Void, Never>] = []
+    private var waitingForHost: [CheckedContinuation<String, Never>] = []
     private var joins: [String: CheckedContinuation<Welcome, Error>] = [:]
     private var sends: [String: CheckedContinuation<Void, Error>] = [:]
     private(set) var connected: Set<String> = []
@@ -61,7 +65,7 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler {
     private func start() {
         guard webView == nil else { return }
         let config = WKWebViewConfiguration()
-        config.websiteDataStore = .nonPersistent()
+        config.websiteDataStore = .default()   // keeps the page's DTLS certificate, so this phone's code stays valid
         config.setURLSchemeHandler(files, forURLScheme: Self.scheme)
         config.userContentController.add(WeakHandler(self), name: "droprr")
         let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: config)
@@ -121,6 +125,25 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler {
         }
     }
 
+    /// Hosts this phone's room on the relay (docs/PROTOCOL.md, "Phones as hosts"). `known` maps device ids to the
+    /// tokens they may reconnect with. Returns the page's DTLS fingerprint for the code.
+    func host(key: String, room: String, name: String, known: [String: String]) async -> String {
+        await whenReady()
+        return await withCheckedContinuation { continuation in
+            waitingForHost.append(continuation)
+            call("host", [["relay": DroprrWeb.relay, "key": key, "room": room, "name": name, "known": known]])
+        }
+    }
+
+    func openCode(secret: String) { call("openCode", [secret]) }
+    func closeCode() { call("closeCode", []) }
+
+    /// Removes a device that connected to this phone: it's told, and its token stops working.
+    func forget(_ id: String) {
+        connected.remove(id)
+        call("forget", [id])
+    }
+
     func disconnect(_ room: String) {
         connected.remove(room)
         call("disconnect", [room])
@@ -141,7 +164,16 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler {
             waitingForReady = []
         case "welcome":
             connected.insert(room)
-            joins.removeValue(forKey: room)?.resume(returning: Welcome(name: body["name"] as? String ?? "", token: body["token"] as? String ?? ""))
+            joins.removeValue(forKey: room)?.resume(returning: Welcome(name: body["name"] as? String ?? "", token: body["token"] as? String ?? "",
+                                                                       kind: body["kind"] as? String ?? "web"))
+        case "hosting":
+            let fingerprint = body["fp"] as? String ?? ""
+            waitingForHost.forEach { $0.resume(returning: fingerprint) }
+            waitingForHost = []
+        case "guest":
+            connected.insert(room)
+            onGuest(room, body["name"] as? String ?? "", body["token"] as? String ?? "", body["kind"] as? String ?? "web",
+                    body["isNew"] as? Bool ?? false)
         case "bye":
             connected.remove(room)
             onBye(room)

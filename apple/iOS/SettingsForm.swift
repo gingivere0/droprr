@@ -8,6 +8,15 @@ struct SettingsForm: View {
     @State private var pingResults: [UUID: PingResult] = [:]
     @State private var showToken = false
     @State private var removing: Peer?
+    @Environment(\.showCode) private var showCode
+
+    /// Removes a device; one reached over WebRTC is told or disconnected first.
+    private func remove(_ peer: Peer) {
+        if peer.isBrowser, let id = peer.deviceID {
+            if peer.fingerprint == nil { BrowserGuest.shared.forget(id) } else { BrowserGuest.shared.disconnect(id) }
+        }
+        settings.peers.removeAll { $0.id == peer.id }
+    }
 
     var body: some View {
         Form {
@@ -37,12 +46,16 @@ struct SettingsForm: View {
                             Button("Remove \(peer.name)", role: .destructive) { removing = peer }
                         }
                 }
-                .onDelete { settings.peers.remove(atOffsets: $0) }
+                .onDelete { offsets in offsets.map { settings.peers[$0] }.forEach(remove) }
                 Button {
                     editingToken = false
                     editing = Peer(name: "", host: "")
                 } label: {
                     Label("Add Device", systemImage: "plus.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                Button(action: showCode) {
+                    Label("Show QR code", systemImage: "qrcode")
                 }
                 .buttonStyle(.borderless)
             } header: {
@@ -100,7 +113,7 @@ struct SettingsForm: View {
         .confirmationDialog("Remove \(removing?.name ?? "device")?", isPresented: Binding(
             get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
-                if let peer = removing { settings.peers.removeAll { $0.id == peer.id } }
+                if let peer = removing { remove(peer) }
                 removing = nil
             }
             Button("Cancel", role: .cancel) { removing = nil }
@@ -159,7 +172,8 @@ private struct PeerRow: View {
             VStack(alignment: .leading, spacing: Space.xs) {
                 Text(peer.name).font(.body.weight(.medium))
                 Text(peer.isPhone ? "iPhone · collects items when opened"
-                     : peer.isBrowser ? "Browser · while its page is open" : peer.addressLine)
+                     : peer.isBrowser ? (peer.deviceKind == "ios" ? "iPhone · while Droprr is open on it" : "Browser · while its page is open")
+                     : peer.addressLine)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

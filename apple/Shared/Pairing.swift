@@ -19,6 +19,8 @@ struct PairingInfo: Equatable {
     /// The one code's join secret (docs/PROTOCOL.md, "One code"): pair with it in place of a token, which the code
     /// never carries.
     var join: String?
+    /// A browser's or phone's code: "ios" when the host is an iPhone (docs/PROTOCOL.md, "Phones as hosts").
+    var kind: String?
 
     static let version = 1
 
@@ -119,8 +121,10 @@ struct PairingInfo: Equatable {
             let base64url = { (text: String) in text.count == 43 && text.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") } }
             guard base64url(room), base64url(dtls) else { return .failure(.notDroprr) }
             let name = (app["n"] as? String).map(PairRequest.displayName).flatMap { $0.isEmpty ? nil : $0 } ?? "Browser"
-            return .success(PairingInfo(name: name, host: "", port: DroprrDefaults.port, token: "", platform: "web",
-                                        id: room, fp: dtls, join: secret))
+            var info = PairingInfo(name: name, host: "", port: DroprrDefaults.port, token: "", platform: "web",
+                                   id: room, fp: dtls, join: secret)
+            info.kind = app["k"] as? String
+            return .success(info)
         }
         let lan = (app["l"] as? [String] ?? []).filter { !$0.isEmpty }
         let tailscale = (app["h"] as? String).flatMap { $0.isEmpty ? nil : $0 }

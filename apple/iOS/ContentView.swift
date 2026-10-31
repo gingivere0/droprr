@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Bindable var model: PhoneModel
     @State private var scanning = false
+    @State private var showingCode = false
     /// Debug builds accept `-DroprrTab 0|1|2` to open a tab (for screenshots).
     @State private var tab: Int = {
         #if DEBUG
@@ -50,6 +51,11 @@ struct ContentView: View {
         // A finished send's line doesn't follow you to another tab.
         .onChange(of: tab) { if !model.sending { model.lastSendResult = nil } }
         .environment(\.startPairing, { scanning = true })
+        .environment(\.showCode, { showingCode = true })
+        .sheet(isPresented: $showingCode) { ShowCodeSheet(model: model).presentationDetents([.large]) }
+        #if DEBUG
+        .onAppear { if ProcessInfo.processInfo.environment["DROPRR_CODE_SHEET"] != nil { showingCode = true } }
+        #endif
         .environment(\.pairWithCode, { model.pair(with: $0) })
         .sheet(isPresented: $scanning) {
             PairingScannerSheet { model.pair(with: $0) }
