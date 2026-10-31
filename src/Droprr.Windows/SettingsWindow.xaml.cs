@@ -409,19 +409,19 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
 
         var kept = new HashSet<string>(_peers.Where(_savedName.ContainsKey).Select(p => _savedName[p]), StringComparer.OrdinalIgnoreCase);
         foreach (var removed in _savedName.Values.Where(n => !kept.Contains(n)).ToList())
-            if (s.FindPeer(removed) is { } gone)
+            if (s.Peers.FindByName(removed) is { } gone)
                 s.Peers.Remove(gone);
         foreach (var row in _peers)
         {
             if (!_savedName.TryGetValue(row, out var savedAs))
             {
                 // Added here.
-                if (s.FindPeer(row.Name) is null)
+                if (s.Peers.FindByName(row.Name) is null)
                     s.Peers.Add(row);
                 continue;
             }
             // Gone from disk meanwhile (merged into another record): not brought back.
-            if (s.FindPeer(savedAs) is not { } peer)
+            if (s.Peers.FindByName(savedAs) is not { } peer)
                 continue;
             peer.Name = row.Name.Trim();
             peer.Host = row.Host.Trim();

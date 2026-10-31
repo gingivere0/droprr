@@ -16,6 +16,10 @@ static class LanNetwork
     // The HTTPS port is always the HTTP port + 1.
     public static int TlsPort(int httpPort) => httpPort + 1;
 
+    // This PC's HTTPS endpoints on its private networks ("address:tlsPort"), as it tells devices it pairs with.
+    public static List<string> OwnEndpoints(int httpPort) =>
+        LocalAddresses().Select(a => $"{a.Address}:{TlsPort(httpPort)}").ToList();
+
     // Loopback, Tailscale, and private LAN ranges: who may connect to the HTTPS port.
     public static bool IsAllowedRemote(IPAddress? address)
     {

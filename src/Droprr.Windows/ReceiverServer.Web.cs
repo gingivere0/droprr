@@ -143,16 +143,9 @@ sealed partial class ReceiverServer
     {
         if (!IsFromPage(context.Request) || BrowserAccess is null || AddBrowser is null)
             return Error("forbidden", StatusCodes.Status403Forbidden);
-        WebSessionBody? body;
-        try
-        {
-            LimitBody(context, 4096);
-            body = await context.Request.ReadFromJsonAsync<WebSessionBody>(context.RequestAborted);
-        }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException or BadHttpRequestException)
-        {
-            return Error("body must be JSON: {\"code\", \"name\"}", StatusCodes.Status400BadRequest);
-        }
+        var (body, unreadable) = await ReadJsonAsync<WebSessionBody>(context, 4096, "{\"code\", \"name\"}");
+        if (unreadable is not null)
+            return unreadable;
 
         switch (BrowserAccess.TryUse(body?.Code))
         {
@@ -163,9 +156,9 @@ sealed partial class ReceiverServer
                 return Error("no code is open: choose Open in a browser on the computer", StatusCodes.Status403Forbidden);
         }
 
-        var name = Printable(body?.Name);
+        var name = FileNames.DeviceName(body?.Name);
         var token = SettingsStore.NewToken();
-        var saved = AddBrowser(new PairRequest(name.Length > 0 ? name : "Browser", "web", null, null, null, token, FromLan: true));
+        var saved = AddBrowser(new PairRequest(new PairTarget.New(), name.Length > 0 ? name : "Browser", DevicePlatform.Web, null, null, null, token));
         SetWebCookie(context, token);
         return Results.Json(new { ok = true, name = Settings.DeviceName, device = saved });
     }
@@ -177,7 +170,7 @@ sealed partial class ReceiverServer
             SetWebCookie(context, token);
         return Results.Json(new
         {
-            name = Settings.DeviceName, version = Version, platform = "windows", protocol = 2, you = peer,
+            name = Settings.DeviceName, version = Version, platform = OwnDevice.Platform.ToWire(), protocol = 2, you = peer,
         });
     }
 

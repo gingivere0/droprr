@@ -16,17 +16,11 @@ using System.Threading.Tasks;
 
 namespace Droprr;
 
-// How a send went: "lan" or "tailscale", and whether the peer's LAN identity didn't match its pin.
-public sealed record SendOutcome(string Path, bool IdentityChanged)
+// How a send went: the path it took, and whether the peer's LAN identity didn't match its pin.
+public sealed record SendOutcome(SendPath Path, bool IdentityChanged)
 {
-    public string Label => Path == "lan" ? "Wi-Fi" : "Tailscale";
+    public string Label => Path.Label();
 }
-
-// What a peer's /ping says about it.
-public sealed record PingInfo(string? Platform, string? Id, string? Fingerprint, int? TlsPort, string? Version = null);
-
-// A /pair or /pair/request response: the device token minted for this PC, and the peer's identity and addresses.
-public sealed record PairInfo(string Token, string? Name, string? Id, string? Fingerprint, int? TlsPort, List<string> Lan, string? Host);
 
 // The peer's LAN certificate didn't match its pin, and there's no Tailscale path to fall back on.
 // A plain HTTP (Tailscale path) host that doesn't resolve to a Tailscale or loopback address.
@@ -60,7 +54,7 @@ static class Sender
     // request, so the other side knows which device is calling (LAN pairing depends on it).
     public static System.Security.Cryptography.X509Certificates.X509Certificate2? ClientCertificate { get; set; }
 
-    sealed record Route(Uri Base, HttpClient Client, string Path);
+    sealed record Route(Uri Base, HttpClient Client, SendPath Path);
 
     // Reports bytes uploaded as they're read from disk, and each path it tries in `stage`.
     public static Task<SendOutcome> SendFilesAsync(Peer peer, string token, IReadOnlyList<string> paths,
@@ -115,7 +109,7 @@ static class Sender
             try
             {
                 await PostAsync(lan, token, content, cancel);
-                return new SendOutcome("lan", false);
+                return new SendOutcome(SendPath.Lan, false);
             }
             catch (HttpRequestException ex) when (ex.InnerException is AuthenticationException)
             {
@@ -138,7 +132,7 @@ static class Sender
         {
             throw new HttpRequestException($"Couldn't reach {peer.Name} over Tailscale. Check that Tailscale is on and {peer.Name} is awake.", ex);
         }
-        return new SendOutcome("tailscale", identityChanged);
+        return new SendOutcome(SendPath.Tailscale, identityChanged);
     }
 
     // Connecting failed or timed out (as opposed to the peer answering with an error).
@@ -155,7 +149,7 @@ static class Sender
         {
             if (await CanConnectAsync(endpoint, cancel))
                 return new Route(new UriBuilder(Uri.UriSchemeHttps, endpoint.Address.ToString(), endpoint.Port, "/").Uri,
-                    PinnedClient(peer.Fingerprint), "lan");
+                    PinnedClient(peer.Fingerprint), SendPath.Lan);
         }
         return null;
     }
@@ -164,7 +158,7 @@ static class Sender
     public static async Task<bool> IsOnLanAsync(Peer peer, CancellationToken cancel = default) =>
         await LanRouteAsync(peer, cancel) is not null;
 
-    static Route TailscaleRoute(Peer peer) => new(new UriBuilder(Uri.UriSchemeHttp, peer.Host, peer.Port, "/").Uri, Http, "tailscale");
+    static Route TailscaleRoute(Peer peer) => new(new UriBuilder(Uri.UriSchemeHttp, peer.Host, peer.Port, "/").Uri, Http, SendPath.Tailscale);
 
     static async Task<bool> CanConnectAsync(IPEndPoint endpoint, CancellationToken cancel)
     {
@@ -208,35 +202,16 @@ static class Sender
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(TailscaleRoute(peer).Base, "pair"))
             {
-                Content = JsonContent.Create(OwnPairFields(settings, host, acceptToken)),
+                Content = JsonContent.Create(OwnDevice.PairFields(settings, host, acceptToken, lanListening: true)),
             };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             using var response = await Http.SendAsync(request, timeout.Token);
-            return response.IsSuccessStatusCode ? ReadPairInfo(await response.Content.ReadAsStringAsync(timeout.Token)) : null;
+            return response.IsSuccessStatusCode ? PairInfo.Parse(await response.Content.ReadAsStringAsync(timeout.Token)) : null;
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException)
         {
             return null;
         }
-    }
-
-    // What this PC tells a device it pairs with: name, platform, Tailscale host, ports, the token minted for it,
-    // and its local network identity and addresses.
-    public static Dictionary<string, object?> OwnPairFields(AppSettings settings, string? host, string acceptToken, bool lanListening = true)
-    {
-        var tlsPort = LanNetwork.TlsPort(settings.Port);
-        return new()
-        {
-            ["id"] = settings.DeviceId,
-            ["name"] = settings.DeviceName,
-            ["platform"] = "windows",
-            ["host"] = host,
-            ["port"] = settings.Port,
-            ["token"] = acceptToken,
-            ["fp"] = DeviceIdentity.Fingerprint(settings),
-            ["tlsPort"] = lanListening ? tlsPort : null,
-            ["lan"] = lanListening ? LanNetwork.LocalAddresses().Select(a => $"{a.Address}:{tlsPort}").ToList() : new List<string>(),
-        };
     }
 
     // The server's certificate fingerprint at this address, from a TLS handshake that trusts nothing yet.
@@ -286,7 +261,7 @@ static class Sender
             try
             {
                 using var json = JsonDocument.Parse(text);
-                return json.RootElement.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String ? error.GetString() : null;
+                return json.RootElement.Text("error");
             }
             catch (JsonException)
             {
@@ -322,7 +297,7 @@ static class Sender
             {
                 var text = await response.Content.ReadAsStringAsync(timeout.Token);
                 return response.StatusCode == HttpStatusCode.OK
-                    ? (200, ReadPairInfo(text), null)
+                    ? (200, PairInfo.Parse(text), null)
                     : ((int)response.StatusCode, null, ErrorOf(text));
             }
         }
@@ -330,20 +305,6 @@ static class Sender
         {
             return (0, null, null);
         }
-    }
-
-    static PairInfo? ReadPairInfo(string body)
-    {
-        using var json = JsonDocument.Parse(body);
-        var root = json.RootElement;
-        string? Text(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-        if (Text("token") is not { Length: > 0 } token)
-            return null;
-        var lan = root.TryGetProperty("lan", out var list) && list.ValueKind == JsonValueKind.Array
-            ? list.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).ToList()
-            : new List<string>();
-        var tlsPort = root.TryGetProperty("tlsPort", out var port) && port.ValueKind == JsonValueKind.Number ? port.GetInt32() : (int?)null;
-        return new PairInfo(token, Text("name"), Text("id"), Text("fp")?.ToLowerInvariant(), tlsPort, lan, Text("host"));
     }
 
     // What the peer's /ping says, over Tailscale (which already authenticates the device, so its id and
@@ -359,11 +320,7 @@ static class Sender
             using var response = await Http.SendAsync(request, timeout.Token);
             if (!response.IsSuccessStatusCode)
                 return null;
-            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
-            var root = json.RootElement;
-            string? Text(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-            var tlsPort = root.TryGetProperty("tlsPort", out var port) && port.ValueKind == JsonValueKind.Number ? port.GetInt32() : (int?)null;
-            return new PingInfo(Text("platform"), Text("id"), Text("fp")?.ToLowerInvariant(), tlsPort, Text("version"));
+            return PingInfo.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException)
         {
@@ -398,11 +355,9 @@ static class Sender
                     return (false, "Wrong token");
                 if (!response.IsSuccessStatusCode)
                     continue;
-                using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
-                string? Text(string name) => json.RootElement.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-                var platform = Text("platform") switch { "macos" => "Mac", "windows" => "Windows PC", "ios" => "iPhone", var other => other ?? "Droprr" };
-                var path = route.Path == "lan" ? "Wi-Fi" : "Tailscale";
-                return (true, $"{platform} · v{Text("version") ?? "?"} · {path}" + (identityChanged ? " (Wi-Fi identity changed: pair again)" : ""));
+                var info = PingInfo.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
+                return (true, $"{info.Platform.Label()} · v{info.Version ?? "?"} · {route.Path.Label()}"
+                    + (identityChanged ? " (Wi-Fi identity changed: pair again)" : ""));
             }
             catch (HttpRequestException ex) when (ex.InnerException is AuthenticationException)
             {

@@ -7,7 +7,7 @@ namespace Droprr;
 public sealed record NearbyDevice(LanDevice Device, string? PairedAs)
 {
     public string Name => Device.Name;
-    public string Platform => Device.Platform;
+    public DevicePlatform Platform => Device.Platform;
     public string? PairedLabel => PairedAs is null ? null : $"Paired as {PairedAs}";
     public Visibility PairVisibility => PairedAs is null ? Visibility.Visible : Visibility.Collapsed;
     public Visibility LabelVisibility => PairedAs is null ? Visibility.Collapsed : Visibility.Visible;

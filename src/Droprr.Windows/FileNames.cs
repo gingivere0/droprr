@@ -56,6 +56,9 @@ static class FileNames
         return clean.Length > max ? clean[..max].TrimEnd() : clean;
     }
 
+    // A device name from the network, made safe to show and log: Printable, at most 64 characters.
+    public static string DeviceName(string? name) => Printable(name ?? "", 64);
+
     // Opens a new file, adding " (1)", " (2)", and so on instead of overwriting an existing one.
     public static (FileStream Stream, string Path) CreateUnique(string folder, string? name)
     {

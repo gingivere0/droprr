@@ -225,7 +225,7 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         static bool Overlap(string a, string b) => a.Contains(b, StringComparison.OrdinalIgnoreCase) || b.Contains(a, StringComparison.OrdinalIgnoreCase);
         var tailscale = TailscaleNetwork.FindAddresses().Count > 0;
         var other = _peers.FirstOrDefault(p => p != failed && p.IsPaired && !p.IsPhone && Overlap(p.Name, failed.Name)
-            && (p.Platform.Length == 0 || failed.Platform.Length == 0 || p.Platform == failed.Platform)
+            && (p.Platform == DevicePlatform.Unknown || failed.Platform == DevicePlatform.Unknown || p.Platform == failed.Platform)
             && (LanDiscovery.Find(p) is not null || (p.Host.Length > 0 && tailscale)));
         return other is null ? "" : $" Try \u201c{other.Name}\u201d.";
     }
@@ -386,14 +386,14 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // Saved per device, so Settings can show which path it last took.
-    static void RememberPath(Peer peer, string path)
+    static void RememberPath(Peer peer, SendPath path)
     {
         if (peer.LastPath == path)
             return;
         peer.LastPath = path;
         SettingsStore.Update(s =>
         {
-            if (s.FindPeer(peer.Name) is { } saved)
+            if (s.Peers.FindByName(peer.Name) is { } saved)
                 saved.LastPath = path;
         });
     }

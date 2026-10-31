@@ -130,7 +130,7 @@ static class Installer
         }
         catch (Exception)
         {
-            return AppSettings.DefaultPort;
+            return Protocol.DefaultPort;
         }
     }
 

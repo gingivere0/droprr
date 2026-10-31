@@ -2,4 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Droprr.Windows/Droprr.Windows.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Droprr.Windows.Tests/Droprr.Windows.Tests.csproj" />
+  </Folder>
 </Solution>

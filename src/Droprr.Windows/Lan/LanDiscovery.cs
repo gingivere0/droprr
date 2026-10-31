@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 namespace Droprr;
 
 // A Droprr device found on the local network. Discovery only finds addresses; it never makes a device trusted.
-public sealed record LanDevice(string Id, string Name, string Platform, string Fingerprint, int Port,
+public sealed record LanDevice(string Id, string Name, DevicePlatform Platform, string Fingerprint, int Port,
     IReadOnlyList<IPAddress> Addresses, DateTime Seen)
 {
     public bool IsFresh => DateTime.UtcNow - Seen < LanDiscovery.FreshFor;
@@ -119,7 +119,7 @@ static class LanDiscovery
             ["v"] = "2",
             ["id"] = settings.DeviceId,
             ["name"] = settings.DeviceName,
-            ["platform"] = "windows",
+            ["platform"] = OwnDevice.Platform.ToWire(),
             ["port"] = tlsPort.ToString(),
             ["fp"] = DeviceIdentity.Fingerprint(settings),
         };
@@ -217,6 +217,6 @@ static class LanDiscovery
         txt.TryGetValue("name", out var name);
         txt.TryGetValue("platform", out var platform);
         return new LanDevice(id, string.IsNullOrWhiteSpace(name) ? instance.FullName.Split('.')[0] : name,
-            platform ?? "", fp.ToLowerInvariant(), port, addresses, DateTime.UtcNow);
+            DevicePlatforms.FromWire(platform), fp.ToLowerInvariant(), port, addresses, DateTime.UtcNow);
     }
 }

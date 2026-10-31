@@ -80,12 +80,12 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
     static string AppInfo(AppSettings settings, string host, string? dns)
     {
         var lan = Application.Current is App { LanListening: true }
-            ? LanNetwork.LocalAddresses().Select(a => $"{a.Address}:{LanNetwork.TlsPort(settings.Port)}").ToList()
+            ? LanNetwork.OwnEndpoints(settings.Port)
             : [];
         var tailscale = LanNetwork.IsTailscale(System.Net.IPAddress.TryParse(host, out var ip) ? ip : System.Net.IPAddress.None) ? host : null;
         var json = JsonSerializer.SerializeToUtf8Bytes(new
         {
-            v = 1, n = settings.DeviceName, p = "windows", port = settings.Port, id = settings.DeviceId,
+            v = 1, n = settings.DeviceName, p = OwnDevice.Platform.ToWire(), port = settings.Port, id = settings.DeviceId,
             f = DeviceIdentity.Fingerprint(settings), l = lan, h = tailscale, d = tailscale is null ? null : dns,
         }, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
         return Convert.ToBase64String(json).TrimEnd('=').Replace('+', '-').Replace('/', '_');
@@ -129,7 +129,7 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
         }
 
         Error.IsOpen = false;
-        var dns = tailscale is null ? null : MagicDnsName();
+        var dns = tailscale is null ? null : TailscaleNetwork.MagicDnsName();
         if (CodeText(host, dns) is not { } codeText)
         {
             Code.Source = null;
@@ -191,7 +191,7 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
             ("host", host),
             ("port", settings.Port.ToString()),
             ("token", settings.Token),
-            ("platform", "windows"),
+            ("platform", OwnDevice.Platform.ToWire()),
         };
         if (!string.IsNullOrEmpty(dns))
             fields.Add(("dns", dns));
@@ -200,8 +200,7 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
         fields.Add(("fp", DeviceIdentity.Fingerprint(settings)));
         if (Application.Current is App { LanListening: true })
         {
-            var tlsPort = LanNetwork.TlsPort(settings.Port);
-            var lan = string.Join(",", LanNetwork.LocalAddresses().Select(a => $"{a.Address}:{tlsPort}"));
+            var lan = string.Join(",", LanNetwork.OwnEndpoints(settings.Port));
             if (lan.Length > 0)
                 fields.Add(("lan", lan));
         }
@@ -221,36 +220,5 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
         image.EndInit();
         image.Freeze();
         return image;
-    }
-
-    // This PC's MagicDNS name from `tailscale status --json`, or null if Tailscale's CLI isn't available.
-    internal static string? MagicDnsName()
-    {
-        var cli = new[]
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Tailscale", "tailscale.exe"),
-            "tailscale.exe",
-        }.FirstOrDefault(p => !Path.IsPathRooted(p) || File.Exists(p));
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo(cli!, "status --json")
-            {
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
-            if (process is null)
-                return null;
-            var output = process.StandardOutput.ReadToEndAsync();
-            if (!process.WaitForExit(3000) || !output.Wait(1000))
-                return null;
-            using var json = JsonDocument.Parse(output.Result);
-            var name = json.RootElement.GetProperty("Self").GetProperty("DNSName").GetString()?.TrimEnd('.');
-            return string.IsNullOrEmpty(name) ? null : name;
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or JsonException or KeyNotFoundException or InvalidOperationException)
-        {
-            return null;
-        }
     }
 }

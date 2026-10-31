@@ -23,20 +23,6 @@ public sealed record ReceivedItem(ItemKind Kind, string Display, string? Path, s
 
 public sealed record TransferProgress(Guid Id, long Received, long? Total, bool Done);
 
-sealed record PairBody(string? Name, string? Platform, string? Host, int? Port, string? Token,
-    string? Id = null, string? Fp = null, int? TlsPort = null, List<string>? Lan = null,
-    string? Commit = null, string? Session = null, string? Nonce = null);
-
-// SendToken: the token the caller minted for this PC to use when calling it (computers, and phones that receive
-// directly over the local network). AcceptToken: the device token this PC minted for the caller, returned in the
-// response. Id, Fingerprint, TlsPort, and Lan: the caller's local network identity and addresses (protocol 2).
-// ExistingPeer: the peer to update rather than match by name: the one whose device token authenticated the request,
-// or the device itself pairing again. FromLan: a confirmed new pairing, which adds a new peer. Replace: the device is
-// pairing again with the person's consent (a confirmed code, or the open one code), so its id and pin are replaced.
-public sealed record PairRequest(string Name, string Platform, string? Host, int? Port, string? SendToken, string? AcceptToken,
-    string? Id = null, string? Fingerprint = null, int? TlsPort = null, IReadOnlyList<string>? Lan = null, string? ExistingPeer = null,
-    bool FromLan = false, bool Replace = false);
-
 // The receiver described in docs/PROTOCOL.md: plain HTTP on loopback and Tailscale addresses, plus HTTPS on the
 // next port for the local network when it's turned on and the firewall allows it.
 sealed partial class ReceiverServer : IAsyncDisposable
@@ -89,7 +75,7 @@ sealed partial class ReceiverServer : IAsyncDisposable
     {
         TailscaleAddresses = TailscaleNetwork.FindAddresses();
         if (TailscaleAddresses.Count > 0)
-            _ = Task.Run(() => _magicDns = PairWindow.MagicDnsName());
+            _ = Task.Run(() => _magicDns = TailscaleNetwork.MagicDnsName());
         var port = Settings.Port;
         var tlsPort = TlsPort;
         var lan = Settings.LocalNetwork && !WithoutLan && tlsPort <= 65535 && (LoopbackOnly || LanFirewall.HasRule(tlsPort));
@@ -215,7 +201,7 @@ sealed partial class ReceiverServer : IAsyncDisposable
         });
         app.MapGet("/ping", (HttpContext context) => context.Items[WebCookie] is string browser ? WebPing(context, browser) : Results.Json(new
         {
-            name = Settings.DeviceName, version = Version, platform = "windows", protocol = 2,
+            name = Settings.DeviceName, version = Version, platform = OwnDevice.Platform.ToWire(), protocol = 2,
             id = Settings.DeviceId, fp = DeviceIdentity.Fingerprint(Settings), tlsPort = LanListening ? tlsPort : (int?)null,
         }));
         app.MapFallback(() => Error("not found", StatusCodes.Status404NotFound));
@@ -271,56 +257,22 @@ sealed partial class ReceiverServer : IAsyncDisposable
             limit.MaxRequestBodySize = max;
     }
 
-    static bool Matches(byte[] given, string token) =>
-        token.Length > 0 & CryptographicOperations.FixedTimeEquals(given, Encoding.UTF8.GetBytes(token));
-
-    static readonly string[] Platforms = ["ios", "macos", "windows"];
-
-    // A device that just scanned this PC's pairing QR (or a computer pairing with it) introduces itself.
-    // This PC mints a device token for it and keeps the token the caller minted for this PC, if any.
-    async Task<IResult> PairAsync(HttpContext context)
+    // A small JSON body (at most `max` bytes), or the 400 to answer with, which shows the expected `shape`.
+    static async Task<(T? Body, IResult? Error)> ReadJsonAsync<T>(HttpContext context, long max, string shape) where T : class
     {
-        PairBody? body;
         try
         {
-            body = await ReadPairBodyAsync(context);
+            LimitBody(context, max);
+            return (await context.Request.ReadFromJsonAsync<T>(context.RequestAborted), null);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or BadHttpRequestException)
         {
-            return Error("body must be JSON: {\"name\", \"platform\", \"host\"?, \"port\"?, \"token\"?}", StatusCodes.Status400BadRequest);
+            return (null, Error($"body must be JSON: {shape}", StatusCodes.Status400BadRequest));
         }
-
-        var name = Printable(body?.Name);
-        var platform = body?.Platform?.Trim().ToLowerInvariant() ?? "";
-        var host = body?.Host?.Trim() ?? "";
-        if (name.Length == 0)
-            return Error("name is required", StatusCodes.Status400BadRequest);
-        if (!Platforms.Contains(platform))
-            return Error("platform must be \"ios\", \"macos\", or \"windows\"", StatusCodes.Status400BadRequest);
-        if (platform != "ios" && host.Length == 0)
-            return Error("host is required for computers", StatusCodes.Status400BadRequest);
-        if (body!.Port is < 1 or > 65535)
-            return Error("port must be from 1 to 65535", StatusCodes.Status400BadRequest);
-
-        var phone = platform == "ios";
-        // With the one code's join secret: a new peer, or, for a device that's already paired, that same peer again
-        // with fresh tokens and its current certificate (pairing again just works; the person has the code open).
-        // A record of another kind (a browser, or a phone versus a computer) is never reused: that device is added.
-        var joined = context.Items[JoinKey] is true;
-        string? repair = null;
-        if (joined && Settings.Peers.Find(p => (ValidId(body.Id) is { } id && p.Id == id)
-                || (ValidFingerprint(body.Fp) is { } fp && p.Fingerprint.Equals(fp, StringComparison.OrdinalIgnoreCase))) is { } existing
-            && !existing.IsBrowser && existing.IsPhone == phone)
-            repair = existing.Name;
-        // Phones send one too when they can receive directly over the local network.
-        var sendToken = body.Token?.Trim();
-        var acceptToken = SettingsStore.NewToken();
-        PairRequested?.Invoke(new PairRequest(name, platform, phone ? null : host, body.Port,
-            string.IsNullOrEmpty(sendToken) ? null : sendToken, acceptToken,
-            ValidId(body.Id), (joined ? ClientFingerprint(context) : null) ?? ValidFingerprint(body.Fp), body.TlsPort, body.Lan, repair ?? DevicePeer(context),
-            FromLan: joined && repair is null, Replace: repair is not null));
-        return Results.Json(LanPairResponse(acceptToken));
     }
+
+    static bool Matches(byte[] given, string token) =>
+        token.Length > 0 & CryptographicOperations.FixedTimeEquals(given, Encoding.UTF8.GetBytes(token));
 
     // With a device token, only that peer's queue (?for= is ignored); with the main token, the queue named by ?for=.
     IResult ListInbox(HttpContext context)

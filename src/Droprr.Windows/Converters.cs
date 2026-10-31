@@ -17,11 +17,11 @@ sealed class MaskedTokenConverter : IMultiValueConverter
 // A peer's platform as its device glyph, per the design system's shared meanings (MASTER.md, Iconography).
 sealed class PlatformSymbolConverter : IValueConverter
 {
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => (value as string)?.ToLowerInvariant() switch
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
     {
-        "ios" => SymbolRegular.Phone24,
-        "web" => SymbolRegular.Globe24,
-        "macos" => SymbolRegular.Laptop24,
+        DevicePlatform.IOS => SymbolRegular.Phone24,
+        DevicePlatform.Web => SymbolRegular.Globe24,
+        DevicePlatform.MacOS => SymbolRegular.Laptop24,
         _ => SymbolRegular.Desktop24,
     };
 

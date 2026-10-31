@@ -30,7 +30,7 @@ public partial class PairCodeWindow : Wpf.Ui.Controls.FluentWindow
     // request nobody expected.
     public static Task<bool> AskAsync(string name, string code, CancellationToken cancel)
     {
-        name = FileNames.Printable(name, 64);
+        name = FileNames.DeviceName(name);
         var window = new PairCodeWindow(code);
         window.Heading.Text = $"Pair with {name}?";
         window.Hint.Text = $"Only if you started pairing on {name} and it shows this code. Pairing lets it send to this PC, and this PC send to it.";

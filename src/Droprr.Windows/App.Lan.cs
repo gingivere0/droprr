@@ -52,14 +52,14 @@ public partial class App
             .Select(d => (Device: d, Peer: Settings.Peers.Find(p => p.Id == d.Id && p.Fingerprint == d.Fingerprint)))
             .Where(x => x.Peer is not null)
             .Select(x => (x.Peer!.Name, Lan: x.Device.Endpoints.Select(e => e.ToString()).ToList()))
-            .Where(x => !x.Lan.SequenceEqual(Settings.FindPeer(x.Name)!.Lan))
+            .Where(x => !x.Lan.SequenceEqual(Settings.Peers.FindByName(x.Name)!.Lan))
             .ToList();
         if (updates.Count > 0)
         {
             Settings = SettingsStore.Update(s =>
             {
                 foreach (var (name, lan) in updates)
-                    if (s.FindPeer(name) is { } peer)
+                    if (s.Peers.FindByName(name) is { } peer)
                         peer.Lan = lan;
             });
         }
@@ -78,8 +78,7 @@ public partial class App
         var list = new System.Collections.Generic.List<NearbyDevice>();
         foreach (var device in LanDiscovery.Devices)
         {
-            var paired = Settings.Peers.Find(p => p.Id == device.Id
-                || (p.Fingerprint.Length > 0 && p.Fingerprint.Equals(device.Fingerprint, StringComparison.OrdinalIgnoreCase)));
+            var paired = Settings.Peers.FindByIdentity(device.Id, device.Fingerprint);
             if (paired is null)
                 list.Add(new NearbyDevice(device, null));
             else if (!paired.Name.Equals(device.Name, StringComparison.OrdinalIgnoreCase))
@@ -103,50 +102,28 @@ public partial class App
         _lastLearned = DateTime.UtcNow;
         try
         {
-            foreach (var peer in Settings.Peers.Where(p => !p.IsPhone && p.Host.Length > 0 && p.Token.Length > 0
-                         && (p.Platform.Length == 0 || p.Fingerprint.Length == 0 || p.Id.Length == 0)).ToList())
+            foreach (var peer in Settings.Peers.NeedingIdentity().ToList())
             {
                 if (await Sender.PingAsync(peer, peer.Token) is not { } info)
                     continue;
-                Settings = SettingsStore.Update(s =>
-                {
-                    if (s.FindPeer(peer.Name) is not { } saved)
-                        return;
-                    if (!string.IsNullOrEmpty(info.Platform))
-                        saved.Platform = info.Platform;
-                    if (saved.Id.Length == 0 && info.Id is { Length: > 0 } id)
-                        saved.Id = id;
-                    if (saved.Fingerprint.Length == 0 && info.Fingerprint is { Length: 64 } fp)
-                    {
-                        saved.Fingerprint = fp;
-                        if (info.TlsPort is { } tlsPort)
-                            saved.TlsPort = tlsPort;
-                    }
-                });
+                Settings = SettingsStore.Update(s => s.Peers.FindByName(peer.Name)?.Learn(info));
             }
 
             var merged = false;
             // At most one merge per peer; stops if a merge didn't take (for example, settings changed meanwhile).
-            for (var round = Settings.Peers.Count; round > 0 && PeerMerge.Duplicates(Settings).FirstOrDefault() is ({ } older, { } newer); round--)
+            for (var round = Settings.Peers.Count; round > 0 && PeerMerge.Duplicates(Settings.Peers).FirstOrDefault() is ({ } older, { } newer); round--)
             {
                 var keepOlderTokens = false;
                 if (older.Token.Length > 0 && newer.Token.Length > 0 && older.Token != newer.Token)
                 {
-                    Peer Probe(string token) => new()
-                    {
-                        Name = older.Name, Host = older.Host.Length > 0 ? older.Host : newer.Host, Port = older.Port,
-                        Platform = older.Platform.Length > 0 ? older.Platform : newer.Platform,
-                        Id = newer.Id.Length > 0 ? newer.Id : older.Id,
-                        Fingerprint = newer.Fingerprint.Length > 0 ? newer.Fingerprint : older.Fingerprint,
-                        TlsPort = newer.TlsPort, Lan = newer.Lan, Token = token,
-                    };
-                    keepOlderTokens = !(await Sender.TestAsync(Probe(newer.Token))).Ok && (await Sender.TestAsync(Probe(older.Token))).Ok;
+                    keepOlderTokens = !(await Sender.TestAsync(PeerMerge.Preview(older, newer, newer.Token))).Ok
+                        && (await Sender.TestAsync(PeerMerge.Preview(older, newer, older.Token))).Ok;
                 }
                 var (olderIndex, newerIndex) = (Settings.Peers.IndexOf(older), Settings.Peers.IndexOf(newer));
                 Settings = SettingsStore.Update(s =>
                 {
                     if (olderIndex < s.Peers.Count && newerIndex < s.Peers.Count && PeerMerge.SameDevice(s.Peers[olderIndex], s.Peers[newerIndex]))
-                        PeerMerge.Merge(s, s.Peers[olderIndex], s.Peers[newerIndex], keepOlderTokens);
+                        PeerMerge.Merge(s.Peers, s.Peers[olderIndex], s.Peers[newerIndex], keepOlderTokens);
                 });
                 RequestLog.Note($"merged device \"{newer.Name}\" into \"{older.Name}\" (same device; kept {(keepOlderTokens ? "the older" : "the newer")} tokens)");
                 merged = true;
@@ -192,45 +169,28 @@ public partial class App
         }
 
         var minted = SettingsStore.NewToken();
-        // The same device may already be paired over Tailscale under another name (matched by its id or pin, never
-        // by name): that one is updated. Nothing is saved until the pairing succeeds.
-        bool Matches(Peer p) => p.Id == device.Id || (p.Fingerprint.Length > 0 && p.Fingerprint == fingerprint);
-        var name = Settings.Peers.Find(Matches)?.Name ?? Settings.UniqueName(FileNames.Printable(device.Name, 64));
+        // The same device may already be paired over Tailscale under another name (PeerBook.ApplyLanPairing). Nothing
+        // is saved until the pairing succeeds.
+        var name = Settings.Peers.FindByIdentity(device.Id, fingerprint)?.Name ?? Settings.Peers.UniqueName(FileNames.DeviceName(device.Name));
         // Accept the new token while asking, since the device may call back right away.
         _receiver?.AcceptPendingToken(minted, name);
 
         using var cancel = new CancellationTokenSource();
         PairCodeWindow? waiting = null;
-        var host = PairWindow.MagicDnsName() ?? TailscaleNetwork.FindAddresses().FirstOrDefault()?.ToString();
+        var host = TailscaleNetwork.OwnHost();
         var (status, info, error) = await Sender.RequestLanPairAsync(endpoint, fingerprint, DeviceIdentity.Fingerprint(Settings),
-            Sender.OwnPairFields(Settings, host, minted, LanListening),
+            OwnDevice.PairFields(Settings, host, minted, LanListening),
             code => Dispatcher.Invoke(() => waiting = PairCodeWindow.ShowWaiting(device.Name, code, cancel.Cancel)), cancel.Token);
         waiting?.Close();
 
         if (status == 200 && info is not null)
         {
-            Settings = SettingsStore.Update(s =>
-            {
-                var p = s.Peers.Find(Matches);
-                if (p is null)
-                {
-                    p = new Peer { Name = s.UniqueName(name), Platform = device.Platform };
-                    s.Peers.Add(p);
-                }
-                name = p.Name;
-                p.Id = device.Id;
-                p.AcceptToken = minted;
-                p.Platform = device.Platform.Length > 0 ? device.Platform : p.Platform;
-                p.Fingerprint = fingerprint;
-                p.TlsPort = info.TlsPort ?? device.Port;
-                p.Lan = info.Lan.Count > 0 ? info.Lan : device.Endpoints.Select(e => e.ToString()).ToList();
-                p.Token = info.Token;
-                if (p.Host.Length == 0 && !p.IsPhone && info.Host is { Length: > 0 } tailscaleHost)
-                    p.Host = tailscaleHost;
-            });
+            var pairing = new LanPairing(device.Id, name, device.Platform, fingerprint, device.Port,
+                device.Endpoints.Select(e => e.ToString()).ToList(), minted);
+            Settings = SettingsStore.Update(s => name = s.Peers.ApplyLanPairing(pairing, info).Name);
             _receiver?.ForgetPendingToken(minted);
             SettingsSaved?.Invoke();
-            var peer = Settings.FindPeer(name)!;
+            var peer = Settings.Peers.FindByName(name)!;
             _tray?.Notify($"{peer.Name} paired", "Each of you can now send to the other over Wi-Fi.");
             DevicePaired?.Invoke(peer);
             NearbyChanged?.Invoke();
@@ -241,12 +201,12 @@ public partial class App
         _receiver?.ForgetPendingToken(minted);
         if (cancel.IsCancellationRequested)
             return;
-        var shownName = FileNames.Printable(device.Name, 64);
+        var shownName = FileNames.DeviceName(device.Name);
         // An older Droprr there that still refuses a device it already has (409). If this PC can already send to it,
         // they're connected, so say nothing; otherwise a quiet note rather than a dialog.
         if (status == 409)
         {
-            if (Settings.Peers.Find(Matches) is { Token.Length: > 0 } known)
+            if (Settings.Peers.FindByIdentity(device.Id, fingerprint) is { Token.Length: > 0 } known)
             {
                 DevicePaired?.Invoke(known);
                 return;
