@@ -34,6 +34,8 @@ struct Peer: Codable, Identifiable, Hashable {
     var lanSeen: Date?
     /// "lan" or "tailscale": how the last send reached it.
     var lastPath: String?
+    /// For a device reached over WebRTC (platform "web"): "ios" when it's an iPhone rather than a browser.
+    var deviceKind: String?
 
     var isPaired: Bool { isPhone || isBrowser || !(token ?? "").isEmpty }
 

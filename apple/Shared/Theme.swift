@@ -55,7 +55,7 @@ enum Theme {
         case "ios": return "iphone"
         case "macos": return "laptopcomputer"
         case "windows": return "pc"
-        case "web": return "globe"
+        case "web": return peer.deviceKind == "ios" ? "iphone" : "globe"
         default: return "desktopcomputer"
         }
     }

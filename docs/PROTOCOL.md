@@ -566,6 +566,14 @@ A browser can also host its own room, so the Droprr iPhone app (or another brows
 - **Disconnect** on the browser host forgets that device: it deletes its token, sends `{ "t": "bye" }`, and closes the connection, so the device can't reconnect or send until it scans the code again. A device that gets `bye` forgets its token for that room and shows "`<name>` disconnected". (A website guest does the same when any host sends `bye`.)
 - **The iPhone app** scans the code (or gets it from the `droprr://join?code=` link), sees `"p": "web"`, and joins as a guest. It stores `{ room, fp, token, name }` as a browser device, and runs the same WebRTC code (`site/rtc.js`) in a hidden web view.
 
+### Phones as hosts
+
+The iPhone app hosts its own room the same way, so two iPhones connect with no computer: **Show QR code** in Settings, scanned by Droprr on another iPhone (or any phone's camera, which opens the website). It's a browser host in every way that matters on the wire: the same hello, `welcome`, items, and `bye`, and `"p": "web"` in the code, so anything that can join a browser host can join a phone.
+
+- **The code** adds `"k": "ios"` to `<b>`, and `hello` and `welcome` add `"kind": "ios"`, so each side shows an iPhone rather than a browser. Others ignore them.
+- **The host key** is kept in the Keychain and the **DTLS certificate** in the hidden page's storage. The page runs in the app (`apple/guest/`, with `site/rtc.js`), and a phone may have several devices connected at once.
+- **Reconnecting:** only while the app is open on both, since iOS suspends it in the background. Each side reconnects when it comes forward: the guest to the room, and the host to the relay if it has accepted a device. Removing a device on the host sends `bye`, as on a browser host.
+
 ### The host page's bridge
 
 The host page reaches its app with same-origin requests that the app answers itself (the Windows app intercepts them in WebView2; they never reach a network):
