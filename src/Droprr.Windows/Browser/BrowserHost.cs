@@ -78,10 +78,11 @@ sealed class BrowserHost : IDisposable
         _window = new Window { Width = 0, Height = 0, ShowInTaskbar = false, WindowStyle = WindowStyle.None, Style = new Style(typeof(Window)) };
         var handle = new WindowInteropHelper(_window).EnsureHandle();
         // Its own profile folder, so the DTLS certificate (and so the code's fingerprint) survives updates. Background
-        // throttling is off because nobody ever sees this page, but it must answer promptly.
+        // throttling is off because nobody ever sees this page, but it must answer promptly. The GPU is off because the
+        // page draws nothing and data channels don't use it, which saves about 50 MB.
         var options = new CoreWebView2EnvironmentOptions
         {
-            AdditionalBrowserArguments = "--disable-background-timer-throttling --disable-renderer-backgrounding --disable-features=IntensiveWakeUpThrottling",
+            AdditionalBrowserArguments = "--disable-background-timer-throttling --disable-renderer-backgrounding --disable-features=IntensiveWakeUpThrottling --disable-gpu --disable-software-rasterizer",
         };
         var profile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Droprr", "BrowserHost");
         var environment = await CoreWebView2Environment.CreateAsync(null, profile, options);
