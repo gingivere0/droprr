@@ -1,5 +1,5 @@
 # Builds the Windows installer: dist\DroprrSetup-<version>.exe, one self-contained exe (no .NET install needed).
-# Droprr is its own installer (src\Droprr.Windows\Installer.cs): named DroprrSetup*.exe, it installs itself per user
+# Droprr is its own installer (src\Droprr.Windows\Shell\Installer.cs): named DroprrSetup*.exe, it installs itself per user
 # into %LOCALAPPDATA%\Programs\Droprr. The exe isn't signed, so SmartScreen warns the first time it's run.
 # Usage, from anywhere: powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
 $ErrorActionPreference = "Stop"

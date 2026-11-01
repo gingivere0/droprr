@@ -3,12 +3,9 @@
 // page never sees a token. Everything from the network is shown with textContent, never as HTML.
 "use strict";
 
-const $ = (id) => document.getElementById(id);
-
 const POLL_MS = 3000;
 let computer = "your computer";
 let pollTimer = null;
-let chosenFiles = [];
 const shownItems = new Map();
 
 // Every call sends X-Droprr-Web, which a page on another site can't add without a CORS preflight the computer
@@ -30,36 +27,6 @@ async function errorText(response) {
   return `error ${response.status}`;
 }
 
-function setStatus(element, text, kind) {
-  element.textContent = text;
-  element.className = "status" + (kind ? " " + kind : "");
-}
-
-function guessBrowserName() {
-  const ua = navigator.userAgent;
-  const device = /iPhone/.test(ua) ? "iPhone"
-    : /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? "iPad"
-    : /Android/.test(ua) ? "Android"
-    : /Macintosh/.test(ua) ? "Mac"
-    : /Windows/.test(ua) ? "Windows"
-    : "Browser";
-  const browser = /CriOS|Chrome\//.test(ua) && !/Edg/.test(ua) ? "Chrome"
-    : /FxiOS|Firefox\//.test(ua) ? "Firefox"
-    : /EdgiOS|Edg\//.test(ua) ? "Edge"
-    : /Safari\//.test(ua) ? "Safari"
-    : "";
-  return browser ? `${device} (${browser})` : device;
-}
-
-function formatSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
-  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
-}
-
 function formatTime(iso) {
   const date = new Date(iso);
   if (isNaN(date)) return "";
@@ -67,16 +34,6 @@ function formatTime(iso) {
   if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes} min ago`;
   return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
-function isWebUrl(text) {
-  if (/\s/.test(text.trim())) return false;
-  try {
-    const url = new URL(text.trim());
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 // --- Access ---------------------------------------------------------------------------------------------------
@@ -183,80 +140,18 @@ $("signout").addEventListener("click", async () => {
 
 // --- Sending --------------------------------------------------------------------------------------------------
 
-function renderChosen() {
-  const list = $("chosen");
-  list.replaceChildren();
-  chosenFiles.forEach((file, index) => {
-    const row = document.createElement("li");
-    const name = document.createElement("span");
-    name.textContent = file.name || "File";
-    const size = document.createElement("span");
-    size.className = "item-meta";
-    size.textContent = formatSize(file.size);
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "link";
-    remove.textContent = "Remove";
-    remove.setAttribute("aria-label", `Remove ${file.name}`);
-    remove.addEventListener("click", () => {
-      chosenFiles.splice(index, 1);
-      renderChosen();
-    });
-    row.append(name, size, remove);
-    list.append(row);
-  });
-  $("drop-hint").textContent = chosenFiles.length
-    ? `${chosenFiles.length} chosen · tap to add more`
-    : "";
-}
-
-function addFiles(files) {
-  for (const file of files) chosenFiles.push(file);
-  renderChosen();
-}
-
-$("files").addEventListener("change", () => {
-  addFiles($("files").files);
-  $("files").value = "";
-});
-
-const drop = $("drop");
-drop.addEventListener("dragover", (event) => { event.preventDefault(); drop.classList.add("over"); });
-drop.addEventListener("dragleave", () => drop.classList.remove("over"));
-drop.addEventListener("drop", (event) => {
-  event.preventDefault();
-  drop.classList.remove("over");
-  if (event.dataTransfer?.files?.length) addFiles(event.dataTransfer.files);
-});
-
-document.addEventListener("paste", (event) => {
-  if ($("app").hidden || event.target === $("text")) return;
-  const files = [...(event.clipboardData?.files || [])];
-  if (files.length) {
-    event.preventDefault();
-    addFiles(files);
-  }
-});
-
-$("clear").addEventListener("click", () => {
-  chosenFiles = [];
-  $("text").value = "";
-  renderChosen();
-  setStatus($("send-status"), "");
-});
-
 // One multipart request: each file is a part with a filename, and the text (if any) a part without one, which the
 // computer saves as text or a link. It's all or nothing, so a retry never duplicates files.
 $("send-button").addEventListener("click", () => {
   const text = $("text").value;
-  if (!chosenFiles.length && !text.trim()) {
+  if (!chosen.files.length && !text.trim()) {
     setStatus($("send-status"), "Choose a file or type something first.", "error");
     return;
   }
   const form = new FormData();
-  for (const file of chosenFiles) form.append("file", file, file.name || "File");
+  for (const file of chosen.files) form.append("file", file, file.name || "File");
   if (text.trim()) form.append(isWebUrl(text) ? "url" : "text", isWebUrl(text) ? text.trim() : text);
-  const count = chosenFiles.length + (text.trim() ? 1 : 0);
+  const count = chosen.files.length + (text.trim() ? 1 : 0);
 
   const button = $("send-button");
   const progress = $("progress");
@@ -284,9 +179,8 @@ $("send-button").addEventListener("click", () => {
     try { error = JSON.parse(request.responseText).error || error; } catch { /* keep the status */ }
     if (request.status >= 200 && request.status < 300) {
       setStatus($("send-status"), `Sent ${count === 1 ? "1 item" : `${count} items`} to ${computer}.`, "ok");
-      chosenFiles = [];
+      chosen.clear();
       $("text").value = "";
-      renderChosen();
     } else {
       setStatus($("send-status"), `Couldn't send: ${error}`, "error");
     }
@@ -453,5 +347,4 @@ async function copy(text, button) {
   setTimeout(() => { button.textContent = label; }, 1500);
 }
 
-renderChosen();
 start();

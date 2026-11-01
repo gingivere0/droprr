@@ -10,7 +10,7 @@
                 <ui:ThemesDictionary Theme="Dark" />
                 <ui:ControlsDictionary />
                 <!-- Droprr's design tokens (design-system/droprr/tokens.json) and type roles. -->
-                <ResourceDictionary Source="Themes/Tokens.xaml" />
+                <ResourceDictionary Source="Theming/Tokens.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <!-- Styles based on WPF UI's live here, not in Tokens.xaml: a merged dictionary can't see the

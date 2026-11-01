@@ -287,15 +287,14 @@ public partial class App : Application
             _settingsWindow.FocusPeerToken(focusPeerToken);
     }
 
-    // Fallback for phones that never called POST /pair: one that checks its inbox under an unknown name
-    // becomes an iPhone peer, so the Send window offers it. A known name is never changed this way (a computer
-    // isn't turned into a phone).
+    // Fallback for phones that never called POST /pair (PeerBook.AddCheckedInPhone).
     void OnInboxPolled(string device)
     {
-        device = FileNames.Printable(device, 64);
-        if (device.Length == 0 || Settings.FindPeer(device) is not null || Settings.Peers.Count(p => p.IsPhone) >= 50)
+        device = FileNames.DeviceName(device);
+        if (!Settings.Peers.CanAddCheckedInPhone(device))
             return;
-        SavePeer(new PairRequest(device, "ios", null, null, null, null));
+        Settings = SettingsStore.Update(s => s.Peers.AddCheckedInPhone(device));
+        SettingsSaved?.Invoke();
         _tray?.Notify("New device", $"{device} checked in and can now receive from this PC.");
     }
 
@@ -366,7 +365,7 @@ public partial class App : Application
     {
         if (hello.Id.Length != 22 || !hello.Id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
             return new BrowserHelloResult(false, Error: "bad browser id");
-        var existing = Settings.Peers.Find(p => p.IsBrowser && p.Id == hello.Id);
+        var existing = Settings.Peers.FindBrowser(hello.Id);
         if (hello.Token is { Length: > 0 } token && existing is { AcceptToken.Length: > 0 }
             && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
                 System.Text.Encoding.UTF8.GetBytes(token), System.Text.Encoding.UTF8.GetBytes(existing.AcceptToken)))
@@ -375,19 +374,10 @@ public partial class App : Application
             return new BrowserHelloResult(false, Error: existing is null ? "scan the code on the computer" : "this browser was removed: scan the code again");
 
         var minted = SettingsStore.NewToken();
-        var name = FileNames.Printable(hello.Name, 64);
-        Settings = SettingsStore.Update(s =>
-        {
-            var peer = s.Peers.Find(p => p.IsBrowser && p.Id == hello.Id);
-            if (peer is null)
-            {
-                peer = new Peer { Name = s.UniqueName(name.Length > 0 ? name : "Browser"), Platform = "web", Id = hello.Id };
-                s.Peers.Add(peer);
-            }
-            peer.AcceptToken = minted;
-        });
+        var name = FileNames.DeviceName(hello.Name);
+        Settings = SettingsStore.Update(s => s.Peers.ConnectBrowser(hello.Id, name, minted));
         SettingsSaved?.Invoke();
-        var saved = Settings.Peers.Find(p => p.IsBrowser && p.Id == hello.Id)!;
+        var saved = Settings.Peers.FindBrowser(hello.Id)!;
         _tray?.Notify($"{saved.Name} connected", "It can send to this PC, and what you send to it goes to its Droprr page.");
         BrowserConnected?.Invoke(saved);
         return new BrowserHelloResult(true, saved.Id, minted);
@@ -405,67 +395,18 @@ public partial class App : Application
     // A browser disconnected itself: its access and anything waiting for it go.
     void RemoveBrowser(string name)
     {
-        Settings = SettingsStore.Update(s => s.Peers.RemoveAll(p => p.IsBrowser && p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
+        Settings = SettingsStore.Update(s => s.Peers.RemoveBrowser(name));
         ClearWaiting(name);
         SettingsSaved?.Invoke();
     }
 
-    // Adds the peer or updates an existing one.
-    // - A device token's /pair updates only that token's peer, and can't change its platform, id, or pinned
-    //   certificate once they're known, so one paired device can't make itself look like another.
-    // - A confirmed LAN pairing always adds a new peer; the receiver already refused devices paired before.
-    // - Otherwise (the main token: the pairing QR, or a token typed in), the peer with the same device id, else
-    //   the same name.
-    // A host this PC already has (often a MagicDNS name the user typed) is kept for computers; phones never have one.
+    // Adds the peer or updates an existing one (PeerBook.ApplyPairing), and returns it as saved.
     Peer SavePeer(PairRequest request)
     {
         var name = request.Name;
-        Settings = SettingsStore.Update(s =>
-        {
-            bool OwnedByOther(Peer self, string? id, string? fp) => s.Peers.Any(p => p != self
-                && ((id is not null && p.Id == id) || (fp is not null && p.Fingerprint.Equals(fp, StringComparison.OrdinalIgnoreCase))));
-            var existing = request.ExistingPeer is { } owner ? s.FindPeer(owner) : null;
-            var peer = existing
-                ?? (request.FromLan ? null
-                    : (request.Id is { } id ? s.Peers.Find(p => p.Id == id) : null) ?? s.FindPeer(request.Name));
-            if (peer is null)
-            {
-                peer = new Peer { Name = s.UniqueName(request.Name) };
-                s.Peers.Add(peer);
-            }
-            name = peer.Name;
-            if (existing is null || peer.Platform.Length == 0)
-                peer.Platform = request.Platform;
-            if (peer.IsPhone)
-                peer.Host = "";
-            else if (peer.Host.Length == 0 && request.Host is not null)
-                peer.Host = request.Host;
-            if (request.Port is { } port)
-                peer.Port = port;
-            // Pairing again replaces the device token, so the previous one stops working.
-            if (request.AcceptToken is not null)
-                peer.AcceptToken = request.AcceptToken;
-            // The token this PC sends to the peer: from the caller. A phone without one (protocol 1) can't be
-            // called, so items for it are queued.
-            if (request.SendToken is not null)
-                peer.Token = request.SendToken;
-            else if (peer.IsPhone)
-                peer.Token = "";
-            // Local network identity and addresses (protocol 2). The fingerprint comes from an authenticated
-            // /pair or a confirmed LAN pairing, so it's pinned. A device token can only fill them in (a protocol 1
-            // pairing upgrading), never replace them, and never with another peer's.
-            var mayReplace = existing is null || request.Replace;
-            if (request.Id is not null && (mayReplace || peer.Id.Length == 0) && !OwnedByOther(peer, request.Id, null))
-                peer.Id = request.Id;
-            if (request.Fingerprint is not null && (mayReplace || peer.Fingerprint.Length == 0) && !OwnedByOther(peer, null, request.Fingerprint))
-                peer.Fingerprint = request.Fingerprint;
-            if (request.TlsPort is { } tlsPort)
-                peer.TlsPort = tlsPort;
-            if (request.Lan is { } lan)
-                peer.Lan = lan.ToList();
-        });
+        Settings = SettingsStore.Update(s => name = s.Peers.ApplyPairing(request).Name);
         SettingsSaved?.Invoke();
-        return Settings.FindPeer(name)!;
+        return Settings.Peers.FindByName(name)!;
     }
 
     // Pairs with computers just added or given a new token in Settings: mints a device token for each, calls
@@ -473,12 +414,11 @@ public partial class App : Application
     // fails (for example, an older app), the entered token keeps working.
     internal async Task PairWithComputersAsync(IEnumerable<string> names)
     {
-        var host = PairWindow.MagicDnsName() ?? TailscaleNetwork.FindAddresses().FirstOrDefault()?.ToString();
-        if (host is null)
+        if (TailscaleNetwork.OwnHost() is not { } host)
             return;
         foreach (var name in names)
         {
-            if (Settings.FindPeer(name) is not { IsPhone: false } peer || peer.Token.Length == 0 || peer.Host.Length == 0)
+            if (Settings.Peers.FindByName(name) is not { IsPhone: false } peer || peer.Token.Length == 0 || peer.Host.Length == 0)
                 continue;
             var minted = SettingsStore.NewToken();
             // Accept the new token while asking, since the computer may call back right away. The previous one
@@ -487,22 +427,8 @@ public partial class App : Application
             var returned = await Sender.PairAsync(peer, peer.Token, Settings, host, minted);
             Settings = SettingsStore.Update(s =>
             {
-                if (s.FindPeer(name) is not { } p || returned is null)
-                    return;
-                p.AcceptToken = minted;
-                p.Token = returned.Token;
-                // Over Tailscale, which authenticates the device, so its fingerprint can be pinned, unless another
-                // peer already has that identity.
-                if (s.Peers.Any(o => o != p && ((returned.Id is { Length: > 0 } rid && o.Id == rid)
-                        || (returned.Fingerprint is { Length: 64 } rfp && o.Fingerprint == rfp))))
-                    return;
-                if (returned.Id is { Length: > 0 } id)
-                    p.Id = id;
-                if (returned.Fingerprint is { Length: 64 } fp)
-                    p.Fingerprint = fp;
-                if (returned.TlsPort is { } tlsPort)
-                    p.TlsPort = tlsPort;
-                p.Lan = returned.Lan;
+                if (returned is not null && s.Peers.FindByName(name) is { } p)
+                    s.Peers.ApplyTailscalePairing(p, minted, returned);
             });
             _receiver?.ForgetPendingToken(minted);
             SettingsSaved?.Invoke();
