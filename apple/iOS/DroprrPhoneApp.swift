@@ -42,6 +42,8 @@ final class PhoneModel {
     var history: [HistoryEntry] = []
     var lastSendResult: String?
     var progress: Double?
+    /// A large item arriving over Wi-Fi right now (shown on the Send and Received tabs).
+    var receiving: ReceiveProgress?
     var sending = false
     var collecting = false
     var lastCollect: String?
@@ -83,6 +85,14 @@ final class PhoneModel {
         if receiver == nil {
             let receiver = DroprrReceiver(settings: settings, inbox: Self.inbox)
             receiver.onItem = { [weak self] item in self?.record(item, from: nil) }
+            receiver.onReceiveProgress = { [weak self] progress in
+                guard let self else { return }
+                if progress.done {
+                    if self.receiving?.id == progress.id { self.receiving = nil }
+                } else if progress.isWorthShowing {
+                    self.receiving = progress
+                }
+            }
             receiver.onPair = { [weak self] in self?.paired($0) }
             receiver.onPairRequest = { [weak self] request in await self?.ask(request) ?? false }
             self.receiver = receiver

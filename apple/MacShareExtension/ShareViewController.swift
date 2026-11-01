@@ -92,7 +92,7 @@ struct MacShareView: View {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 4) {
                         if Look.isAtelier { Kicker("Droprr") }
-                        Text("Send").font(Look.display(28))
+                        Text("Send to").font(Look.display(28))
                     }
                     Spacer()
                     LogoBadge(size: 28).padding(.bottom, 4)
@@ -106,7 +106,6 @@ struct MacShareView: View {
                     .foregroundStyle(Look.muted)
             } else {
                 VStack(alignment: .leading, spacing: Space.xs) {
-                    Kicker("Send to")
                     VStack(spacing: 0) {
                         ForEach(model.settings.peers) { peer in
                             let isSelected = peer.id == selected?.id
@@ -117,7 +116,6 @@ struct MacShareView: View {
                                         .foregroundStyle(isSelected ? Look.ink : Look.muted)
                                         .frame(width: 18)
                                     Text(peer.name).font(Look.name(16)).lineLimit(1)
-                                    Text(Theme.platformName(peer.platform)).font(.system(size: 11)).foregroundStyle(Look.muted)
                                     Spacer()
                                     if isSelected { Circle().fill(Theme.end).frame(width: 6, height: 6) }
                                 }

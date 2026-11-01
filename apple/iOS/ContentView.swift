@@ -202,6 +202,7 @@ private struct SendTab: View {
                     SendStatusView(message: model.lastSendResult, progress: model.progress, onCancel: model.cancelSend,
                                onDismiss: { model.lastSendResult = nil })
                 }
+                ReceivingStatusView(progress: model.receiving)
             }
             .padding(.horizontal, Space.lg)
             .padding(.bottom, Space.lg)
@@ -575,6 +576,9 @@ private struct ReceivedTab: View {
                     if model.collecting { ProgressView() }
                 }
                 .listRowBackground(Look.container)
+                if model.receiving != nil {
+                    ReceivingStatusView(progress: model.receiving).listRowBackground(Look.container)
+                }
             } header: {
                 TabTitle(title: "Received").listRowInsets(EdgeInsets()).padding(.bottom, Space.sm)
             }

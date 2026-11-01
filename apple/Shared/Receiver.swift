@@ -108,10 +108,19 @@ final class DroprrReceiver {
     /// This device's MagicDNS name, if Tailscale has one: a Host a browser may use.
     var magicDNS: String?
     let settings: DroprrSettings
-    let inbox: URL
+    /// Where received files are saved. The Mac changes it when Settings picks another folder.
+    var inbox: URL {
+        didSet {
+            server.saveDirectory = inbox
+            secureServer?.saveDirectory = inbox
+            browserServer?.saveDirectory = inbox
+        }
+    }
 
     /// Called on the main queue for every item received.
     var onItem: (ReceivedItem) -> Void = { _ in }
+    /// Called on the main queue while a POST /send body arrives, and once more when it's done.
+    var onReceiveProgress: (ReceiveProgress) -> Void = { _ in }
     var onStateChange: (String) -> Void = { _ in }
     /// Desktops serve the phone inbox from this; nil (iPhone) means /inbox is 404.
     var outbox: OutboxServing?
@@ -127,6 +136,11 @@ final class DroprrReceiver {
         server.precheck = { [weak self] request in self?.precheck(request) }
         server.bodyLimit = Self.bodyLimit
         server.saveDirectory = inbox
+        server.onBodyProgress = { [weak self] id, received, total, done in
+            DispatchQueue.main.async {
+                self?.onReceiveProgress(ReceiveProgress(id: id, received: received, total: total, done: done))
+            }
+        }
         server.handler = { [weak self] request in
             await self?.handle(request) ?? .json(503, ["ok": false, "error": "shutting down"])
         }
@@ -183,6 +197,7 @@ final class DroprrReceiver {
             browser.handler = server.handler
             browser.bodyLimit = server.bodyLimit
             browser.saveDirectory = inbox
+            browser.onBodyProgress = server.onBodyProgress
             do {
                 try browser.start(port: settings.port + 2)
                 browserServer = browser
@@ -195,6 +210,7 @@ final class DroprrReceiver {
         secure.handler = server.handler
         secure.bodyLimit = server.bodyLimit
         secure.saveDirectory = inbox
+        secure.onBodyProgress = server.onBodyProgress
         do {
             try secure.start(port: settings.tlsPort, service: bonjourService)
             secureServer = secure
@@ -427,4 +443,29 @@ extension Data {
         }
         self.init(bytes)
     }
+}
+
+/// An incoming POST /send body: bytes so far and the total when the sender gave a length.
+struct ReceiveProgress: Equatable {
+    var id: UUID
+    var received: Int
+    var total: Int?
+    var done: Bool
+
+    /// 0…1, or nil when the total isn't known (a chunked upload).
+    var fraction: Double? {
+        guard let total, total > 0 else { return nil }
+        return min(1, Double(received) / Double(total))
+    }
+
+    /// "12.3 MB of 40.0 MB", or "12.3 MB" without a total.
+    var detail: String {
+        let format = { (bytes: Int) in ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file) }
+        guard let total else { return format(received) }
+        return "\(format(received)) of \(format(total))"
+    }
+
+    /// Large or unknown-size transfers are shown; small ones finish before a bar would help (as on Windows).
+    var isWorthShowing: Bool { total.map { $0 >= ReceiveProgress.largeBytes } ?? true }
+    static let largeBytes = 8 << 20   // matches Windows
 }
