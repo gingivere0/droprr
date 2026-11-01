@@ -59,6 +59,9 @@ final class HTTPServer {
     var bodyLimit: (Request) -> Int = { _ in Int.max }
     /// Where received files end up; its volume's free space is checked too (507).
     var saveDirectory: URL?
+    /// Progress of a POST /send body as it arrives: (transfer id, bytes so far, total if known, done).
+    /// Called on the server's queue, at most every 0.2 seconds per transfer, and once with done = true.
+    var onBodyProgress: ((UUID, Int, Int?, Bool) -> Void)?
     /// Open connections, capped so a flood of half-open ones can't pile up.
     private var openConnections = 0
     private static let maxConnections = 64
@@ -187,6 +190,11 @@ private final class HTTPConnection {
     private var limit = Int.max
     private var bytesSinceSpaceCheck = 0
     private var retainSelf: HTTPConnection?
+    /// Receiving progress for a POST /send body (see HTTPServer.onBodyProgress).
+    private let transferID = UUID()
+    private var reportsProgress = false
+    private var progressTotal: Int?
+    private var lastProgress = Date.distantPast
 
     /// The client certificate's fingerprint, read from the TLS handshake.
     private var clientFingerprint: String? {
@@ -318,6 +326,9 @@ private final class HTTPConnection {
                 FileManager.default.createFile(atPath: file.path, contents: nil)
                 bodyHandle = try? FileHandle(forWritingTo: file)
                 request?.bodyFile = file
+                reportsProgress = server.onBodyProgress != nil && req.method == "POST"
+                    && req.path.split(separator: "?").first.map { $0 == "/send" || $0 == "/send/" } == true
+                progressTotal = chunked ? nil : remaining
                 if req.header("expect")?.lowercased() == "100-continue" {
                     connection.send(content: Data("HTTP/1.1 100 Continue\r\n\r\n".utf8), completion: .contentProcessed { _ in })
                 }
@@ -328,6 +339,7 @@ private final class HTTPConnection {
         if done {
             try? bodyHandle?.close()
             bodyHandle = nil
+            endProgress()
             dispatch()
         } else {
             receive()
@@ -400,7 +412,18 @@ private final class HTTPConnection {
             respond(.json(507, ["ok": false, "error": "not enough disk space"]))
             return false
         }
+        if reportsProgress, Date().timeIntervalSince(lastProgress) >= 0.2 {
+            lastProgress = Date()
+            server.onBodyProgress?(transferID, bodyBytes, progressTotal, false)
+        }
         return true
+    }
+
+    /// The body is in (or the connection ended early): the transfer's progress is over.
+    private func endProgress() {
+        guard reportsProgress else { return }
+        reportsProgress = false
+        server.onBodyProgress?(transferID, bodyBytes, progressTotal, true)
     }
 
     /// A chunked body that doesn't follow the format.
@@ -482,6 +505,7 @@ private final class HTTPConnection {
     }
 
     private func cleanup() {
+        endProgress()
         if retainSelf != nil { server.connectionClosed() }
         timeout?.cancel()
         timeout = nil

@@ -66,6 +66,13 @@ public partial class App : Application
         _tray?.UpdateRecent(Recent);
     }
 
+    // Empties the list only; received files stay where they are.
+    internal void ClearRecent()
+    {
+        Recent.Clear();
+        _tray?.UpdateRecent(Recent);
+    }
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);

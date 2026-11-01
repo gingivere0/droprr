@@ -103,6 +103,8 @@ final class DroprrSettings {
     var style: String { didSet { defaults.set(style, forKey: "style") } }
     /// Mac: copy received text and links to the clipboard. On by default.
     var copyTextAndLinks: Bool { didSet { defaults.set(copyTextAndLinks, forKey: "copyTextAndLinks") } }
+    /// Mac: the folder received files are saved to, as a path. Empty means Downloads › Droprr (the default).
+    var saveFolder: String { didSet { defaults.set(saveFolder, forKey: "saveFolder") } }
     /// "system", "light" or "dark" (Light by default). Spatial is always dark regardless.
     var colorMode: String { didSet { defaults.set(colorMode, forKey: "colorMode") } }
     /// Not saved: a device whose token Settings should open for editing ("Missing Token").
@@ -267,6 +269,7 @@ final class DroprrSettings {
         lastPeerID = defaults.string(forKey: "lastPeerID").flatMap(UUID.init(uuidString:))
         autoCopy = defaults.bool(forKey: "autoCopy")
         copyTextAndLinks = defaults.object(forKey: "copyTextAndLinks") as? Bool ?? true
+        saveFolder = defaults.string(forKey: "saveFolder") ?? ""
         theme = defaults.string(forKey: "theme") ?? ThemePalette.defaultID
         style = defaults.string(forKey: "style") ?? "atelier"
         colorMode = defaults.string(forKey: "colorMode") ?? "light"

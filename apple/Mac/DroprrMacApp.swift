@@ -42,13 +42,19 @@ private struct MenuBarLabel: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        // Seth prefers the colored logo over a monochrome template icon.
-        Image(nsImage: {
-            let image = NSImage(named: "MenuBarIcon-\(Theme.palette.id)") ?? NSImage()
-            image.isTemplate = false
-            image.size = NSSize(width: 18, height: 18)
-            return image
-        }())
+        // Seth prefers the colored logo over a monochrome template icon. While a large item arrives, the
+        // percentage shows next to it, so receiving is visible without opening the panel.
+        HStack(spacing: 4) {
+            Image(nsImage: {
+                let image = NSImage(named: "MenuBarIcon-\(Theme.palette.id)") ?? NSImage()
+                image.isTemplate = false
+                image.size = NSSize(width: 18, height: 18)
+                return image
+            }())
+            if let receiving = model.receiving {
+                Text(receiving.fraction.map { "\(Int($0 * 100))%" } ?? "↓").monospacedDigit()
+            }
+        }
         .onAppear {
             guard model.showSendWindow == nil else { return }
             model.showSendWindow = {
@@ -146,6 +152,8 @@ final class MacModel {
     var lastSendResult: String?
     var progress: Double?
     var isSending = false
+    /// A large item arriving right now (shown in the menu bar, the panel, and the Send window).
+    var receiving: ReceiveProgress?
     /// Bumped whenever the outbox changes so views re-read counts.
     var outboxVersion = 0
 
@@ -153,8 +161,22 @@ final class MacModel {
     @ObservationIgnored let outbox: Outbox
     @ObservationIgnored private var listeningPort = 0
 
-    static var inbox: URL {
+    /// Downloads › Droprr, where received files go unless Settings picks another folder.
+    static var defaultInbox: URL {
         FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].appendingPathComponent("Droprr")
+    }
+
+    /// Where received files are saved: the folder chosen in Settings, or Downloads › Droprr.
+    static var inbox: URL {
+        let custom = DroprrSettings.shared.saveFolder.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !custom.isEmpty else { return defaultInbox }
+        return URL(fileURLWithPath: (custom as NSString).expandingTildeInPath, isDirectory: true)
+    }
+
+    /// Settings picked a save folder (nil goes back to Downloads › Droprr). Takes effect for the next item.
+    func setSaveFolder(_ folder: URL?) {
+        settings.saveFolder = folder.map { $0.standardizedFileURL.path } ?? ""
+        receiver.inbox = Self.inbox
     }
 
     init() {
@@ -169,6 +191,7 @@ final class MacModel {
             self?.isListening = state.hasPrefix("Listening")
         }
         receiver.onItem = { [weak self] in self?.received($0) }
+        receiver.onReceiveProgress = { [weak self] in self?.receiveProgress($0) }
         receiver.browserAccess = browserAccess
         browserHost = BrowserHost(settings: settings, access: browserAccess, outbox: outbox)
         let host = browserHost!
@@ -291,6 +314,20 @@ final class MacModel {
     /// Removes an item from the Received list; the file itself stays in Downloads › Droprr.
     func removeRecent(_ item: ReceivedItem) {
         Motion.perform { recent.removeAll { $0.id == item.id } }
+    }
+
+    /// Large or unknown-size transfers show progress until they finish; small ones never flash a bar.
+    func receiveProgress(_ progress: ReceiveProgress) {
+        if progress.done {
+            if receiving?.id == progress.id { receiving = nil }
+        } else if progress.isWorthShowing {
+            receiving = progress
+        }
+    }
+
+    /// Clear all: empties the list only; received files stay in their folder.
+    func clearRecent() {
+        Motion.perform { recent.removeAll() }
     }
 
     func waiting(for peer: Peer) -> Int {

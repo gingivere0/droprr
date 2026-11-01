@@ -90,7 +90,11 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
     internal void ShowReceived(ObservableCollection<RecentItem> recent)
     {
         ReceivedList.ItemsSource = recent;
-        void UpdateEmpty() => ReceivedEmpty.Visibility = recent.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        void UpdateEmpty()
+        {
+            ReceivedEmpty.Visibility = recent.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            ClearReceivedButton.Visibility = recent.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        }
         UpdateEmpty();
         recent.CollectionChanged += (_, _) => UpdateEmpty();
         // Recheck for moved or deleted files whenever the window comes forward.
@@ -152,6 +156,15 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             app.RemoveRecent(item);
         else if (ReceivedList.ItemsSource is ObservableCollection<RecentItem> list)
             list.Remove(item);
+    }
+
+    // Clear all empties the Received list; the files themselves stay in the Droprr folder.
+    void OnClearReceived(object sender, RoutedEventArgs e)
+    {
+        if (Application.Current is App app)
+            app.ClearRecent();
+        else if (ReceivedList.ItemsSource is ObservableCollection<RecentItem> list)
+            list.Clear();
     }
 
     void ShowPeers()
@@ -356,16 +369,20 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             AddPaths(Clipboard.GetFileDropList().Cast<string>());
         else if (Clipboard.ContainsText())
             MessageText.Text = Clipboard.GetText();
+        else if (ClipboardImage.SaveToFile() is { } image)
+            AddPaths([image]);
     }
 
-    // Send clipboard: whatever is on the clipboard (files, or else text) goes straight to the selected device,
-    // leaving the files and text already in this window alone.
+    // Send clipboard: whatever is on the clipboard (files, else text, else a picture such as a screenshot) goes
+    // straight to the selected device, leaving the files and text already in this window alone.
     async void OnSendClipboard(object sender, RoutedEventArgs e)
     {
         var paths = Clipboard.ContainsFileDropList()
             ? Clipboard.GetFileDropList().Cast<string>().Where(File.Exists).ToList()
             : new List<string>();
         var text = paths.Count == 0 && Clipboard.ContainsText() ? Clipboard.GetText().Trim() : "";
+        if (paths.Count == 0 && text.Length == 0 && ClipboardImage.SaveToFile() is { } image)
+            paths.Add(image);
         if (paths.Count == 0 && text.Length == 0)
         {
             ShowStatus(InfoBarSeverity.Informational, "The clipboard is empty.");
@@ -374,12 +391,12 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         await SendAsync(paths, text, clearWindow: false);
     }
 
-    // Enabled only when the clipboard holds files or text.
+    // Enabled only when the clipboard holds files, text, or a picture.
     void UpdateSendClipboard()
     {
         try
         {
-            SendClipboardButton.IsEnabled = Clipboard.ContainsFileDropList() || Clipboard.ContainsText();
+            SendClipboardButton.IsEnabled = Clipboard.ContainsFileDropList() || Clipboard.ContainsText() || Clipboard.ContainsImage();
         }
         catch (System.Runtime.InteropServices.COMException)
         {

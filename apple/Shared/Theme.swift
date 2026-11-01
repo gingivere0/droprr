@@ -417,3 +417,29 @@ extension View {
     }
 }
 #endif
+
+/// "Receiving…" with a bar while a large item arrives (Mac panel and Send window, iPhone tabs),
+/// like the Windows app's receiving window.
+struct ReceivingStatusView: View {
+    var progress: ReceiveProgress?
+
+    var body: some View {
+        if let progress {
+            VStack(alignment: .leading, spacing: Space.sm) {
+                HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
+                    Image(systemName: "arrow.down.circle").foregroundStyle(Theme.accentText)
+                    Text("Receiving…").font(.callout).foregroundStyle(.primary)
+                    Spacer(minLength: 0)
+                    Text(progress.detail).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                if let fraction = progress.fraction {
+                    ProgressView(value: fraction).tint(Theme.accentText)
+                } else {
+                    ProgressView().progressViewStyle(.linear).tint(Theme.accentText)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Receiving, \(progress.detail)")
+        }
+    }
+}

@@ -248,9 +248,30 @@ struct MacSettingsView: View {
         }
     }
 
+    /// "Downloads › Droprr" by default, or the chosen folder's name.
+    private var saveFolderName: String {
+        settings.saveFolder.isEmpty ? "Downloads › Droprr" : MacModel.inbox.lastPathComponent
+    }
+
+    /// Picks the folder received files are saved to.
+    private func chooseSaveFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Save Here"
+        panel.message = "Choose where Droprr saves received files."
+        try? FileManager.default.createDirectory(at: MacModel.inbox, withIntermediateDirectories: true)
+        panel.directoryURL = MacModel.inbox
+        if panel.runModal() == .OK, let url = panel.url {
+            model.setSaveFolder(url.standardizedFileURL == MacModel.defaultInbox.standardizedFileURL ? nil : url)
+        }
+    }
+
     private var receiving: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            SectionHeader(title: "Receiving", detail: "Files go to Downloads › Droprr") {
+            SectionHeader(title: "Receiving", detail: "Files go to \(saveFolderName)") {
                 Button("Open folder") {
                     try? FileManager.default.createDirectory(at: MacModel.inbox, withIntermediateDirectories: true)
                     NSWorkspace.shared.open(MacModel.inbox)
@@ -258,6 +279,17 @@ struct MacSettingsView: View {
                 .buttonStyle(SecondaryStyle())
             }
             VStack(alignment: .leading, spacing: 0) {
+            SettingRow(title: "Save to", detail: MacModel.inbox.path(percentEncoded: false)) {
+                HStack(spacing: Space.sm) {
+                    if !settings.saveFolder.isEmpty {
+                        Button("Use Downloads") { model.setSaveFolder(nil) }
+                            .buttonStyle(SecondaryStyle())
+                            .help("Save to Downloads › Droprr again")
+                    }
+                    Button("Choose…") { chooseSaveFolder() }
+                        .buttonStyle(SecondaryStyle())
+                }
+            }
             SettingRow(title: "Copy received text and links",
                        detail: "Clipboard managers are asked not to keep them.") {
                 Toggle("Copy received text and links", isOn: Binding(get: { settings.copyTextAndLinks }, set: { settings.copyTextAndLinks = $0 }))

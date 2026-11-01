@@ -170,6 +170,8 @@ sealed class TrayIcon : IDisposable
             }
             _recentMenu.Items.Add(entry);
         }
+        _recentMenu.Items.Add(new Separator());
+        _recentMenu.Items.Add(MenuEntry("Clear all", SymbolRegular.Delete24, () => _app.ClearRecent()));
     }
 
     // Files open, links open in the browser, and text (already on the clipboard) brings up the Recent menu.

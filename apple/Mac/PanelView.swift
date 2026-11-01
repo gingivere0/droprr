@@ -36,10 +36,11 @@ struct PanelView: View {
 
             SendStatusView(message: model.lastSendResult, progress: model.progress, onCancel: model.cancelSend,
                                onDismiss: { model.lastSendResult = nil })
+            ReceivingStatusView(progress: model.receiving)
 
             if !model.recent.isEmpty {
                 VStack(alignment: .leading, spacing: Space.xs) {
-                    Kicker("Received")
+                    ReceivedHeader(onClear: model.clearRecent)
                     VStack(spacing: 0) {
                         ForEach(model.recent) { item in
                             RecentRow(item: item, onOpen: { model.open(item) }, onRemove: { model.removeRecent(item) })
@@ -349,4 +350,22 @@ func closeMenuBarPanel() {
     }
     if panel.isVisible { panel.close() }
     panel.resignKey()
+}
+
+/// "Received" over the recent items, with Clear all (the files themselves stay in their folder).
+/// In the panel and the Send window, like the Windows Send window's Received tile.
+struct ReceivedHeader: View {
+    var onClear: () -> Void
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Kicker("Received")
+            Spacer()
+            Button("Clear all", action: onClear)
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Look.muted)
+                .help("Clear the list (received files stay in their folder)")
+        }
+    }
 }

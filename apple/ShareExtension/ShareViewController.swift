@@ -100,7 +100,6 @@ struct ShareView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Theme.tile, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
 
-                    Text("SEND TO").font(.caption.weight(.semibold)).tracking(0.8).foregroundStyle(.secondary)
 
                     if desktops.isEmpty {
                         Text("Open the Droprr app and add a computer first.")
@@ -114,8 +113,6 @@ struct ShareView: View {
                                     GlyphCircle(symbol: model.sentTo == peer.id ? "checkmark" : Theme.symbol(for: peer),
                                                 size: 48)
                                     Text(peer.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                                    Text(Theme.platformName(peer.platform)).font(.caption)
-                                        .foregroundStyle(isSelected ? Theme.onAccent.opacity(0.75) : Color.secondary)
                                 }
                                 .foregroundStyle(isSelected ? Theme.onAccent : Color.primary)
                                 .frame(maxWidth: .infinity)
@@ -157,7 +154,7 @@ struct ShareView: View {
                 .background(.bar)
             }
             .sensoryFeedback(.selection, trigger: selectedID)
-            .navigationTitle("Droprr")
+            .navigationTitle("Send to")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

@@ -33,6 +33,7 @@ struct SendView: View {
                 received
                 SendStatusView(message: model.lastSendResult, progress: model.progress, onCancel: model.cancelSend,
                                onDismiss: { model.lastSendResult = nil })
+                ReceivingStatusView(progress: model.receiving)
                 bottomBar
             }
         }
@@ -147,7 +148,7 @@ struct SendView: View {
     @ViewBuilder private var received: some View {
         if !model.recent.isEmpty {
             VStack(alignment: .leading, spacing: Space.xs) {
-                Kicker("Received")
+                ReceivedHeader(onClear: model.clearRecent)
                 VStack(spacing: 0) {
                     ForEach(model.recent.prefix(4)) { item in
                         RecentRow(item: item, onOpen: { model.open(item) }, onRemove: { model.removeRecent(item) })
