@@ -138,6 +138,9 @@ static class Dnssd
     sealed class ResolveState
     {
         public readonly TaskCompletionSource<Instance?> Result = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Set by a callback with an error (or the cancel completing): the resolve is over. A successful answer doesn't
+        // end it: dnsapi keeps the resolve, its thread, and its records until it's cancelled.
+        public volatile bool Ended;
     }
 
     static async Task<Instance?> ResolveAsync(string fullName, TimeSpan timeout)
@@ -157,11 +160,12 @@ static class Dnssd
         {
             if (DnsServiceResolve(request, cancelHandle) != RequestPending)
                 return null;
-            if (await Task.WhenAny(state.Result.Task, Task.Delay(timeout)) != state.Result.Task && !state.Result.Task.IsCompleted)
-            {
+            await Task.WhenAny(state.Result.Task, Task.Delay(timeout));
+            // Answered or not, a resolve that's still running must be cancelled, or it stays alive for good.
+            if (!state.Ended)
                 DnsServiceResolveCancel(cancelHandle);
+            if (!state.Result.Task.IsCompleted)
                 await Task.WhenAny(state.Result.Task, Task.Delay(500));
-            }
             return state.Result.Task.IsCompletedSuccessfully ? state.Result.Task.Result : null;
         }
         finally
@@ -225,6 +229,8 @@ static class Dnssd
         try
         {
             state = GCHandle.FromIntPtr(context).Target as ResolveState;
+            if (status != 0 && state is not null)
+                state.Ended = true;
             if (status != 0 || instance == IntPtr.Zero)
             {
                 state?.Result.TrySetResult(null);
