@@ -28,6 +28,8 @@ struct ContentView: View {
             NavigationStack {
                 SettingsForm(settings: model.settings)
                     .scrollContentBackground(.hidden)
+                    // Rows stop at the clock but still pass under the floating tab bar.
+                    .mask { Rectangle().ignoresSafeArea(edges: .bottom) }
                     .background { LookBackground().ignoresSafeArea() }
                     .toolbar(.hidden, for: .navigationBar)
             }
@@ -221,18 +223,15 @@ private struct SendTab: View {
             proxy.scrollTo("composer", anchor: .bottom)
         }
         }
-        // Content scrolling up passes under a band of the background, not under the clock.
-        .safeAreaInset(edge: .top, spacing: 0) {
-            Color.clear.frame(height: 0)
-                .background { LookBackground().ignoresSafeArea(edges: .top) }
-        }
+        // Content stops at the clock and the Send button, so one unbroken background shows behind them.
+        // (A separate strip of LookBackground would restart Spatial's gradient and show a hard edge.)
+        .clipped()
         // The Send button stays pinned above the tab bar so it's always in reach.
         .safeAreaInset(edge: .bottom) {
             if !desktops.isEmpty {
                 sendButton
                     .padding(.horizontal, Space.lg)
                     .padding(.vertical, Space.sm)
-                    .background { LookBackground().ignoresSafeArea(edges: .bottom) }
             }
         }
         .sensoryFeedback(.selection, trigger: peerID)
@@ -620,6 +619,7 @@ private struct ReceivedTab: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .scrollContentBackground(.hidden)
+        .clipped()   // rows stop at the clock and the button below, over one unbroken background
         .background { LookBackground().ignoresSafeArea() }
         .refreshable { await model.collectInbox() }
         .safeAreaInset(edge: .bottom) {
@@ -634,7 +634,6 @@ private struct ReceivedTab: View {
             .foregroundStyle(Look.accentText)
             .padding(.horizontal, Space.lg)
             .padding(.vertical, Space.sm)
-            .background { LookBackground().ignoresSafeArea(edges: .bottom) }   // a solid band, so list rows don't show through
         }
         .sheet(item: Binding(get: { preview.map(PreviewFile.init) }, set: { preview = $0?.url })) { file in
             // A sheet instead of .quickLookPreview so photos and videos can be flicked down to close.
