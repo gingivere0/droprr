@@ -26,9 +26,14 @@ Then, on the computer, choose **Add a device** (the plus after the device tiles 
 
 ## Features
 
-- **Send files, photos, text, and links** from each app's Send window, from Explorer's **Send to › Droprr** on Windows, from the share sheet (**Share › Droprr**) on the Mac and iPhone, or straight from the clipboard with **Send clipboard**.
+- **Send files, photos, text, and links** from each app's Send window, from Explorer's **Send to › Droprr** on Windows, from the share sheet (**Share › Droprr**, which opens a **Send to** list of your devices) on the Mac and iPhone, or straight from the clipboard with **Send clipboard**. On the Mac, you can also drop files right onto a device's tile to send them at once.
+- **Screenshots from the clipboard.** **Send clipboard** sends a copied picture, such as a Win+Shift+S screenshot on Windows, as a PNG, on every device. On Windows, Ctrl+V in the Send window does the same.
+- **Keyboard shortcuts.** On Windows, Ctrl+Enter sends, Ctrl+V pastes files, pictures, or text, and Esc closes the Send window; in the Received list, Enter opens an item and Delete removes it. On the Mac, ⌘1 to ⌘9 pick a device, ⌘↩ sends, ⇧⌘V sends the clipboard, and ⌘O adds files, and the menu bar panel has ⌘N (Send window), ⌘D (folder), ⌘P (pair), ⌘, (Settings), and ⌘Q.
 - **Clear sending status.** "Sending…" shows the moment you send, with the path being tried (Wi-Fi or Tailscale), a progress bar for files, and **Cancel**. A device that can't be reached fails within seconds, and large files take as long as they need: a send only gives up if nothing moves for two minutes. Sending to an iPhone that just closed Droprr queues the items for it instead.
-- **Received history.** Recent items appear in the Send window and the tray's **Recent** menu on Windows, in the menu bar panel on the Mac, and in the **Received** tab on the iPhone, so you can open them again. On Windows, each one also has buttons to copy it or show it in its folder. Files are saved to a `Droprr` folder in Downloads on computers, and to the app's Received folder (visible in the Files app) on the iPhone.
+- **Receiving progress.** A large incoming file shows its progress as it arrives, in a **Receiving…** window on Windows and in the app on the Mac and iPhone.
+- **Notifications.** On Windows and the Mac, each received item shows a notification; clicking it opens the file or link.
+- **Received history.** Recent items appear in the Send window and the tray's **Recent** menu on Windows, in the menu bar panel and the Send window on the Mac, and in the **Received** tab on the iPhone, so you can open them again. On Windows, each one also has buttons to copy it or show it in its folder. **Clear all** (**Clear** on the iPhone) empties the list; the files stay in their folder.
+- **Save folder.** Files are saved to a `Droprr` folder in Downloads on computers, and to the app's Received folder (visible in the Files app) on the iPhone. On Windows, Settings can change the save folder. On the Mac, **Settings › Receiving › Save to** has **Choose…** to pick another folder, and **Use Downloads** to go back.
 - **Phone inbox.** Items for an iPhone queue on the computer, with an "N waiting" badge on the iPhone's device tile that you can click to clear them.
 - **Clipboard.** Received text and links are copied to the clipboard, and **Auto-copy received items to clipboard** copies files and images too. On Windows, these copies are kept out of clipboard history and cloud clipboard.
 - **Looks.** Out of the box, every device uses **Light** mode, the **Atelier** style, and the **Sage** theme. You can change all three in Settings.
@@ -36,10 +41,13 @@ Then, on the computer, choose **Add a device** (the plus after the device tiles 
 - **Color themes.** Six themes: Graphite & Lime, Sunset, Cherry, Rose Gold, Sage (the default), and Olive & Mustard. The app's icons (the tray or menu bar icon, title bars, and the iPhone home screen) follow the theme.
 - **Light, Dark, or System.** Light by default. You can also pick Dark, or follow the system's appearance. Style, theme, and mode all apply instantly while Settings is open, and Cancel puts them back.
 - **Pairing.** Pair an iPhone by scanning a computer's QR code. Pairing goes both ways: the phone saves the computer's address and a token, and the computer adds the phone to its devices. Computers pair with each other the same way when you add one by hand (see [Pairing](#pairing)).
+- **iPhone to iPhone.** **Show QR code** in the iPhone app's Settings shows the phone's own code. Another iPhone scans it in Droprr, or any phone scans it with its camera to connect from the website, with no computer involved. The code is blurred until you tap it and lasts at most 10 minutes.
 - **Missing Token tiles.** A computer listed without a token says **Missing Token**. Clicking it opens Settings with that device's token field ready to type into.
 - **Masked tokens.** Tokens show as dots in Settings until you choose to show them. On Windows, **Copy** copies this PC's token without showing it.
-- **Wi-Fi pairing.** Devices on the same network show up under **Nearby on this network** in Settings. Choosing **Pair** shows the same six-digit code on both screens; accept on the other device only if its code matches, and only if you started the pairing. No token is shown or typed. The code is built so nobody in between can make two different codes match, and a device that's already paired can't be paired again (or taken over) without removing it first. Settings also shows the path each device last used, and the **Local network** switch turns all of this off.
+- **Wi-Fi pairing.** Devices on the same network show up under **Nearby on this network** in Settings. Choosing **Pair** shows the same six-digit code on both screens; accept on the other device only if its code matches, and only if you started the pairing. No token is shown or typed. The code is built so nobody in between can make two different codes match. Pairing a device again simply replaces the old pairing and connects, once the device proves it's the same one. Settings also shows the path each device last used, and the **Local network** switch turns all of this off.
 - **Safer receiving.** Received files are marked as coming from another computer (Mark of the Web on Windows, quarantine on the Mac). On Windows, only common media, document, and text files open with a click, and anything else is shown in Explorer instead. Only `http` and `https` links ever open, and any other "link" is received as text.
+- **Disk space checks.** A computer turns down a file that would leave less than about 1 GB free, with a "not enough disk space" error, instead of filling up the disk.
+- **Crash logs.** If something goes wrong, Droprr writes what happened (never tokens or file contents) to `crash.log` in `%APPDATA%\Droprr` on Windows, and in `~/Library/Logs/Droprr` on the Mac, so it's easy to find and attach to a bug report.
 
 ## Setup
 
@@ -89,9 +97,9 @@ To build without deploying, run `dotnet build` in the repo root.
 1. Copy `apple/Config/Local.xcconfig.example` to `apple/Config/Local.xcconfig` (gitignored) and set your Apple team ID and a bundle ID prefix.
 2. Open `apple/Droprr.xcodeproj` in Xcode, then run the `DroprrMac` target on the Mac and the `DroprriOS` target on the iPhone. The share extensions (`DroprrMacShare` and `DroprrShare`) come along with them.
 
-**Mac:** Droprr lives in the menu bar. Its panel shows your devices, recent received items, and a QR button for pairing a phone. The Send window sends files, text, and the clipboard. Settings has the same options as on Windows, including **Open at login**.
+**Mac:** Droprr lives in the menu bar. Its panel shows your devices, recent received items, and a QR button for pairing a phone. The Send window sends files, text, and the clipboard. Settings has the same options as on Windows, including **Open at login** and the save folder.
 
-**iPhone:** the app has **Send**, **Received**, and **Settings** tabs. Send the clipboard, photos, files, or text to a computer. Received items are collected each time the app opens. To send from another app, choose Droprr in the share sheet, then tap a computer.
+**iPhone:** the app has **Send**, **Received**, and **Settings** tabs. Send the clipboard, photos, files, or text to a computer, or to another iPhone with **Show QR code** in Settings. Received items are collected each time the app opens. To send from another app, choose Droprr in the share sheet, then tap a computer.
 
 See [apple/README.md](apple/README.md) for details.
 
@@ -129,9 +137,9 @@ Without the iPhone app, you can still send to a computer from the share sheet, a
 ## Troubleshooting
 
 - **The phone or another computer can't connect (timeout):** check that Tailscale is connected on both devices and that the Windows Firewall rule exists. On the phone, opening `http://<pc-name>:53318/ping` in Safari should immediately show an "unauthorized" error, which means the PC is reachable.
-- **Wi-Fi pairing says "already paired":** the other device still has this one. Remove it in Droprr's Settings there, then pair again.
 - **A send says the address "isn't on Tailscale":** the device's host is a regular network address. Use its Tailscale name in Settings, or pair over Wi-Fi.
 - **"unauthorized":** the token doesn't match. Pair again, or copy the token from the receiving computer's Settings.
+- **A send says "not enough disk space":** the receiving computer has less than about 1 GB free after the file. Free up space there, or choose a save folder on another drive in its Settings.
 - **A device says Missing Token:** click it and enter the token from that computer's Settings, or pair again.
 - **Droprr doesn't show up in Windows Search:** check that **Show in the Start menu and Windows Search** is on in Settings.
 - **The tray icon is hidden:** Windows puts new tray icons behind the **^** arrow. Drag Droprr onto the taskbar to keep it visible.
