@@ -26,6 +26,7 @@ struct SendView: View {
             if model.settings.peers.isEmpty {
                 emptyState
                 received
+                ReceivingStatusView(progress: model.receiving)
             } else {
                 devices
                 dropArea
