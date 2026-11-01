@@ -47,6 +47,9 @@ public partial class App : Application
     // Raised on the UI thread after settings change (saved in Settings, or a device paired), so open windows can refresh.
     internal event Action? SettingsSaved;
 
+    // Raised on the UI thread after items are queued for a phone or a phone fetched them.
+    internal event Action? OutboxChanged;
+
     // Raised on the UI thread after a device pairs, with its saved peer entry.
     internal event Action<Peer>? DevicePaired;
 
@@ -183,7 +186,8 @@ public partial class App : Application
         ShowSendWindow(sendIndex >= 0 ? args.Skip(sendIndex + 1) : []);
     }
 
-    // Keeps the tray's pending count current, whichever Droprr process queued or a phone fetched an item.
+    // Keeps the tray's and the Send window's pending counts current, whichever Droprr process queued or a phone
+    // fetched an item.
     void WatchOutbox()
     {
         Directory.CreateDirectory(Outbox.Root);
@@ -191,6 +195,7 @@ public partial class App : Application
         {
             _outboxRefresh!.Stop();
             _tray?.SetPending(Outbox.PendingByPeer());
+            OutboxChanged?.Invoke();
         }, Dispatcher);
         _outboxWatcher = new FileSystemWatcher(Outbox.Root, "*.json") { IncludeSubdirectories = true, EnableRaisingEvents = true };
         FileSystemEventHandler changed = (_, _) => Dispatcher.BeginInvoke(() =>
