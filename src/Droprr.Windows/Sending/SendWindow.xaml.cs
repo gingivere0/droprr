@@ -76,7 +76,12 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         if (Application.Current is App app)
         {
             app.SettingsSaved += OnSettingsSaved;
-            Closed += (_, _) => app.SettingsSaved -= OnSettingsSaved;
+            app.OutboxChanged += OnOutboxChanged;
+            Closed += (_, _) =>
+            {
+                app.SettingsSaved -= OnSettingsSaved;
+                app.OutboxChanged -= OnOutboxChanged;
+            };
             ShowReceived(app.Recent);
         }
     }
@@ -161,6 +166,14 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         PeerBox.SelectedItem = _peers.FirstOrDefault(p => p.Name == selected) ?? _peers.FirstOrDefault();
         // The Add a device tile is always there, so there's no separate empty state.
         EmptyState.Visibility = Visibility.Collapsed;
+    }
+
+    // A phone fetched an item, or one was queued: its "N waiting" badge changes. Only then, since showing the devices
+    // again resets the list.
+    void OnOutboxChanged()
+    {
+        if (_peers.Any(p => p.IsPhone && p.Waiting != Outbox.List(p.Name).Count))
+            ShowPeers();
     }
 
     // The "N waiting x" badge on a phone's card clears that phone's queue right away.
