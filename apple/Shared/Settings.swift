@@ -273,9 +273,10 @@ final class DroprrSettings {
         autoCopy = defaults.bool(forKey: "autoCopy")
         copyTextAndLinks = defaults.object(forKey: "copyTextAndLinks") as? Bool ?? true
         saveFolder = defaults.string(forKey: "saveFolder") ?? ""
-        theme = defaults.string(forKey: "theme") ?? ThemePalette.defaultID
+        let storedTheme = defaults.string(forKey: "theme") ?? ThemePalette.defaultID
+        theme = storedTheme
         // Before the icon had its own setting it followed the theme, so keep whatever icon is showing now.
-        appIcon = defaults.string(forKey: "appIcon") ?? theme
+        appIcon = defaults.string(forKey: "appIcon") ?? storedTheme
         style = defaults.string(forKey: "style") ?? "atelier"
         colorMode = defaults.string(forKey: "colorMode") ?? "light"
         localNetwork = defaults.object(forKey: "localNetwork") as? Bool ?? true
