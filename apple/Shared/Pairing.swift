@@ -83,6 +83,91 @@ struct PairingInfo: Equatable {
 
     var isBrowser: Bool { platform == "web" }
 
+    /// A computer's packed one code, whose name, id, and full fingerprint come from the /pair answer. Older JSON
+    /// codes always carry the id.
+    var isPackedComputer: Bool { join != nil && !isBrowser && id == nil }
+
+    /// Packed app details for a browser or iPhone host (docs/PROTOCOL.md, "App details"): the name, cut to 32 UTF-8
+    /// bytes on a character boundary.
+    static func namedAppDetails(platform: UInt8, name: String) -> String {
+        var bytes: [UInt8] = []
+        for character in name {
+            let utf8 = Array(String(character).utf8)
+            if bytes.count + utf8.count > 32 { break }
+            bytes += utf8
+        }
+        return Data([2, platform, 0] + bytes).base64URL
+    }
+
+    /// Packed app details for a computer: the LAN certificate fingerprint's first 16 bytes, the Tailscale IPv4
+    /// address, the HTTP port when it isn't the default (HTTPS is that + 1), and up to four LAN IPv4 addresses.
+    static func computerAppDetails(platform: UInt8, fingerprint: String?, tailscale: String?, port: Int,
+                                   lan: [String]) -> String {
+        var bytes: [UInt8] = [2, platform, 0]
+        var flags: UInt8 = 0
+        func ipv4(_ text: String) -> [UInt8]? {
+            let parts = text.split(separator: ".").compactMap { UInt8($0) }
+            return parts.count == 4 && text.split(separator: ".").count == 4 ? parts : nil
+        }
+        if let fingerprint, fingerprint.count >= 32 {
+            var hex = Substring(fingerprint.prefix(32))
+            var prefix: [UInt8] = []
+            while !hex.isEmpty, let byte = UInt8(hex.prefix(2), radix: 16) { prefix.append(byte); hex = hex.dropFirst(2) }
+            if prefix.count == 16 { flags |= 1; bytes += prefix }
+        }
+        if let tailscale, let address = ipv4(tailscale) { flags |= 2; bytes += address }
+        if port != DroprrDefaults.port { flags |= 4; bytes += [UInt8(port >> 8 & 0xFF), UInt8(port & 0xFF)] }
+        bytes[2] = flags
+        bytes += lan.map(hostPart).compactMap(ipv4).prefix(4).flatMap { $0 }
+        return Data(bytes).base64URL
+    }
+
+    /// A packed code's app details (docs/PROTOCOL.md, "App details"), in the shape of the older JSON ones: format 2,
+    /// a platform, flags, then the fields the flags name and LAN IPv4 addresses (computers) or a name (browsers and
+    /// iPhones).
+    private static func appDetails(_ data: Data) -> [String: Any]? {
+        let bytes = [UInt8](data)
+        guard bytes.count >= 3, bytes[0] == 2 else { return nil }
+        let platform = bytes[1], flags = bytes[2]
+        var i = 3
+        func take(_ n: Int) -> ArraySlice<UInt8>? {
+            guard i + n <= bytes.count else { return nil }
+            defer { i += n }
+            return bytes[i..<(i + n)]
+        }
+        func ipv4(_ b: ArraySlice<UInt8>) -> String { b.map(String.init).joined(separator: ".") }
+        var app: [String: Any] = ["v": 1]
+        switch platform {
+        case 1, 2:
+            app["p"] = platform == 1 ? "windows" : "macos"
+            app["n"] = platform == 1 ? "your PC" : "your Mac"
+            if flags & 1 != 0 {
+                guard let fp = take(16) else { return nil }
+                app["f"] = fp.map { String(format: "%02x", $0) }.joined()
+            }
+            if flags & 2 != 0 {
+                guard let address = take(4) else { return nil }
+                app["h"] = ipv4(address)
+            }
+            var port = DroprrDefaults.port
+            if flags & 4 != 0 {
+                guard let p = take(2) else { return nil }
+                port = Int(p[p.startIndex]) << 8 | Int(p[p.startIndex + 1])
+            }
+            app["port"] = port
+            var lan: [String] = []
+            while let address = take(4) { lan.append("\(ipv4(address)):\(port + 1)") }
+            app["l"] = lan
+        case 3, 4:
+            app["p"] = "web"
+            if platform == 4 { app["k"] = "ios" }
+            if let name = String(bytes: bytes[i...], encoding: .utf8), !name.isEmpty { app["n"] = name }
+        default:
+            return nil
+        }
+        return app
+    }
+
     /// Whether a scanned or opened string is one of Droprr's codes: the pairing QR, droprr://join, or the website's
     /// one code (any https link whose fragment is <room>.<secret>.<fp>.<app>).
     static func isCode(_ string: String) -> Bool {
@@ -107,8 +192,17 @@ struct PairingInfo: Equatable {
 
     private static func parseOneCode(_ code: String) -> Result<PairingInfo, ParseError> {
         let parts = code.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
-        guard let data = Data(base64URL: parts[3]),
-              let app = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return .failure(.notDroprr) }
+        guard let data = Data(base64URL: parts[3]), let first = data.first else { return .failure(.notDroprr) }
+        let app: [String: Any]
+        if first == UInt8(ascii: "{") {
+            guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return .failure(.notDroprr) }
+            app = json
+        } else if first == 2 {
+            guard let packed = appDetails(data) else { return .failure(.notDroprr) }
+            app = packed
+        } else {
+            return .failure(.newerVersion)
+        }
         if let v = app["v"] as? Int, v > version { return .failure(.newerVersion) }
         let secret = parts[1]
         guard secret.count >= 16, secret.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }) else {
@@ -118,7 +212,10 @@ struct PairingInfo: Equatable {
         // The room goes in id and the browser's DTLS fingerprint (base64url) in fp.
         if app["p"] as? String == "web" {
             let room = parts[0], dtls = parts[2]
-            let base64url = { (text: String) in text.count == 43 && text.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") } }
+            // The room and key are 22 characters in current codes (their first 22), 43 in older ones.
+            let base64url = { (text: String) in
+                (text.count == 22 || text.count == 43) && text.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }
+            }
             guard base64url(room), base64url(dtls) else { return .failure(.notDroprr) }
             let name = (app["n"] as? String).map(PairRequest.displayName).flatMap { $0.isEmpty ? nil : $0 } ?? "Browser"
             var info = PairingInfo(name: name, host: "", port: DroprrDefaults.port, token: "", platform: "web",
@@ -129,7 +226,9 @@ struct PairingInfo: Equatable {
         let lan = (app["l"] as? [String] ?? []).filter { !$0.isEmpty }
         let tailscale = (app["h"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         let dns = (app["d"] as? String).flatMap { $0.isEmpty ? nil : $0.trimmingCharacters(in: CharacterSet(charactersIn: ".")) }
-        let fp = (app["f"] as? String).flatMap { $0.count == 64 ? $0.lowercased() : nil }
+        // A packed code carries the fingerprint's first 16 bytes (32 hex characters): a pin prefix, replaced by the
+        // full fingerprint from the /pair answer.
+        let fp = (app["f"] as? String).flatMap { $0.count == 64 || $0.count == 32 ? $0.lowercased() : nil }
         // Over the LAN only, the first LAN address stands in for the host (HTTPS, pinned to fp).
         guard let host = tailscale ?? (fp != nil ? lan.first.map(hostPart) : nil) else { return .failure(.notDroprr) }
         let name = (app["n"] as? String).map(PairRequest.displayName).flatMap { $0.isEmpty ? nil : $0 } ?? dns ?? host

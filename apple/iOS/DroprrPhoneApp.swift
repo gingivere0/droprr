@@ -398,6 +398,21 @@ final class PhoneModel {
                 var paired = info
                 paired.token = token
                 paired.join = nil
+                // A packed code has no name or id and only half the fingerprint: take them from the answer, which
+                // came over the connection pinned to that half (or over Tailscale).
+                if info.isPackedComputer {
+                    if let pin = info.fp {
+                        guard let full = result.fingerprint, full.count == 64, PinnedTrust.matches(full, pin: pin) else {
+                            throw DroprrError.notPaired
+                        }
+                        paired.fp = full.lowercased()
+                    } else if let full = result.fingerprint, full.count == 64 {
+                        paired.fp = full.lowercased()
+                    }
+                    paired.id = result.deviceID
+                    let name = PairRequest.displayName(result.name)
+                    if !name.isEmpty { paired.name = name }
+                }
                 var peer = settings.apply(paired)
                 if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) {
                     settings.peers[i].acceptToken = minted
@@ -410,7 +425,8 @@ final class PhoneModel {
             } catch DroprrError.server(409, _) {
                 // Already paired with each other: nothing to do, so it's a success like any pairing.
                 if let known = settings.peers.first(where: { peer in
-                    (info.id != nil && peer.deviceID == info.id) || (info.fp != nil && peer.fingerprint == info.fp)
+                    (info.id != nil && peer.deviceID == info.id)
+                        || (info.fp != nil && peer.fingerprint.map { PinnedTrust.matches($0, pin: info.fp!) } == true)
                 }), known.token?.isEmpty == false {
                     added(known.id)
                     return
@@ -439,7 +455,8 @@ final class PhoneModel {
                                                                  name: settings.deviceName)
                 let name = welcome.name.isEmpty ? info.name : PairRequest.displayName(welcome.name)
                 let id: UUID
-                if let i = settings.peers.firstIndex(where: { $0.isBrowser && $0.deviceID == room }) {
+                // A browser remembered from an older code has its full 43-character room; current codes carry 22.
+                if let i = settings.peers.firstIndex(where: { $0.isBrowser && ($0.deviceID?.hasPrefix(room) == true || $0.deviceID.map(room.hasPrefix) == true) }) {
                     settings.peers[i].token = welcome.token
                     settings.peers[i].fingerprint = fp
                     settings.peers[i].remoteName = name
@@ -494,9 +511,9 @@ final class PhoneModel {
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         let secret = Data(bytes).base64URL
         BrowserGuest.shared.openCode(secret: secret)
-        let info: [String: Any] = ["v": 1, "p": "web", "n": settings.deviceName, "k": "ios"]
-        guard let json = try? JSONSerialization.data(withJSONObject: info) else { return nil }
-        return "\(DroprrWeb.site)#\(hostRoom).\(secret).\(fingerprint).\(json.base64URL)"
+        // Short parts keep the QR code small (docs/PROTOCOL.md, "The code"): the room's and key's first 22 characters,
+        // and packed app details: format 2, platform 4 (an iPhone), no flags, then the name.
+        return "\(DroprrWeb.site)#\(hostRoom.prefix(22)).\(secret).\(fingerprint.prefix(22)).\(PairingInfo.namedAppDetails(platform: 4, name: settings.deviceName))"
     }
 
     func closeCode() { BrowserGuest.shared.closeCode() }

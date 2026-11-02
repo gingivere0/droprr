@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Unit tests for the Windows app's Peers module (src/Droprr.Windows/Peers). The module only uses the base class
-       library, so its files are compiled in directly and the tests run anywhere .NET does, without Windows. A file
-       there that reaches outside the module breaks this build: that's the point. -->
+  <!-- Unit tests for the Windows app's Peers and Codes modules (src/Droprr.Windows/Peers, Codes). They only use the
+       base class library, so their files are compiled in directly and the tests run anywhere .NET does, without
+       Windows. A file there that reaches outside its module breaks this build: that's the point. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -13,6 +13,8 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\Droprr.Windows\Peers\*.cs" Link="Peers\%(Filename)%(Extension)" />
+    <Compile Include="..\..\src\Droprr.Windows\Codes\*.cs" Link="Codes\%(Filename)%(Extension)" />
+    <None Include="qr-style-vector.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

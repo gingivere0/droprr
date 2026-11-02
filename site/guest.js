@@ -13,7 +13,10 @@ const RELAY = (["localhost", "127.0.0.1"].includes(location.hostname) && new URL
 const STORE = "droprr.computers";
 const ID_KEY = "droprr.browserId";
 const ID = /^[A-Za-z0-9_-]{43}$/;
+// A code's room and key: the first 22 characters of each (docs/PROTOCOL.md, "The code"), or all 43 in older codes.
+const SHORT_ID = /^[A-Za-z0-9_-]{22}(?:[A-Za-z0-9_-]{21})?$/;
 const SECRET = /^[A-Za-z0-9_-]{22}$/;
+const shortId = (id) => id.slice(0, 22);
 
 let link = null;
 let session = null;
@@ -37,11 +40,18 @@ function browserId() {
   return id;
 }
 
-// Computers this browser connected to: room -> { room, fp, token, name }.
+// Computers this browser connected to: room (its first 22 characters) -> { room, fp, token, name }. Entries saved
+// under a full 43-character room by older pages are moved to the short one.
 function computers() {
   try {
     const list = JSON.parse(storage(STORE) || "{}");
-    return list && typeof list === "object" ? list : {};
+    if (!list || typeof list !== "object") return {};
+    for (const room of Object.keys(list)) {
+      if (room.length <= 22) continue;
+      list[shortId(room)] = { ...list[room], ...(list[shortId(room)] || {}), room: shortId(room) };
+      delete list[room];
+    }
+    return list;
   } catch {
     return {};
   }
@@ -49,6 +59,7 @@ function computers() {
 
 function remember(room, values) {
   const list = computers();
+  room = shortId(room);
   if (values === null) delete list[room];
   else list[room] = { ...(list[room] || {}), ...values, room, seen: Date.now() };
   storage(STORE, JSON.stringify(list));
@@ -63,16 +74,16 @@ function parseCode(text) {
     fragment = url.hash.slice(1);
   } catch { /* a bare fragment */ }
   const [room, secret, fp, app] = fragment.replace(/^#/, "").split(".");
-  if (!ID.test(room || "") || !SECRET.test(secret || "") || !ID.test(fp || "")) return null;
-  // The one code may also carry what the Droprr app needs to pair (base64url JSON, never a token).
-  return { room, secret, fp, app: /^[A-Za-z0-9_-]{1,2000}$/.test(app || "") ? app : null };
+  if (!SHORT_ID.test(room || "") || !SECRET.test(secret || "") || !SHORT_ID.test(fp || "")) return null;
+  // The one code may also carry what the Droprr app needs to pair (base64url, never a token).
+  return { room: shortId(room), secret, fp, app: /^[A-Za-z0-9_-]{1,2000}$/.test(app || "") ? app : null };
 }
 
 // --- Connecting -----------------------------------------------------------------------------------------------
 
 function connect(target) {
   disconnect(false);
-  const saved = computers()[target.room] || {};
+  const saved = computers()[shortId(target.room)] || {};
   // A new code's key wins over a remembered one.
   const fp = target.fp || saved.fp;
   const name = target.name || saved.name || "your computer";
@@ -119,8 +130,9 @@ function connect(target) {
       if (data.t !== "msg" || !data.m) return;
       const m = data.m;
       if (m.t === "answer" && typeof m.sdp === "string") {
-        // The computer's key from its code must be the one on this connection; otherwise it's someone else.
-        if (!fp || sdpFingerprint(m.sdp) !== fp) {
+        // The computer's key from its code must be the one on this connection; otherwise it's someone else. Codes
+        // carry the key's first 22 characters, which is still far too many to forge.
+        if (!fp || fp.length < 22 || !(sdpFingerprint(m.sdp) || "").startsWith(fp)) {
           return fail(`That isn't the computer whose code you scanned. Scan its code again.`);
         }
         await pc.setRemoteDescription({ type: "answer", sdp: m.sdp });
@@ -261,15 +273,12 @@ $("qr-plate").addEventListener("click", () => {
 
 function showInvite(message) {
   const code = typeof message.link === "string" ? parseCode(message.link) : null;
-  if (!code || !self.qrcode) {
+  if (!code || !self.DroprrQR) {
     setStatus($("share-status"), `Couldn't get a code${message.e ? `: ${message.e}` : ""}.`, "error");
     return;
   }
   // The computer's own link to this website, so only this page's origin is ever encoded.
-  const qr = self.qrcode(0, "M");
-  qr.addData(`${location.origin}${location.pathname}#${code.room}.${code.secret}.${code.fp}`);
-  qr.make();
-  $("qr-image").src = qr.createDataURL(8, 0);
+  $("qr-image").src = self.DroprrQR.dataURL(`${location.origin}${location.pathname}#${code.room}.${code.secret}.${code.fp}`);
   $("qr-plate").classList.add("blurred");
   $("qr-plate").setAttribute("aria-label", "Tap to show the code");
   $("share-code").hidden = false;
@@ -357,6 +366,16 @@ async function startHosting() {
   return h;
 }
 
+// The code's app details for a browser host (docs/PROTOCOL.md, "App details"): format 2, platform 3 (a browser), no
+// flags, then the name in UTF-8, cut to 32 bytes on a character boundary.
+function webAppInfo(name) {
+  let bytes = new TextEncoder().encode(name);
+  let end = Math.min(bytes.length, 32);
+  while (end < bytes.length && (bytes[end] & 0xc0) === 0x80) end -= 1;
+  bytes = bytes.slice(0, end);
+  return base64url(Uint8Array.of(2, 3, 0, ...bytes));
+}
+
 async function hostSignal(h, cid, m) {
   let guest = h.guests.get(cid);
   if (m.t === "offer" && typeof m.sdp === "string" && m.sdp.length < 12000) {
@@ -436,11 +455,8 @@ $("host-qr").addEventListener("click", async () => {
   try {
     const h = await startHosting();
     h.secret = randomId(16);
-    const info = base64url(new TextEncoder().encode(JSON.stringify({ v: 1, p: "web", n: guessBrowserName() })));
-    const qr = self.qrcode(0, "M");
-    qr.addData(`${location.origin}${location.pathname}#${h.room}.${h.secret}.${h.fp}.${info}`);
-    qr.make();
-    $("host-image").src = qr.createDataURL(8, 0);
+    $("host-image").src = self.DroprrQR.dataURL(
+      `${location.origin}${location.pathname}#${shortId(h.room)}.${h.secret}.${shortId(h.fp)}.${webAppInfo(guessBrowserName())}`);
     $("host-plate").classList.add("blurred");
     $("host-code").hidden = false;
     $("host-qr").textContent = "Hide QR code";

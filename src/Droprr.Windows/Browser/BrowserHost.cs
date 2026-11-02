@@ -59,11 +59,13 @@ sealed class BrowserHost : IDisposable
     // SHA-256 of the host key: the room browsers join.
     public static string Room(string hostKey) => Base64Url(SHA256.HashData(FromBase64Url(hostKey)));
 
-    // The link in the QR code, while a code is open and the page is ready. appInfo (base64url JSON) adds what the
-    // iPhone app needs to pair from the same code.
+    // The link in the QR code, while a code is open and the page is ready: the room's and the DTLS key's first 22
+    // characters, to keep the code small (docs/PROTOCOL.md, "The code"). appInfo adds what the iPhone app needs to
+    // pair from the same code.
     public string? JoinLink(string? appInfo = null) =>
         Fingerprint is { } fp && _access.Secret is { } secret
-            ? $"{Site(Settings)}#{Room(Settings.HostKey)}.{secret}.{fp}" + (appInfo is null ? "" : "." + appInfo)
+            ? $"{Site(Settings)}#{Codes.OneCode.Short(Room(Settings.HostKey))}.{secret}.{Codes.OneCode.Short(fp)}"
+                + (appInfo is null ? "" : "." + appInfo)
             : null;
 
     // Tells the page to read its config again (a code opened or closed, or the relay changed).
