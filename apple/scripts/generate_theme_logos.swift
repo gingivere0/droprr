@@ -1,6 +1,7 @@
 // Recolors the Droprr logo for each Bento theme: the purple half takes the theme's light-mode accent,
 // the red half its light-mode secondary. Every theme is recolored, including the default Graphite & Lime.
-// Writes file-swap-icon-pack/themes/<theme id>/ (logo-1024.png, menubar.png, menubar@2x.png, app-icon-1024.png).
+// Writes file-swap-icon-pack/themes/<theme id>/ (logo-1024.png, menubar.png, menubar@2x.png).
+// Then run scripts/make-app-icons.py, which builds the full-bleed app icons from these logos.
 //
 //     swift apple/scripts/generate_theme_logos.swift      (run from the repo root)
 import AppKit
@@ -82,32 +83,6 @@ func recolor(_ src: NSBitmapImageRep, accent: HSL, secondary: HSL) -> NSBitmapIm
     return out
 }
 
-/// The Mac app icon (macOS doesn't mask icons): a rounded square with margins, a soft shadow and the logo.
-func macIcon(logo: NSBitmapImageRep, background hexColor: String, to dir: URL) {
-    let size: CGFloat = 1024
-    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 1024, pixelsHigh: 1024, bitsPerSample: 8,
-                               samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
-                               bytesPerRow: 0, bitsPerPixel: 0)!
-    NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-    let plate = NSRect(x: 100, y: 100, width: 824, height: 824)
-    let path = NSBezierPath(roundedRect: plate, xRadius: 185, yRadius: 185)
-    NSGraphicsContext.saveGraphicsState()
-    let shadow = NSShadow(); shadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
-    shadow.shadowBlurRadius = 24; shadow.shadowOffset = NSSize(width: 0, height: -10); shadow.set()
-    NSColor.white.setFill(); path.fill()
-    NSGraphicsContext.restoreGraphicsState()
-    let v = UInt32(hexColor.dropFirst(), radix: 16)!
-    let base = NSColor(srgbRed: CGFloat(v >> 16 & 0xFF) / 255, green: CGFloat(v >> 8 & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
-    NSGradient(starting: base.blended(withFraction: 0.35, of: .white)!, ending: base.blended(withFraction: 0.06, of: .black)!)!
-        .draw(in: path, angle: -90)
-    let img = NSImage(size: NSSize(width: logo.pixelsWide, height: logo.pixelsHigh)); img.addRepresentation(logo)
-    img.draw(in: plate.insetBy(dx: 30, dy: 30))
-    NSGraphicsContext.restoreGraphicsState()
-    try! rep.representation(using: .png, properties: [:])!.write(to: dir.appendingPathComponent("mac-icon-1024.png"))
-    _ = size
-}
-
 func write(_ rep: NSBitmapImageRep, _ url: URL, size: Int? = nil) {
     var r = rep
     if let size {
@@ -127,47 +102,14 @@ func write(_ rep: NSBitmapImageRep, _ url: URL, size: Int? = nil) {
 
 let logo = NSBitmapImageRep(data: try! Data(contentsOf: pack.appendingPathComponent("brand/logo-transparent-1024.png")))!
 
-/// The phone icon: the theme's logo, large, on a soft tile of the theme's tint (iOS adds the rounded mask).
-func appIcon(logo: NSBitmapImageRep, background hexColor: String) -> NSBitmapImageRep {
-    let size = 1024
-    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8,
-                               samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
-                               bytesPerRow: 0, bitsPerPixel: 0)!
-    NSGraphicsContext.saveGraphicsState()
-    let ctx = NSGraphicsContext(bitmapImageRep: rep)!
-    NSGraphicsContext.current = ctx
-    let v = UInt32(hexColor.dropFirst(), radix: 16)!
-    let base = NSColor(srgbRed: CGFloat(v >> 16 & 0xFF) / 255, green: CGFloat(v >> 8 & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
-    let top = base.blended(withFraction: 0.35, of: .white)!, bottom = base.blended(withFraction: 0.06, of: .black)!
-    NSGradient(starting: top, ending: bottom)!.draw(in: NSRect(x: 0, y: 0, width: size, height: size), angle: -90)
-    let shadow = NSShadow()
-    shadow.shadowColor = NSColor.black.withAlphaComponent(0.18)
-    shadow.shadowBlurRadius = 36
-    shadow.shadowOffset = NSSize(width: 0, height: -14)
-    shadow.set()
-    let inset = CGFloat(size) * 0.05   // the logo art has its own padding; this leaves a comfortable margin
-    let img = NSImage(size: NSSize(width: logo.pixelsWide, height: logo.pixelsHigh)); img.addRepresentation(logo)
-    img.draw(in: NSRect(x: inset, y: inset, width: CGFloat(size) - inset * 2, height: CGFloat(size) - inset * 2))
-    NSGraphicsContext.restoreGraphicsState()
-    return rep
-}
-
 for id in order {
     let light = (list[id]!["light"] as! [String: String])
     let dir = pack.appendingPathComponent("themes/\(id)")
     try! FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let l = recolor(logo, accent: hex(light["accent"]!), secondary: hex(light["secondary"]!))
-    let i = appIcon(logo: l, background: light["accentTint"]!)
-    if id == (themes["default"] as! String) { macIcon(logo: l, background: light["accentTint"]!, to: dir) }
     write(l, dir.appendingPathComponent("logo-1024.png"))
     write(l, dir.appendingPathComponent("menubar.png"), size: 18)
     write(l, dir.appendingPathComponent("menubar@2x.png"), size: 36)
-    write(i, dir.appendingPathComponent("app-icon-1024.png"))
-    // App icons must be opaque: flatten through JPEG with sips.
-    let flat = Process()
-    flat.executableURL = URL(fileURLWithPath: "/bin/sh")
-    let icon = dir.appendingPathComponent("app-icon-1024.png").path
-    flat.arguments = ["-c", "sips -s format jpeg -s formatOptions best '\(icon)' --out /tmp/droprr-flat.jpg >/dev/null && sips -s format png /tmp/droprr-flat.jpg --out '\(icon)' >/dev/null"]
-    try! flat.run(); flat.waitUntilExit()
     print("wrote", id)
 }
+print("now run: python3 scripts/make-app-icons.py")
