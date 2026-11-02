@@ -125,6 +125,10 @@ struct SendView: View {
                               onDropFiles: { urls in Task { await model.send(.files(urls), to: peer) } },
                               onClearWaiting: { model.clearWaiting(for: peer) },
                               onMissingToken: { fixToken(peer) })
+                        // Right-click to remove, the Mac's take on the iPhone's long-press edit mode.
+                        .contextMenu {
+                            Button("Remove \(peer.name)", role: .destructive) { model.remove(peer) }
+                        }
                         // ⌘1…⌘9 pick a device.
                         .background {
                             if index < 9 {

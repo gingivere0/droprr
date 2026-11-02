@@ -178,6 +178,8 @@ private struct SendTab: View {
     @State private var importing = false
     @State private var clipboard: SendPayload?
     @State private var files: [URL] = []
+    /// Long-pressing a device tile turns on edit mode: the tiles jiggle and each gets an × that removes it.
+    @State private var editingDevices = false
     @FocusState private var typing: Bool
 
     private var trimmedText: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -208,7 +210,10 @@ private struct SendTab: View {
             .padding(.bottom, Space.lg)
             // Tapping outside the text box ends editing (as does scrolling); buttons still get their taps.
             .contentShape(Rectangle())
-            .onTapGesture { typing = false }
+            .onTapGesture {
+                typing = false
+                stopEditingDevices()
+            }
         }
         .scrollDismissesKeyboard(.interactively)
         // While typing, keep the whole message box in view above the Send button and keyboard.
@@ -236,6 +241,9 @@ private struct SendTab: View {
             }
         }
         .sensoryFeedback(.selection, trigger: peerID)
+        .sensoryFeedback(.impact(weight: .medium), trigger: editingDevices) { _, editing in editing }
+        .onChange(of: desktops.isEmpty) { _, empty in if empty { editingDevices = false } }
+        .onDisappear { editingDevices = false }
         .background(backdrop)
         .toolbar(.hidden, for: .navigationBar)
         .motion(Motion.standard, value: model.lastSendResult)
@@ -252,11 +260,30 @@ private struct SendTab: View {
 
     /// Logo and a large "Send to" title, like the Mac's Send window.
     private var header: some View {
-        TabTitle(title: "Send to", showsScan: true) { LogoBadge(size: 44).id(model.settings.theme) }
+        // While editing devices, Done takes the scan button's place, so nothing below moves.
+        TabTitle(title: "Send to", showsScan: !editingDevices) { LogoBadge(size: 44).id(model.settings.theme) }
+        .overlay(alignment: .trailing) {
+            if editingDevices {
+                Button("Done", action: stopEditingDevices)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Look.accentText)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .padding(.top, Space.sm)
+                    .transition(.opacity)
+            }
+        }
         .padding(.top, Space.sm)
     }
 
-    /// Device tiles like the Mac's: the selected one fills with the theme color.
+    private func stopEditingDevices() {
+        guard editingDevices else { return }
+        Motion.perform { editingDevices = false }
+    }
+
+    /// Device tiles like the Mac's: the selected one fills with the theme color. Long-press one to edit: every tile
+    /// jiggles with an × at its top right that removes that device; Done, or a tap outside the tiles, ends it.
     private var devicePicker: some View {
         VStack(alignment: .leading, spacing: Space.md) {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: Space.md), GridItem(.flexible(), spacing: Space.md)],
@@ -264,6 +291,9 @@ private struct SendTab: View {
                 ForEach(desktops) { device in
                     let selected = device.id == peer?.id
                     Button {
+                        // In edit mode a tile tap does nothing, as on the Home Screen. (Lifting the finger that
+                        // started edit mode also lands here, so it mustn't end edit mode.)
+                        guard !editingDevices else { return }
                         Motion.perform { peerID = device.id }
                     } label: {
                         HStack(spacing: Space.md) {
@@ -288,14 +318,26 @@ private struct SendTab: View {
                         .contentShape(RoundedRectangle(cornerRadius: LookTile.radius, style: .continuous))
                     }
                     .buttonStyle(PressableStyle())
+                    .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                        typing = false
+                        Motion.perform { editingDevices = true }
+                    })
                     .overlay(alignment: .bottomLeading) {
-                        if !device.isPaired {
+                        if !device.isPaired && !editingDevices {
                             MissingTokenButton { model.settings.tokenRequest = device.id }
                                 .padding(.leading, Space.md + 36 + Space.md).padding(.bottom, Space.md)
                         }
                     }
                     .accessibilityLabel("\(device.name), \(Theme.platformName(device.platform))")
                     .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+                    .accessibilityAction(named: "Remove \(device.name)") { remove(device) }
+                    .overlay(alignment: .topTrailing) {
+                        if editingDevices {
+                            ClearBadge(label: "Remove \(device.name)") { remove(device) }
+                                .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                    .modifier(Jiggle(active: editingDevices, seed: device.id.hashValue))
                 }
             }
         }
@@ -390,6 +432,14 @@ private struct SendTab: View {
         .buttonStyle(PrimaryStyle())
         .disabled(peer == nil || !hasStaged || model.sending)
         .opacity(hasStaged ? 1 : 0.45)
+    }
+
+    /// Removes a device from the Send screen's edit mode, right away (no confirmation): pairing it again adds it back.
+    private func remove(_ device: Peer) {
+        Motion.perform {
+            if peerID == device.id { peerID = nil }
+            model.settings.remove(device)
+        }
     }
 
     private func sendStaged(to peer: Peer) async {
@@ -499,8 +549,9 @@ private struct ActionCardLabel: View {
     }
 }
 
-/// The small × on a selected card that unselects it.
+/// The small × on a selected card that unselects it, or on a device tile in edit mode that removes the device.
 private struct ClearBadge: View {
+    var label = "Clear"
     var action: () -> Void
 
     var body: some View {
@@ -514,7 +565,24 @@ private struct ClearBadge: View {
         }
         .buttonStyle(.plain)
         .offset(x: Space.md, y: -Space.md)
-        .accessibilityLabel("Clear")
+        .accessibilityLabel(label)
+    }
+}
+
+/// The home-screen wobble for tiles in edit mode. Each tile starts at its own point in the wobble so they don't move
+/// in lockstep; with Reduce Motion on, the tiles stay still (the × still shows).
+private struct Jiggle: ViewModifier {
+    var active: Bool
+    var seed: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        let moving = active && !reduceMotion
+        TimelineView(.animation(paused: !moving)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let offset = Double(abs(seed % 628)) / 100
+            content.rotationEffect(.degrees(moving ? 1.6 * sin(t * 24 + offset) : 0))
+        }
     }
 }
 
@@ -568,9 +636,6 @@ private struct ReceivedTab: View {
                         Text(model.collecting ? "Checking your computers…" : (model.lastCollect ?? "Pull down to check"))
                             .font(.body.weight(.medium))
                             .foregroundStyle(.primary)
-                        Text("Your PC and Mac hold items until this app opens.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
                     Spacer()
                     if model.collecting { ProgressView() }
@@ -585,8 +650,7 @@ private struct ReceivedTab: View {
 
             if model.history.isEmpty {
                 Section {
-                    ContentUnavailableView("Nothing yet", systemImage: "tray",
-                                           description: Text("Things sent to this iPhone appear here."))
+                    ContentUnavailableView("Nothing yet", systemImage: "tray")
                         .listRowBackground(Look.container)
                 }
             }
@@ -602,8 +666,6 @@ private struct ReceivedTab: View {
                             .font(.caption)
                             .textCase(nil)
                     }
-                } footer: {
-                    Text("Tap text or a link to copy it. Tap a file to open it.")
                 }
             }
 
