@@ -66,6 +66,7 @@ public static class QrStyle
     };
 
     public const double Size = 0.8;  // the outline's longest side, as a share of the code
+    public const double Shift = 0.07; // the outline sits this share of the code right of center, so it looks centered
     public const double Gap = 0.5;   // dark modules closer than this to the outline's edge are left out (in modules)
     public const double Dot = 0.95;  // dot diameter, in modules
     public const int Quiet = 3;      // white margin, in modules
@@ -118,7 +119,7 @@ public static class QrStyle
         var fixedModules = FunctionModules(n);
         var poly = new (double X, double Y)[Outline.Length];
         for (var i = 0; i < Outline.Length; i++)
-            poly[i] = (Outline[i].X * Size * n + n / 2.0, Outline[i].Y * Size * n + n / 2.0);
+            poly[i] = (Outline[i].X * Size * n + n / 2.0 + Shift * n, Outline[i].Y * Size * n + n / 2.0);
         var kinds = new QrModule[n, n];
         for (var r = 0; r < n; r++)
             for (var c = 0; c < n; c++)
