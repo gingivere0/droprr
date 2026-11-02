@@ -158,7 +158,7 @@ Without the iPhone app, you can still send to a computer from the share sheet, a
 | `docs/PROTOCOL.md` | The HTTP protocol every Droprr app speaks |
 | `docs/adr/`, `GLOSSARY.md` | Decisions about how the code is organized, and the words the code and docs use |
 | `docs/ios-shortcut.md` | Optional iPhone Shortcuts |
-| `scripts/` | `build-installer.ps1` (the Windows installer), `deploy.ps1` (publishes a Windows build for the self-updating app), and `make-app-icon.ps1` |
+| `scripts/` | `build-installer.ps1` (the Windows installer), `deploy.ps1` (publishes a Windows build for the self-updating app), `make-app-icon.ps1`, and `make-app-icons.py` (the full-bleed app icons) |
 | `file-swap-icon-pack/` | App, tray, and per-theme icons for every platform |
 
 `deploy/`, `dist/`, `bin/`, and `obj/` are build output and ignored by git, as are personal files such as `settings.json` and `apple/Config/Local.xcconfig`. Never commit tokens, host names, or IP addresses.
