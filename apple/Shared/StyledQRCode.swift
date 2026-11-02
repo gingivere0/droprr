@@ -18,6 +18,7 @@ enum QRStyle {
         (-0.0383, -0.4493), (-0.0613, -0.4732), (-0.0696, -0.4908),
     ]
     static let size = 0.8   // the outline's longest side, as a share of the code
+    static let shift = 0.07 // the outline sits this share of the code right of center, so it looks centered
     static let gap = 0.5    // dark modules closer than this to the outline's edge are left out (in modules)
     static let dot = 0.95   // dot diameter, in modules
     static let quiet = 3    // white margin, in modules
@@ -64,7 +65,7 @@ enum QRStyle {
         let n = dark.count
         let fixed = functionModules(n)
         let half = Double(n) / 2
-        let poly = outline.map { ($0.0 * size * Double(n) + half, $0.1 * size * Double(n) + half) }
+        let poly = outline.map { ($0.0 * size * Double(n) + half + shift * Double(n), $0.1 * size * Double(n) + half) }
         var kinds = Array(repeating: Array(repeating: Module.light, count: n), count: n)
         for r in 0..<n {
             for c in 0..<n {
