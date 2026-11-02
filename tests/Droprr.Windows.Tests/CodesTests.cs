@@ -65,7 +65,7 @@ public class CodesTests
     [Fact]
     public void NamedAppInfoCutsNamesOnACharacterBoundary()
     {
-        Assert.Equal("AgQAU2V0aOKAmXMgaVBob25l", OneCode.NamedAppInfo(OneCode.Phone, "Seth’s iPhone"));
+        Assert.Equal("AgQAQWxleOKAmXMgaVBob25l", OneCode.NamedAppInfo(OneCode.Phone, "Alex’s iPhone"));
         var longName = new string('é', 20); // 40 bytes in UTF-8
         var decoded = Convert.FromBase64String(OneCode.NamedAppInfo(OneCode.Web, longName).Replace('-', '+').Replace('_', '/') + "=");
         Assert.Equal(3 + 32, decoded.Length);
