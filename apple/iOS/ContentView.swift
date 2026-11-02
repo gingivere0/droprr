@@ -260,7 +260,20 @@ private struct SendTab: View {
 
     /// Logo and a large "Send to" title, like the Mac's Send window.
     private var header: some View {
-        TabTitle(title: "Send to", showsScan: true) { LogoBadge(size: 44).id(model.settings.theme) }
+        // While editing devices, Done takes the scan button's place, so nothing below moves.
+        TabTitle(title: "Send to", showsScan: !editingDevices) { LogoBadge(size: 44).id(model.settings.theme) }
+        .overlay(alignment: .trailing) {
+            if editingDevices {
+                Button("Done", action: stopEditingDevices)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Look.accentText)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .padding(.top, Space.sm)
+                    .transition(.opacity)
+            }
+        }
         .padding(.top, Space.sm)
     }
 
@@ -270,30 +283,18 @@ private struct SendTab: View {
     }
 
     /// Device tiles like the Mac's: the selected one fills with the theme color. Long-press one to edit: every tile
-    /// jiggles with an × at its top right that removes that device; Done, or a tap anywhere else, ends it.
+    /// jiggles with an × at its top right that removes that device; Done, or a tap outside the tiles, ends it.
     private var devicePicker: some View {
         VStack(alignment: .leading, spacing: Space.md) {
-            if editingDevices {
-                HStack {
-                    Spacer()
-                    Button("Done", action: stopEditingDevices)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Look.accentText)
-                        .frame(minHeight: 44)
-                        .contentShape(Rectangle())
-                        .buttonStyle(.plain)
-                }
-                .padding(.bottom, -Space.md)
-                .transition(.opacity)
-            }
             LazyVGrid(columns: [GridItem(.flexible(), spacing: Space.md), GridItem(.flexible(), spacing: Space.md)],
                       spacing: Space.md) {
                 ForEach(desktops) { device in
                     let selected = device.id == peer?.id
                     Button {
-                        // In edit mode a tap ends editing instead of choosing (this also swallows the tap that
-                        // finishes the long press that started it).
-                        if editingDevices { stopEditingDevices() } else { Motion.perform { peerID = device.id } }
+                        // In edit mode a tile tap does nothing, as on the Home Screen. (Lifting the finger that
+                        // started edit mode also lands here, so it mustn't end edit mode.)
+                        guard !editingDevices else { return }
+                        Motion.perform { peerID = device.id }
                     } label: {
                         HStack(spacing: Space.md) {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
