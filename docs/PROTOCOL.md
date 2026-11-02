@@ -333,9 +333,9 @@ A desktop also still adds an unknown name that calls `GET /inbox?for=` as an `"i
 
 - **Device id:** each device generates a random id once (16 random bytes, base32, lowercase, without padding) and keeps it. Peers match on the id, never on the name, because names can change or repeat.
 - **Certificate:** each device generates a self-signed certificate once: an ECDSA P-256 key, a subject of `CN=Droprr <device id>`, and a validity of 20 years. Its private key is protected like the tokens: DPAPI on Windows and the Keychain on Apple. It's never exported or logged.
-- **Fingerprint (`fp`):** the SHA-256 of the certificate's DER encoding, as 64 lowercase hex characters, always in full.
+- **Fingerprint (`fp`):** the SHA-256 of the certificate's DER encoding, as 64 lowercase hex characters, always in full, except in a [packed one code](#app-details), which carries the first 16 bytes (32 hex characters) to keep the QR code small.
 - **Pinning:** a client accepts a LAN server only if the server's certificate fingerprint equals the one pinned for that peer. It doesn't check the chain, the host name, or the expiry. On a mismatch, it refuses the connection over that address, falls back to Tailscale if the peer has a Tailscale host, and shows "`<name>`'s identity changed. Pair again." Only pairing again replaces a pinned fingerprint.
-- **Where a pin comes from:** the [pairing QR code](#pairing-qr), a `/pair` response, a confirmed [LAN pairing](#lan-pairing-post-pairrequest-post-pairconfirm) (the requester's certificate from the TLS handshake), or a `/ping` answered over Tailscale, which already authenticates the device. A protocol 1 peer can be upgraded that last way, without pairing again. Discovery never sets or changes a pin, and a pin is never moved from one peer to another (see [Pairing rules](#pairing-rules)).
+- **Where a pin comes from:** the [pairing QR code](#pairing-qr), a `/pair` response, a confirmed [LAN pairing](#lan-pairing-post-pairrequest-post-pairconfirm) (the requester's certificate from the TLS handshake), or a `/ping` answered over Tailscale, which already authenticates the device. A protocol 1 peer can be upgraded that last way, without pairing again. A [packed one code](#app-details)'s 32-character prefix is never stored as a pin: the app only uses it for the `/pair` call, accepting a certificate whose fingerprint starts with it, and pins the full `fp` from the response, which must start with the prefix too. Discovery never sets or changes a pin, and a pin is never moved from one peer to another (see [Pairing rules](#pairing-rules)).
 
 ### Discovery
 
@@ -514,10 +514,10 @@ The page above needs a certificate warning on Wi-Fi. This variant has none, work
 
 ### Identity and the code
 
-- **Host key:** each computer makes 32 random bytes once and keeps them secret (encrypted like its tokens). Its **room** is `base64url(SHA-256(host key))`. Base64url is always without padding.
+- **Host key:** each computer makes 32 random bytes once and keeps them secret (encrypted like its tokens). Its **room** is the first 22 characters of `base64url(SHA-256(host key))` (132 bits). Base64url is always without padding.
 - **DTLS certificate:** the host page makes one ECDSA P-256 certificate with `RTCPeerConnection.generateCertificate` and keeps it in its own storage, so its fingerprint stays the same across restarts and updates. Browsers limit certificates to a year, so it's replaced a month before it expires; browsers that knew the old one must scan again. Its **fp** is the SHA-256 fingerprint's 32 bytes, base64url.
 - **Join secret:** 16 random bytes, base64url, made when **Open in a browser** opens, and valid for any number of browsers while that window is open, for at most 10 minutes. Never saved or logged.
-- **The code:** the QR code is `<website>#<room>.<secret>.<fp>[.<app>]`. Scanning it with a phone's camera opens the website, which reads and then removes the fragment. The website can also scan it with its own camera button. It's the computer's only code; see [One code](#one-code).
+- **The code:** the QR code is `<website>#<room>.<secret>.<fp>[.<app>]`, where `<fp>` is the first 22 characters of the DTLS fingerprint's base64url (132 bits, far beyond forging a certificate to match), so the QR code stays small. Older codes carry all 43 characters of the room and `fp`; everything that reads a code accepts both, and treats a 43-character room as its first 22. Scanning it with a phone's camera opens the website, which reads and then removes the fragment. The website can also scan it with its own camera button. It's the computer's only code; see [One code](#one-code).
 
 ### Relay
 
@@ -528,7 +528,7 @@ WebSockets, JSON text messages, at most 16 KB each, and at most 300 per socket p
 | Computer | `wss://<relay>/host/<host key>` | `{ "t": "to", "cid", "m" }`, `{ "t": "drop", "cid" }`, and the text `ping` every 30 seconds (answered with `pong`) | `{ "t": "join", "cid" }`, `{ "t": "from", "cid", "m" }`, `{ "t": "leave", "cid" }` |
 | Browser | `wss://<relay>/join/<room>` | `{ "m" }` | `{ "t": "msg", "m" }`, `{ "t": "offline" }` (no computer in the room), `{ "t": "refused" }` (dropped) |
 
-The relay hashes the host key itself, so only the computer holding the key can host its room; someone who knows only the room ends up hosting a different, empty one. A newer host connection replaces an older one (close code `4000`). At most 16 browsers per room.
+The relay hashes the host key itself and keeps the first 22 characters, so only the computer holding the key can host its room. A browser may join with the 22-character room or, from an older code, the full 43, which lands in the same room; someone who knows only the room ends up hosting a different, empty one. A newer host connection replaces an older one (close code `4000`). At most 16 browsers per room.
 
 ### Signaling (inside `m`)
 
@@ -537,7 +537,7 @@ The browser makes the offer, with one ordered, reliable data channel labeled `dr
 - browser → computer: `{ "t": "offer", "sdp" }` (under 12,000 characters) and `{ "t": "ice", "c" }`
 - computer → browser: `{ "t": "answer", "sdp" }` and `{ "t": "ice", "c" }`
 
-**The browser checks the computer:** the `a=fingerprint:sha-256` in the answer must equal the code's `fp`, or it closes the connection and says it isn't the computer that was scanned. DTLS then guarantees the data channel ends at the computer that holds that certificate, so the relay can't read or change anything on it.
+**The browser checks the computer:** the `a=fingerprint:sha-256` in the answer, as base64url, must start with the code's `fp` (at least 22 characters), or it closes the connection and says it isn't the computer that was scanned. DTLS then guarantees the data channel ends at the computer that holds that certificate, so the relay can't read or change anything on it.
 
 ### Data channel
 
@@ -559,7 +559,7 @@ On the computer, items from a browser are saved, announced, and checked exactly 
 A browser can also host its own room, so the Droprr iPhone app (or another browser) connects to it with no computer involved: **Show QR code** on the website's start screen. The roles are the same as above, with the browser as the host:
 
 - **Host key:** 32 random bytes the browser keeps in its storage (`droprr.hostKey`), so its room stays the same across visits. **DTLS certificate:** made with `generateCertificate` and kept in IndexedDB, replaced a month before it expires, as on computers.
-- **The code:** `<website>#<room>.<secret>.<fp>.<b>`, where `<b>` is base64url JSON `{ "v": 1, "p": "web", "n": "<browser name>" }`. **`"p": "web"` marks a browser host**: a scanner must connect to it over WebRTC as a guest, never with `POST /pair`. The secret is new each time the code is shown and works for 10 minutes, or until the code is hidden. The code shows blurred until tapped.
+- **The code:** `<website>#<room>.<secret>.<fp>.<b>`, where `<b>` is [packed app details](#app-details) with platform `3` and the browser's name (older pages sent base64url JSON `{ "v": 1, "p": "web", "n": "<browser name>" }`). **A browser platform (`"p": "web"`) marks a browser host**: a scanner must connect to it over WebRTC as a guest, never with `POST /pair`. The secret is new each time the code is shown and works for 10 minutes, or until the code is hidden. The code shows blurred until tapped.
 - **Joining** is exactly the browser side above: join the room on the relay, make the offer with a `droprr` data channel, check the answer's fingerprint against `fp`, and say hello with the secret (or, later, the token).
 - **The browser host** accepts a hello whose `secret` matches its open secret, or whose `token` matches the one it gave that `id` before, and answers `welcome` with its name and that token. It keeps `{ id: { token, name } }` in its storage (`droprr.hostPeers`). It talks to one device at a time; a new accepted connection replaces the current one. Items, `saved`, and `failed` are the same in both directions.
 - **Reconnecting:** while the page is open (and has accepted a device before), it stays connected to the relay as its room's host, so a remembered device can reconnect with its token. A closed page can't be reached; the device says so and tries again later.
@@ -570,7 +570,7 @@ A browser can also host its own room, so the Droprr iPhone app (or another brows
 
 The iPhone app hosts its own room the same way, so two iPhones connect with no computer: **Show QR code** in Settings, scanned by Droprr on another iPhone (or any phone's camera, which opens the website). It's a browser host in every way that matters on the wire: the same hello, `welcome`, items, and `bye`, and `"p": "web"` in the code, so anything that can join a browser host can join a phone.
 
-- **The code** adds `"k": "ios"` to `<b>`, and `hello` and `welcome` add `"kind": "ios"`, so each side shows an iPhone rather than a browser. Others ignore them.
+- **The code** uses platform `4` in `<b>` (older apps added `"k": "ios"`), and `hello` and `welcome` add `"kind": "ios"`, so each side shows an iPhone rather than a browser. Others ignore them.
 - **The host key** is kept in the Keychain and the **DTLS certificate** in the hidden page's storage. The page runs in the app (`apple/guest/`, with `site/rtc.js`), and a phone may have several devices connected at once.
 - **Reconnecting:** only while the app is open on both, since iOS suspends it in the background. Each side reconnects when it comes forward: the guest to the room, and the host to the relay if it has accepted a device. Removing a device on the host sends `bye`, as on a browser host.
 
@@ -601,11 +601,27 @@ The app posts the page `{ "t": "config" }` when the join secret changes, and `{ 
 A computer shows **one** QR code, in **Pair a phone** (from its tray or menu bar, or Settings), for every way of connecting: any phone's browser, and the Droprr app. It never contains a token. There's no choice of Wi-Fi or Tailscale: browsers connect with WebRTC, which tries every path between the two devices (Tailscale addresses included), and the app tries Wi-Fi, then Tailscale, as for any send.
 
 - **Opening it:** an **Add a device** tile (a plus) after the device tiles in the Send window, plus the tray or menu bar and Settings. The code shows **blurred** until the person clicks it, so it isn't readable by anyone glancing at the screen. This is UI, not wire format, but every computer app does the same.
-- **Contents:** the [website code](#identity-and-the-code) `<website>#<room>.<secret>.<fp>.<app>`, where `<app>` is base64url JSON with what the app needs: `{ "v": 1, "n": name, "p": platform, "port", "id", "f": LAN certificate fingerprint (hex), "l": [LAN "host:port", …], "h": Tailscale address, "d": MagicDNS name }`. `h` and `d` are left out without Tailscale, and `l` is empty without the local network.
+- **Contents:** the [website code](#identity-and-the-code) `<website>#<room>.<secret>.<fp>.<app>`, where `<app>` is [packed app details](#app-details) with what the app needs to reach the computer. The QR code is drawn in the [Droprr style](../design-system/droprr/qr-style.md), at error correction Q: 57 × 57 modules for a typical computer.
 - **The join secret** is valid while that window is open, for at most 10 minutes. Closing the window ends it.
 - **Browsers:** the website connects as above. On an iPhone, iPad, or Mac, when the code has `<app>`, it also offers **Open in Droprr**, a link to `droprr://join?code=<the fragment, percent-encoded>`.
 - **The app** gets the code from that link or from its own scanner (the website URL). It calls [`POST /pair`](#post-pair) on the computer as usual (LAN HTTPS pinned to `f`, or Tailscale), but with the header `X-Droprr-Join: <secret>` and **no** `Authorization` header. The computer treats a `/pair` with its open join secret like a confirmed [LAN pairing](#pairing-rules): a new peer (a unique name), or the caller's existing peer with fresh tokens, as in [Pairing rules](#pairing-rules). It never answers `409`. The response's device token is the app's from then on. A wrong or expired secret is `401`.
 - **Without WebView2** (no website code), Windows falls back to the [pairing QR](#pairing-qr), which carries the token, with its warning.
+
+### App details
+
+`<app>` is base64url (no padding) of these bytes, packed so the QR code stays small:
+
+| Bytes | Meaning |
+| --- | --- |
+| 1 | Format: `2`. Older codes carried base64url JSON instead, which starts with `{`; a reader accepts both and reports any other value as a newer version. |
+| 1 | Platform: `1` Windows, `2` macOS, `3` a browser host, `4` an iPhone host (`"p": "web"`, `"k": "ios"` in older codes). |
+| 1 | Flags: `1` a LAN fingerprint follows, `2` a Tailscale address follows, `4` a port follows. |
+| 16 | With flag `1`: the first 16 bytes of the LAN [certificate fingerprint](#device-identity). |
+| 4 | With flag `2`: the Tailscale IPv4 address. |
+| 2 | With flag `4`: the HTTP port, big-endian, when it isn't `53318`. The HTTPS port is that + 1. |
+| rest | Computers: up to four LAN IPv4 addresses, 4 bytes each, reached on the HTTPS port. Browser and iPhone hosts: the name in UTF-8, at most 32 bytes, cut on a character boundary. |
+
+A computer's name, `id`, full fingerprint, and MagicDNS name aren't in the code: the app shows "your PC" or "your Mac" while it pairs and takes them from the `/pair` answer. That answer arrives over HTTPS pinned to the fingerprint prefix, or over Tailscale, and its `fp` must start with the prefix, or the app doesn't pair.
 
 The [pairing QR](#pairing-qr) and the computer's own page's typed codes still work for older apps and for computers without the website, but computers no longer show them by default.
 

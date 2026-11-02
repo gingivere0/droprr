@@ -3,15 +3,18 @@
 // storage. Everything that matters is encrypted end to end by WebRTC, and the browser checks the computer's key from
 // the QR code, so this relay can't read or impersonate anything.
 //
-//   wss://<relay>/host/<key>   the computer, with its secret 32-byte key (base64url). Its room is SHA-256(key), so
-//                              only the computer can be the host of its own room.
-//   wss://<relay>/join/<room>  a browser, with the room from the QR code.
+//   wss://<relay>/host/<key>   the computer, with its secret 32-byte key (base64url). Its room is the first 22
+//                              characters of base64url(SHA-256(key)), so only the computer can host its own room.
+//   wss://<relay>/join/<room>  a browser, with the room from the QR code: those 22 characters, or all 43 (older
+//                              codes), which land in the same room.
 //
 // Messages are JSON text. A browser sends { m } and the computer receives { t: "from", cid, m }; the computer sends
 // { t: "to", cid, m } and that browser receives { t: "msg", m }. The relay adds { t: "join", cid } and
 // { t: "leave", cid } for the computer, and { t: "offline" } for browsers when there's no computer.
 
 const ID = /^[A-Za-z0-9_-]{43}$/;
+const ROOM = /^[A-Za-z0-9_-]{22}(?:[A-Za-z0-9_-]{21})?$/;
+const ROOM_LENGTH = 22;
 const MAX_GUESTS = 16;
 const MAX_MESSAGE = 16 * 1024;
 const RATE_WINDOW_MS = 10_000;
@@ -37,12 +40,13 @@ export default {
       });
     }
     const match = url.pathname.match(/^\/(host|join)\/([^/]+)$/);
-    if (!match || !ID.test(match[2])) return new Response("not found", { status: 404 });
+    if (!match || !(match[1] === "host" ? ID : ROOM).test(match[2])) return new Response("not found", { status: 404 });
     if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
       return new Response("expected a WebSocket", { status: 426 });
     }
     const [, role, value] = match;
-    const room = role === "host" ? base64url(await crypto.subtle.digest("SHA-256", fromBase64url(value))) : value;
+    const room = (role === "host" ? base64url(await crypto.subtle.digest("SHA-256", fromBase64url(value))) : value)
+      .slice(0, ROOM_LENGTH);
     const stub = env.ROOMS.get(env.ROOMS.idFromName(room));
     const forwarded = new Request(request.url, { headers: request.headers });
     forwarded.headers.set("X-Droprr-Role", role);

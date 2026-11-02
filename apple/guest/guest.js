@@ -82,8 +82,9 @@
         if (data.t !== "msg" || !data.m) return;
         const m = data.m;
         if (m.t === "answer" && typeof m.sdp === "string") {
-          // The browser's key from its code must be the one on this connection; otherwise it's someone else.
-          if (!fp || sdpFingerprint(m.sdp) !== fp) return fail("wrong key");
+          // The browser's key from its code must be the one on this connection; otherwise it's someone else. Codes
+          // carry the key's first 22 characters (docs/PROTOCOL.md, "The code").
+          if (!fp || fp.length < 22 || !(sdpFingerprint(m.sdp) || "").startsWith(fp)) return fail("wrong key");
           await pc.setRemoteDescription({ type: "answer", sdp: m.sdp });
           for (const c of pending.splice(0)) await addCandidate(c);
         } else if (m.t === "ice") {

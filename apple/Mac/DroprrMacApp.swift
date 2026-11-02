@@ -346,17 +346,12 @@ final class MacModel {
     /// The browser that just connected (Pair a phone says so, then closes).
     var connectedBrowser: String?
 
-    /// The one code's <app> part: what the Droprr app needs to pair, and never a token.
+    /// The one code's <app> part: what the Droprr app needs to pair, and never a token. Packed small
+    /// (docs/PROTOCOL.md, "App details"); the name, id, and MagicDNS name come in the /pair answer.
     var appInfo: String? {
-        var info: [String: Any] = ["v": 1, "n": settings.deviceName, "p": DroprrSettings.platform, "port": settings.port,
-                                   "id": settings.deviceID,
-                                   "l": settings.localNetwork ? LocalAddresses.lan(port: settings.tlsPort) : []]
-        if let fp = settings.identity?.fingerprint { info["f"] = fp }
-        if let tailscale = PairingInfo.tailscaleAddress() {
-            info["h"] = tailscale
-            if let dns = receiver.magicDNS { info["d"] = dns }
-        }
-        return (try? JSONSerialization.data(withJSONObject: info, options: [.sortedKeys, .withoutEscapingSlashes]))?.base64URL
+        PairingInfo.computerAppDetails(platform: 2, fingerprint: settings.identity?.fingerprint,
+                                       tailscale: PairingInfo.tailscaleAddress(), port: settings.port,
+                                       lan: settings.localNetwork ? LocalAddresses.lan(port: settings.tlsPort) : [])
     }
 
     /// Opens the one code (Pair a phone): the join secret for browsers and the app.

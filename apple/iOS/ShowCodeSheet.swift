@@ -1,4 +1,3 @@
-import CoreImage.CIFilterBuiltins
 import SwiftUI
 
 private struct ShowCodeKey: EnvironmentKey {
@@ -27,11 +26,10 @@ struct ShowCodeSheet: View {
             VStack(spacing: Space.xl) {
                 Text("Scan with Droprr on another iPhone, or any phone's camera.")
                     .font(.subheadline).foregroundStyle(Look.muted).multilineTextAlignment(.center)
-                if let code, let image = Self.qr(code) {
+                if let code {
                     Button { revealed = true } label: {
                         ZStack {
-                            Image(uiImage: image)
-                                .interpolation(.none).resizable().scaledToFit()
+                            StyledQRCode(text: code)
                                 .frame(width: 240, height: 240)
                                 .blur(radius: revealed ? 0 : 28)
                                 .padding(14)
@@ -77,14 +75,5 @@ struct ShowCodeSheet: View {
         }
         .onDisappear { model.closeCode() }
         .onChange(of: model.justAdded) { dismiss() }
-    }
-
-    private static func qr(_ text: String) -> UIImage? {
-        let filter = CIFilter.qrCodeGenerator()
-        filter.message = Data(text.utf8)
-        filter.correctionLevel = "M"
-        guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 10, y: 10)),
-              let image = CIContext().createCGImage(output, from: output.extent) else { return nil }
-        return UIImage(cgImage: image)
     }
 }

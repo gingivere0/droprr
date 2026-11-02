@@ -55,15 +55,15 @@ final class BrowserHost: NSObject, WKNavigationDelegate {
         return Data(SHA256.hash(data: key)).base64URL
     }
 
-    /// What the Droprr app needs to pair from the one code (docs/PROTOCOL.md, "One code"), as base64url JSON.
+    /// What the Droprr app needs to pair from the one code (docs/PROTOCOL.md, "App details"), packed.
     var appInfo: () -> String? = { nil }
 
     /// The one code, while the Pair a phone window is open and the page is ready:
-    /// <site>#<room>.<secret>.<fp>.<app>.
+    /// <site>#<room>.<secret>.<fp>.<app>, with the room's and key's first 22 characters (docs/PROTOCOL.md, "The code").
     var joinLink: String? {
         guard let fingerprint, let secret = access.secret else { return nil }
         let app = appInfo().map { ".\($0)" } ?? ""
-        return "\(Self.site)#\(room).\(secret).\(fingerprint)\(app)"
+        return "\(Self.site)#\(room.prefix(22)).\(secret).\(fingerprint.prefix(22))\(app)"
     }
 
     private var origin: String { "http://localhost:\(settings.port)" }

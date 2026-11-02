@@ -126,7 +126,9 @@ enum SelfSignedCertificate {
     }
 }
 
-/// URLSession delegate that trusts a server only if its certificate matches a pinned fingerprint.
+/// URLSession delegate that trusts a server only if its certificate matches a pinned fingerprint. A 32-character pin
+/// is the first half of one, from a packed pairing code (docs/PROTOCOL.md, "App details"): it's only used to pair,
+/// and the /pair answer's full fingerprint replaces it.
 final class PinnedTrust: NSObject, URLSessionDelegate {
     let fingerprint: String
     /// Set when the server presented a different certificate (as opposed to not answering).
@@ -147,10 +149,16 @@ final class PinnedTrust: NSObject, URLSessionDelegate {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let trust = challenge.protectionSpace.serverTrust,
               let leaf = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first,
-              DeviceIdentity.fingerprint(of: SecCertificateCopyData(leaf) as Data) == fingerprint else {
+              Self.matches(DeviceIdentity.fingerprint(of: SecCertificateCopyData(leaf) as Data), pin: fingerprint) else {
             if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust { mismatch = true }
             return completionHandler(.cancelAuthenticationChallenge, nil)
         }
         completionHandler(.useCredential, URLCredential(trust: trust))
+    }
+
+    /// Whether a certificate's full fingerprint matches a pin: all 64 characters, or a 32-character prefix.
+    static func matches(_ fingerprint: String, pin: String) -> Bool {
+        let pin = pin.lowercased(), fingerprint = fingerprint.lowercased()
+        return pin.count == 64 ? fingerprint == pin : pin.count == 32 && fingerprint.hasPrefix(pin)
     }
 }

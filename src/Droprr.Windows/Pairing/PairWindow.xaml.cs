@@ -3,10 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Windows;
-using System.Windows.Media.Imaging;
-using QRCoder;
 
 namespace Droprr;
 
@@ -64,7 +61,7 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
     {
         if (Application.Current is App { BrowserHost: { } starting } && starting.Fingerprint is null)
             return null;
-        if (Application.Current is App { BrowserHost: { } browserHost } && browserHost.JoinLink(AppInfo(_settings, host, dns)) is { } link)
+        if (Application.Current is App { BrowserHost: { } browserHost } && browserHost.JoinLink(AppInfo(_settings, host)) is { } link)
         {
             PrivacyNote.Severity = Wpf.Ui.Controls.InfoBarSeverity.Informational;
             PrivacyNote.Title = "Anyone who scans this can connect";
@@ -75,20 +72,16 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
         return PairingUri(_settings, host, dns);
     }
 
-    // What the iPhone app needs to pair from the one code, as base64url JSON: name, platform, port, id, the LAN
-    // certificate fingerprint, LAN addresses, and the Tailscale address and name. No token.
-    static string AppInfo(AppSettings settings, string host, string? dns)
+    // What the iPhone app needs to pair from the one code, packed small (docs/PROTOCOL.md, "App details"): the LAN
+    // certificate fingerprint's first 16 bytes, the Tailscale and LAN IPv4 addresses, and the port. No token; the
+    // name, id, and MagicDNS name come in the /pair answer.
+    static string AppInfo(AppSettings settings, string host)
     {
         var lan = Application.Current is App { LanListening: true }
-            ? LanNetwork.OwnEndpoints(settings.Port)
+            ? LanNetwork.LocalAddresses().Select(a => a.Address)
             : [];
-        var tailscale = LanNetwork.IsTailscale(System.Net.IPAddress.TryParse(host, out var ip) ? ip : System.Net.IPAddress.None) ? host : null;
-        var json = JsonSerializer.SerializeToUtf8Bytes(new
-        {
-            v = 1, n = settings.DeviceName, p = OwnDevice.Platform.ToWire(), port = settings.Port, id = settings.DeviceId,
-            f = DeviceIdentity.Fingerprint(settings), l = lan, h = tailscale, d = tailscale is null ? null : dns,
-        }, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
-        return Convert.ToBase64String(json).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var tailscale = System.Net.IPAddress.TryParse(host, out var ip) && LanNetwork.IsTailscale(ip) ? ip : null;
+        return Codes.OneCode.AppInfo(Codes.OneCode.Windows, DeviceIdentity.Fingerprint(settings), tailscale, settings.Port, lan);
     }
 
     // Tailscale when it's connected; otherwise this PC's first private LAN address, which the phone reaches over
@@ -145,7 +138,7 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
         }
         Error.Severity = Wpf.Ui.Controls.InfoBarSeverity.Error;
         Error.Title = "Can't pair right now";
-        Code.Source = Render(codeText);
+        Code.Source = QrDrawing.Render(codeText);
         CodePanel.Visibility = Visibility.Visible;
         ScanHint.Visibility = Visibility.Visible;
         Details.Visibility = Visibility.Visible;
@@ -206,19 +199,5 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
         }
         // Uri.EscapeDataString percent-encodes everything outside RFC 3986's unreserved characters.
         return "droprr://pair?" + string.Join("&", fields.Select(f => $"{f.Key}={Uri.EscapeDataString(f.Value)}"));
-    }
-
-    internal static BitmapImage Render(string text)
-    {
-        using var generator = new QRCodeGenerator();
-        using var data = generator.CreateQrCode(text, QRCodeGenerator.ECCLevel.M);
-        var png = new PngByteQRCode(data).GetGraphic(10);
-        var image = new BitmapImage();
-        image.BeginInit();
-        image.CacheOption = BitmapCacheOption.OnLoad;
-        image.StreamSource = new MemoryStream(png);
-        image.EndInit();
-        image.Freeze();
-        return image;
     }
 }
