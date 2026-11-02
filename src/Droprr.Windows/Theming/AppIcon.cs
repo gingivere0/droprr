@@ -4,12 +4,14 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace Droprr;
 
-// The app icon for the taskbar, title bars, and tray, in the current theme's colors: each theme's logo from
+// The app icon for the taskbar, title bars, tray, and shortcuts, in the color picked under Settings > App icon
+// (apart from the color theme, so changing colors never changes the icon): each theme's logo from
 // file-swap-icon-pack/themes/<theme id>/logo-1024.png, the same art the Mac uses, scaled down to icon sizes
 // once and cached. The exe's own icon (Explorer, Start menu) is the default theme's (Sage), made at build time by
 // scripts/make-app-icon.ps1.
@@ -38,9 +40,13 @@ static class AppIcon
         return new Icon(stream, System.Windows.Forms.SystemInformation.SmallIconSize);
     }
 
-    // The logo doesn't change between light and dark mode, only with the theme.
-    public static void SetTheme(string themeId)
+    // The picked icon's id (a theme id).
+    public static string Id => _theme;
+
+    // Switches every icon to this color of the logo. Light and dark mode and the color theme don't change it.
+    public static void Set(string? iconId)
     {
+        var themeId = ThemeCatalog.Find(iconId).Id;
         if (themeId == _theme)
             return;
         _theme = themeId;
@@ -69,6 +75,13 @@ static class AppIcon
         using var copy = new MemoryStream();
         stream.CopyTo(copy);
         return copy.ToArray();
+    }
+
+    // A theme's logo at about 64 px, for the App icon picker in Settings.
+    public static ImageSource Preview(string themeId)
+    {
+        var decoder = new IconBitmapDecoder(new MemoryStream(Load(themeId)), BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+        return decoder.Frames.OrderBy(f => Math.Abs(f.PixelWidth - 64)).First();
     }
 
     static ImageSource Decode(byte[] ico)

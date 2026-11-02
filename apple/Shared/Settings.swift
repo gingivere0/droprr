@@ -99,6 +99,9 @@ final class DroprrSettings {
     var autoCopy: Bool { didSet { defaults.set(autoCopy, forKey: "autoCopy") } }
     /// The Bento color theme's ID (see ThemePalette). Sage by default.
     var theme: String { didSet { defaults.set(theme, forKey: "theme") } }
+    /// The app icon's color (a ThemePalette ID): the home-screen icon on iPhone and the menu bar icon on the Mac.
+    /// Chosen apart from the color theme, so changing colors never changes the icon.
+    var appIcon: String { didSet { defaults.set(appIcon, forKey: "appIcon") } }
     /// The window style (see LookStyle). Atelier by default.
     var style: String { didSet { defaults.set(style, forKey: "style") } }
     /// Mac: copy received text and links to the clipboard. On by default.
@@ -270,7 +273,10 @@ final class DroprrSettings {
         autoCopy = defaults.bool(forKey: "autoCopy")
         copyTextAndLinks = defaults.object(forKey: "copyTextAndLinks") as? Bool ?? true
         saveFolder = defaults.string(forKey: "saveFolder") ?? ""
-        theme = defaults.string(forKey: "theme") ?? ThemePalette.defaultID
+        let storedTheme = defaults.string(forKey: "theme") ?? ThemePalette.defaultID
+        theme = storedTheme
+        // Before the icon had its own setting it followed the theme, so keep whatever icon is showing now.
+        appIcon = defaults.string(forKey: "appIcon") ?? storedTheme
         style = defaults.string(forKey: "style") ?? "atelier"
         colorMode = defaults.string(forKey: "colorMode") ?? "light"
         localNetwork = defaults.object(forKey: "localNetwork") as? Bool ?? true

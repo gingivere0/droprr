@@ -46,7 +46,7 @@ private struct MenuBarLabel: View {
         // percentage shows next to it, so receiving is visible without opening the panel.
         HStack(spacing: 4) {
             Image(nsImage: {
-                let image = NSImage(named: "MenuBarIcon-\(Theme.palette.id)") ?? NSImage()
+                let image = NSImage(named: "MenuBarIcon-\(model.settings.appIcon)") ?? NSImage()
                 image.isTemplate = false
                 image.size = NSSize(width: 18, height: 18)
                 return image
