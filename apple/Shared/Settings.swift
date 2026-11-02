@@ -3,7 +3,7 @@ import Observation
 
 enum DroprrDefaults {
     static let port = 53318
-    static let version = "0.2.0"
+    static let version = "0.3.3"
 }
 
 /// Another device running Droprr, addressed by its Tailscale (MagicDNS) name or 100.x address.
