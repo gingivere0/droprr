@@ -47,6 +47,43 @@ struct ThemePicker: View {
     }
 }
 
+/// The app icon's color, chosen apart from the theme: one logo per theme color, the current one ringed.
+/// Used in Mac and iPhone Settings › Appearance.
+struct AppIconPicker: View {
+    @Bindable var settings: DroprrSettings
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: Space.md)], spacing: Space.md) {
+            ForEach(ThemePalette.all) { palette in
+                let selected = palette.id == settings.appIcon
+                Button {
+                    Motion.perform { settings.appIcon = palette.id }
+                } label: {
+                    VStack(spacing: Space.xs) {
+                        Image("Logo-\(palette.id)")
+                            .resizable()
+                            .interpolation(.high)
+                            .scaledToFit()
+                            .frame(width: 52, height: 52)
+                            .padding(Space.xs)
+                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(selected ? Look.accentText : .clear, lineWidth: 2))
+                        Text(palette.name)
+                            .font(.caption.weight(selected ? .semibold : .regular))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(palette.name) icon")
+                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+    }
+}
+
 extension Color {
     init(hex: UInt32) {
         self.init(red: Double(hex >> 16 & 0xFF) / 255, green: Double(hex >> 8 & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)

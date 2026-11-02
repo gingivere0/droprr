@@ -193,8 +193,6 @@ static class AppTheme
         SetBrush("SuccessFillBrush", dark ? ThemeCatalog.SuccessFill.Dark : ThemeCatalog.SuccessFill.Light);
 
         SetBrush("SuccessTextBrush", dark ? ThemeCatalog.SuccessText.Dark : ThemeCatalog.SuccessText.Light);
-
-        AppIcon.SetTheme(_theme.Id);
     }
 
     // Corners, borders, shadows, title type, and the secondary button, which differ by style.

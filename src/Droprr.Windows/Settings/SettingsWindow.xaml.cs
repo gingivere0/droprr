@@ -24,6 +24,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
     readonly string _originalTheme;
     readonly string _originalMode;
     readonly string _originalStyle;
+    readonly string _originalIcon;
     // Set while the pickers are refilled, so their selection events don't apply anything.
     bool _refilling;
     bool _tokenVisible;
@@ -59,7 +60,9 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         _originalTheme = AppTheme.Current.Id;
         _originalMode = AppTheme.Mode;
         _originalStyle = AppTheme.Look.Id;
+        _originalIcon = AppIcon.Id;
         ShowSwatches();
+        ShowIcons();
         ModeBox.SelectedItem = ModeBox.Items.Cast<ComboBoxItem>().First(i => (string)i.Tag == _originalMode);
         // The swatches preview each style and theme in the current mode.
         Action rebuild = ShowSwatches;
@@ -72,6 +75,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
                 AppTheme.SetTheme(_originalTheme);
                 AppTheme.SetStyle(_originalStyle);
                 AppTheme.SetMode(_originalMode);
+                AppIcon.Set(_originalIcon);
             }
         };
 
@@ -226,6 +230,28 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         AppTheme.SetTheme(swatch.Id);
         // The style drawings use the theme's colors.
         ShowSwatches();
+    }
+
+    // The app icon is its own choice: picking a color theme leaves it alone, and picking an icon leaves the theme.
+    void ShowIcons()
+    {
+        _refilling = true;
+        try
+        {
+            var icons = ThemeCatalog.All.Select(t => new IconSwatch(t.Id, t.Name, AppIcon.Preview(t.Id))).ToList();
+            IconList.ItemsSource = icons;
+            IconList.SelectedItem = icons.First(i => i.Id == AppIcon.Id);
+        }
+        finally
+        {
+            _refilling = false;
+        }
+    }
+
+    void OnIconChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!_refilling && IconList.SelectedItem is IconSwatch icon)
+            AppIcon.Set(icon.Id);
     }
 
     void OnStyleChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -406,6 +432,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         s.Theme = _settings.Theme;
         s.Mode = _settings.Mode;
         s.Style = _settings.Style;
+        s.AppIcon = _settings.AppIcon;
 
         var kept = new HashSet<string>(_peers.Where(_savedName.ContainsKey).Select(p => _savedName[p]), StringComparer.OrdinalIgnoreCase);
         foreach (var removed in _savedName.Values.Where(n => !kept.Contains(n)).ToList())
@@ -466,6 +493,7 @@ public partial class SettingsWindow : Wpf.Ui.Controls.FluentWindow
         _settings.Theme = AppTheme.Current.Id;
         _settings.Mode = AppTheme.Mode;
         _settings.Style = AppTheme.Look.Id;
+        _settings.AppIcon = AppIcon.Id;
         try
         {
             SettingsStore.Update(ApplyEdits);

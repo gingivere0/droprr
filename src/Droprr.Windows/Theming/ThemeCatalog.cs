@@ -85,3 +85,6 @@ public sealed class ThemeSwatch
         return brush;
     }
 }
+
+// One choice in Settings > App icon: a theme's color of the logo.
+public sealed record IconSwatch(string Id, string Name, ImageSource Image);

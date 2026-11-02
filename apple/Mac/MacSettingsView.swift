@@ -32,6 +32,7 @@ struct MacSettingsView: View {
                 }
                 style
                 appearance
+                appIcon
             } else {
                 pageTitle("Settings")
                 thisMac
@@ -180,6 +181,13 @@ struct MacSettingsView: View {
         VStack(alignment: .leading, spacing: Space.md) {
             SectionHeader(title: "Colors", detail: "Each theme has light and dark colors.")
             ThemePicker(settings: settings)
+        }
+    }
+
+    private var appIcon: some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            SectionHeader(title: "App icon", detail: "The menu bar icon. Changing colors doesn't change it.")
+            AppIconPicker(settings: settings)
         }
     }
 

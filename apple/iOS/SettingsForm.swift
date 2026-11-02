@@ -206,7 +206,7 @@ private struct PeerRow: View {
     }
 }
 
-/// iPhone Settings › Appearance: the window style and the color theme.
+/// iPhone Settings › Appearance: the window style, the color theme and the app icon.
 struct AppearanceSettings: View {
     @Bindable var settings: DroprrSettings
 
@@ -232,6 +232,14 @@ struct AppearanceSettings: View {
                 Text("Colors")
             } footer: {
                 Text("Each theme has light and dark colors.")
+            }
+            Section {
+                AppIconPicker(settings: settings)
+                    .listRowInsets(EdgeInsets(top: Space.md, leading: Space.md, bottom: Space.md, trailing: Space.md))
+            } header: {
+                Text("App icon")
+            } footer: {
+                Text("The Home Screen icon. Changing colors doesn't change it.")
             }
         }
         .scrollContentBackground(.hidden)

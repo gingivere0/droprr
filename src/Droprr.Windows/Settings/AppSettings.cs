@@ -25,6 +25,13 @@ public sealed class AppSettings
     // The color theme's id (ThemeCatalog); the default theme in tokens.json (Sage) unless chosen otherwise.
     public string Theme { get; set; } = ThemeCatalog.DefaultId;
 
+    // The app icon's color (a theme id), picked apart from the theme so changing colors never changes the icon.
+    // Missing in settings saved before it existed, when the icon followed the theme, so it starts as the theme.
+    public string? AppIcon { get; set; }
+
+    [JsonIgnore]
+    public string IconId => AppIcon ?? Theme;
+
     // The window style's id (LookCatalog): "material", "clay", "spatial", or "atelier", as on the Mac and iPhone.
     // Atelier unless chosen otherwise.
     public string Style { get; set; } = LookCatalog.DefaultId;

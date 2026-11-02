@@ -40,12 +40,12 @@ struct ContentView: View {
         .foregroundStyle(Look.ink)
         .fontDesign(Look.style == .clay ? .rounded : nil)
         .preferredColorScheme(Look.colorScheme)
-        // The home-screen icon follows the theme too (alternate app icons).
-        .onAppear { AppIconSwitcher.apply(model.settings.theme) }
+        // The home-screen icon is its own setting (Settings › Appearance › App icon), not the theme.
+        .onAppear { AppIconSwitcher.apply(model.settings.appIcon) }
         // Every screen's titles use the style's font, like the Send screen.
         .onAppear { Look.applyNavigationFonts() }
         .onChange(of: model.settings.style) { Look.applyNavigationFonts() }
-        .onChange(of: model.settings.theme) { _, theme in AppIconSwitcher.apply(theme) }
+        .onChange(of: model.settings.appIcon) { _, icon in AppIconSwitcher.apply(icon) }
         // "Missing Token" on the Send tab opens that device in Settings.
         .onChange(of: model.settings.localNetwork) { _, on in if on { model.startLocalNetwork() } else { model.stopLocalNetwork() } }
         .onChange(of: model.settings.tokenRequest) { _, id in if id != nil { tab = 2 } }
@@ -790,11 +790,11 @@ private struct QuickLookSheet: UIViewControllerRepresentable {
     }
 }
 
-/// Switches the home-screen icon to the theme's recolored logo. Graphite & Lime uses the main icon.
+/// Switches the home-screen icon to the chosen color of the logo. Sage uses the main icon.
 enum AppIconSwitcher {
     @MainActor
-    static func apply(_ theme: String) {
-        let wanted: String? = theme == ThemePalette.defaultID ? nil : "AppIcon-\(theme)"
+    static func apply(_ icon: String) {
+        let wanted: String? = icon == ThemePalette.defaultID ? nil : "AppIcon-\(icon)"
         let app = UIApplication.shared
         guard app.supportsAlternateIcons, app.alternateIconName != wanted else { return }
         // The public call always shows a "You have changed the icon" alert. This app is installed

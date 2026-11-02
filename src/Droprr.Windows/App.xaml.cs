@@ -99,6 +99,7 @@ public partial class App : Application
         {
             Settings = SettingsStore.Load();
             AppTheme.Initialize(Settings.Theme, Settings.Mode, Settings.Style);
+            AppIcon.Set(Settings.IconId);
         }
         catch (Exception ex)
         {
@@ -279,7 +280,7 @@ public partial class App : Application
     // focusPeerToken: a device whose token field should be ready to type into.
     void SyncShortcutIcons()
     {
-        var (theme, ico) = (AppTheme.Current.Id, AppIcon.IcoFile);
+        var (theme, ico) = (AppIcon.Id, AppIcon.IcoFile);
         System.Threading.Tasks.Task.Run(() =>
         {
             try { Shortcuts.ApplyThemeIcon(theme, ico); }
