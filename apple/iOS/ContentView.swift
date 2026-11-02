@@ -635,9 +635,6 @@ private struct ReceivedTab: View {
                         Text(model.collecting ? "Checking your computers…" : (model.lastCollect ?? "Pull down to check"))
                             .font(.body.weight(.medium))
                             .foregroundStyle(.primary)
-                        Text("Your PC and Mac hold items until this app opens.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
                     Spacer()
                     if model.collecting { ProgressView() }
@@ -652,8 +649,7 @@ private struct ReceivedTab: View {
 
             if model.history.isEmpty {
                 Section {
-                    ContentUnavailableView("Nothing yet", systemImage: "tray",
-                                           description: Text("Things sent to this iPhone appear here."))
+                    ContentUnavailableView("Nothing yet", systemImage: "tray")
                         .listRowBackground(Look.container)
                 }
             }
@@ -669,8 +665,6 @@ private struct ReceivedTab: View {
                             .font(.caption)
                             .textCase(nil)
                     }
-                } footer: {
-                    Text("Tap text or a link to copy it. Tap a file to open it.")
                 }
             }
 
