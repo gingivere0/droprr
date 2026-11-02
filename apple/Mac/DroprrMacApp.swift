@@ -206,8 +206,7 @@ final class MacModel {
         receiver.addBrowser = { [weak self] in self?.addBrowser($0) ?? "Browser" }
         receiver.onBrowserRemoved = { [weak self] id in
             guard let self, let peer = self.settings.peers.first(where: { $0.id == id }) else { return }
-            self.outbox.clear(for: peer)
-            self.settings.peers.removeAll { $0.id == id }
+            self.remove(peer)
         }
         #if DEBUG
         // Tests: DROPRR_BROWSER_CODE=1 opens the one code's join secret at launch (the link is logged once ready).
@@ -389,6 +388,12 @@ final class MacModel {
         justAdded = id
         lastSendResult = "\(peer.name) added"
         showSendWindow?()
+    }
+
+    /// Removes a paired device and anything still waiting for it.
+    func remove(_ peer: Peer) {
+        outbox.clear(for: peer)
+        settings.removePeer(peer.id)
     }
 
     func clearWaiting(for peer: Peer) {

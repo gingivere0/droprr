@@ -10,13 +10,7 @@ struct SettingsForm: View {
     @State private var removing: Peer?
     @Environment(\.showCode) private var showCode
 
-    /// Removes a device; one reached over WebRTC is told or disconnected first.
-    private func remove(_ peer: Peer) {
-        if peer.isBrowser, let id = peer.deviceID {
-            if peer.fingerprint == nil { BrowserGuest.shared.forget(id) } else { BrowserGuest.shared.disconnect(id) }
-        }
-        settings.peers.removeAll { $0.id == peer.id }
-    }
+    private func remove(_ peer: Peer) { settings.remove(peer) }
 
     var body: some View {
         Form {
@@ -247,5 +241,15 @@ struct AppearanceSettings: View {
         .navigationTitle("Appearance")
         .toolbar(.visible, for: .navigationBar)
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+extension DroprrSettings {
+    /// Removes a device (Settings, or the Send screen's edit mode); one reached over WebRTC is told or disconnected first.
+    func remove(_ peer: Peer) {
+        if peer.isBrowser, let id = peer.deviceID {
+            if peer.fingerprint == nil { BrowserGuest.shared.forget(id) } else { BrowserGuest.shared.disconnect(id) }
+        }
+        removePeer(peer.id)
     }
 }

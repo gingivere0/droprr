@@ -56,4 +56,11 @@ extension DroprrSettings {
               lan: request.lan, replacePin: request.target.replacesIdentity && request.fingerprint != nil)
         return peerID
     }
+
+    /// Removes a paired device (from Settings, or the Send screen's edit mode). Its device token goes with it, so it
+    /// can't send here until it pairs again, and pairing again simply adds it back.
+    func removePeer(_ id: UUID) {
+        peers.removeAll { $0.id == id }
+        if lastPeerID == id { lastPeerID = nil }
+    }
 }

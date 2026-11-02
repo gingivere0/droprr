@@ -81,7 +81,7 @@ struct MacSettingsView: View {
         .confirmationDialog("Remove \(removing?.name ?? "device")?", isPresented: Binding(
             get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
-                if let peer = removing { settings.peers.removeAll { $0.id == peer.id } }
+                if let peer = removing { settings.removePeer(peer.id) }
                 removing = nil
             }
         } message: {
