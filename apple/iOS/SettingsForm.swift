@@ -246,7 +246,7 @@ struct AppearanceSettings: View {
 
 extension DroprrSettings {
     /// Removes a device (Settings, or the Send screen's edit mode); one reached over WebRTC is told or disconnected first.
-    func remove(_ peer: Peer) {
+    @MainActor func remove(_ peer: Peer) {
         if peer.isBrowser, let id = peer.deviceID {
             if peer.fingerprint == nil { BrowserGuest.shared.forget(id) } else { BrowserGuest.shared.disconnect(id) }
         }
