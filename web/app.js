@@ -1,6 +1,7 @@
 // Droprr's browser page (docs/PROTOCOL.md, "Browser access"). Served by the computer itself; every call goes back
-// to the same origin. Access is the HttpOnly cookie the computer set when this browser used an access code, so the
-// page never sees a token. Everything from the network is shown with textContent, never as HTML.
+// to the same origin. Access is the HttpOnly cookie the computer set when this browser signed in earlier, so the page
+// never sees a token. New browsers connect with the computer's code on the Droprr website instead. Everything from
+// the network is shown with textContent, never as HTML.
 "use strict";
 
 const POLL_MS = 3000;
@@ -38,32 +39,9 @@ function formatTime(iso) {
 
 // --- Access ---------------------------------------------------------------------------------------------------
 
-function normalizeCode(code) {
-  return code.toUpperCase().replace(/[^0-9A-Z]/g, "");
-}
-
-async function useCode(code, name) {
-  const response = await api("/web/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code: normalizeCode(code), name }),
-  });
-  if (!response.ok) throw new Error(await errorText(response));
-  return response.json();
-}
-
 async function start() {
-  // A code from the QR (in the fragment, which never reaches the server's logs): used once, then removed.
-  const fromLink = normalizeCode(decodeURIComponent(location.hash.slice(1)));
-  if (fromLink) {
-    history.replaceState(null, "", location.pathname);
-    try {
-      await useCode(fromLink, guessBrowserName());
-    } catch (error) {
-      showSignIn(`That code didn't work (${error.message}). Open a new one on your computer.`);
-      return;
-    }
-  }
+  // Older codes put a one-time code in the fragment; it no longer works, so it's just cleared.
+  if (location.hash) history.replaceState(null, "", location.pathname);
   await check();
 }
 
@@ -95,7 +73,6 @@ function showSignIn(message) {
   $("signout").hidden = true;
   $("app").hidden = true;
   $("signin").hidden = false;
-  if (!$("browser-name").value) $("browser-name").value = guessBrowserName();
   setStatus($("signin-status"), message || "", message ? "error" : "");
 }
 
@@ -109,29 +86,8 @@ function showApp(you) {
   startPolling();
 }
 
-$("signin-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const button = event.submitter || $("signin-form").querySelector("button");
-  button.disabled = true;
-  setStatus($("signin-status"), "Connecting…");
-  try {
-    await useCode($("code").value, $("browser-name").value.trim() || guessBrowserName());
-    $("code").value = "";
-    await check();
-  } catch (error) {
-    setStatus($("signin-status"), `Couldn't connect: ${error.message}`, "error");
-  } finally {
-    button.disabled = false;
-  }
-});
-
-$("code").addEventListener("input", () => {
-  const code = normalizeCode($("code").value).slice(0, 8);
-  $("code").value = code.length > 4 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
-});
-
 $("signout").addEventListener("click", async () => {
-  if (!confirm(`Disconnect this browser from ${computer}? You'll need a new code to connect again.`)) return;
+  if (!confirm(`Disconnect this browser from ${computer}? You'll need to scan the computer's code again to reconnect.`)) return;
   try { await api("/web/signout", { method: "POST" }); } catch { /* signed out locally anyway */ }
   shownItems.clear();
   $("items").replaceChildren();

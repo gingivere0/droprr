@@ -96,10 +96,8 @@ final class DroprrReceiver {
     var secureServer: HTTPServer?
     /// Browser access over Wi-Fi: HTTPS on the HTTP port + 2, without a client certificate (desktops only).
     var browserServer: HTTPServer?
-    /// The "Open in a browser" code; nil (iPhone) turns Browser access off.
+    /// The one code's join secret; nil (iPhone) turns Browser access off.
     var browserAccess: BrowserAccess?
-    /// Saves a browser that used the code as a new "web" peer and returns its name. Called on the main queue.
-    var addBrowser: ((PairRequest) -> String)?
     /// A browser signed itself out. Called on the main queue with its peer id.
     var onBrowserRemoved: ((UUID) -> Void)?
     /// Browser access over the internet: the hidden host page's files (/host/…) and its /api bridge, on the

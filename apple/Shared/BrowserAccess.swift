@@ -7,68 +7,52 @@ enum DroprrWeb {
     static let site = "https://gingivere0.github.io/droprr/"
 }
 
-/// The one-time access code for Browser access (docs/PROTOCOL.md, "Browser access"). It exists only while the
-/// "Open in a browser" window is open, for at most 10 minutes, and works once; five wrong codes close it.
+/// The join secret for Browser access over the internet (docs/PROTOCOL.md, "The code"): 16 random bytes, base64url,
+/// in the one code's link. It works for any number of browsers, and stays open while anyone holds a lease on it:
+/// Pair a phone while it's open, and a connected browser's Show QR code for 10 minutes. Each lease ends on its own,
+/// so closing the window never cuts off a code a browser is still showing, and opening it never replaces one.
 /// Never saved or logged.
 final class BrowserAccess {
-    enum Result { case accepted, wrong, closed }
+    /// A lease on the join secret, from `openJoin`, until `closeJoin` or its lifetime passes.
+    final class JoinLease {
+        fileprivate init() {}
+    }
 
-    private static let lifetime: TimeInterval = 10 * 60
-    private static let maxWrong = 5
-    private static let length = 8
-    /// Crockford base32: no I, L, O or U, so a code read off a screen can't be mistyped as another letter.
-    private static let alphabet = Array("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
+    static let lifetime: TimeInterval = 10 * 60
 
     private let lock = NSLock()
-    private var code: String?
-    /// Browser access over the internet: the join secret in the website QR (16 bytes, base64url), valid for any
-    /// number of browsers while the window is open, for at most 10 minutes.
     private var joinSecret: String?
-    private var expires = Date.distantPast
-    private var wrong = 0
+    private var leases: [ObjectIdentifier: (lease: JoinLease, expires: Date)] = [:]
 
-    /// Called (on a server thread) when the code stops working: true once it was used, false after too many
-    /// wrong tries.
-    var onEnded: ((Bool) -> Void)?
-
-    /// A fresh code, replacing any earlier one.
-    func open() -> String {
-        var bytes = [UInt8](repeating: 0, count: Self.length)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        let fresh = String(bytes.map { Self.alphabet[Int($0) % Self.alphabet.count] })
+    /// Opens the join secret for at most `lifetime` (10 minutes by default), keeping the current one if it's open.
+    @discardableResult
+    func openJoin(lifetime: TimeInterval = BrowserAccess.lifetime) -> JoinLease {
+        let lease = JoinLease()
         var secretBytes = [UInt8](repeating: 0, count: 16)
         _ = SecRandomCopyBytes(kSecRandomDefault, secretBytes.count, &secretBytes)
         lock.withLock {
-            code = fresh
-            joinSecret = Data(secretBytes).base64URL
-            expires = Date().addingTimeInterval(Self.lifetime)
-            wrong = 0
+            pruneLeases()
+            if joinSecret == nil { joinSecret = Data(secretBytes).base64URL }
+            leases[ObjectIdentifier(lease)] = (lease, Date().addingTimeInterval(lifetime))
         }
-        return fresh
+        return lease
     }
 
-    /// Opens only the join secret (the one code in Pair a phone), without a typed code.
-    func openJoin() {
-        var secretBytes = [UInt8](repeating: 0, count: 16)
-        _ = SecRandomCopyBytes(kSecRandomDefault, secretBytes.count, &secretBytes)
+    /// Ends one lease; the secret closes once no lease is left.
+    func closeJoin(_ lease: JoinLease?) {
+        guard let lease else { return }
         lock.withLock {
-            code = nil
-            joinSecret = Data(secretBytes).base64URL
-            expires = Date().addingTimeInterval(Self.lifetime)
-            wrong = 0
+            leases[ObjectIdentifier(lease)] = nil
+            pruneLeases()
         }
     }
 
-    func close() {
-        lock.withLock {
-            code = nil
-            joinSecret = nil
-        }
-    }
-
-    /// The open join secret, or nil once the window closed or 10 minutes passed.
+    /// The open join secret, or nil once every lease has ended.
     var secret: String? {
-        lock.withLock { Date() < expires ? joinSecret : nil }
+        lock.withLock {
+            pruneLeases()
+            return joinSecret
+        }
     }
 
     func isSecret(_ given: String?) -> Bool {
@@ -77,41 +61,11 @@ final class BrowserAccess {
         return a.count == b.count && zip(a, b).reduce(0) { $0 | ($1.0 ^ $1.1) } == 0
     }
 
-    /// "XXXX-XXXX", for showing and typing.
-    static func format(_ code: String) -> String {
-        code.count == length ? "\(code.prefix(4))-\(code.suffix(4))" : code
-    }
-
-    /// Upper case, without separators, with the letters Crockford reads as digits (O as 0, I and L as 1).
-    private static func normalize(_ given: String) -> String {
-        String(given.uppercased().map { $0 == "O" ? "0" : ($0 == "I" || $0 == "L") ? "1" : $0 }.filter { alphabet.contains($0) })
-    }
-
-    func use(_ given: String?) -> Result {
-        let normalized = Self.normalize(given ?? "")
-        var ended: Bool?
-        let result: Result = lock.withLock {
-            guard let current = code, Date() < expires else {
-                code = nil
-                return .closed
-            }
-            // Compare every character, so timing doesn't reveal how much of a guess was right.
-            let a = Array(normalized.utf8), b = Array(current.utf8)
-            let match = a.count == b.count && zip(a, b).reduce(0) { $0 | ($1.0 ^ $1.1) } == 0
-            if match {
-                code = nil
-                ended = true
-                return .accepted
-            }
-            wrong += 1
-            if wrong >= Self.maxWrong {
-                code = nil
-                ended = false
-            }
-            return .wrong
-        }
-        if let ended { onEnded?(ended) }
-        return result
+    /// Under the lock: drops expired leases, and the secret with the last one.
+    private func pruneLeases() {
+        let now = Date()
+        leases = leases.filter { $0.value.expires > now }
+        if leases.isEmpty { joinSecret = nil }
     }
 }
 

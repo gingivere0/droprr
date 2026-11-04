@@ -9,23 +9,17 @@ using Microsoft.AspNetCore.Http;
 
 namespace Droprr;
 
-sealed record WebSessionBody(string? Code, string? Name);
-
-// Browser access (docs/PROTOCOL.md, "Browser access"): the page in web/ at /web, a one-time code exchanged at
-// POST /web/session for an HttpOnly cookie, and that cookie accepted in place of a bearer token on the few
-// endpoints the page uses. A browser is a queue-only peer ("web"), like a phone without Droprr open.
+// Browser access (docs/PROTOCOL.md, "Browser access"): the page in web/ at /web, and the HttpOnly cookie a browser
+// signed in with earlier, accepted in place of a bearer token on the few endpoints the page uses. New browsers
+// connect over the internet with the one code instead. A browser is a queue-only peer ("web"), like a phone without Droprr open.
 sealed partial class ReceiverServer
 {
     const string WebCookie = "droprr";
     const string WebHeader = "X-Droprr-Web";
     static readonly TimeSpan WebCookieLifetime = TimeSpan.FromDays(30);
 
-    // Set by the app: the access code the "Open in a browser" window shows.
+    // Set by the app: the one code's join secret.
     public BrowserAccess? BrowserAccess { get; init; }
-
-    // Saves a browser that used the access code as a new "web" peer (the request's AcceptToken is its cookie) and
-    // returns the name it was saved under. Called on a server thread; the peer must be saved before it returns.
-    public Func<PairRequest, string>? AddBrowser { get; set; }
 
     // Removes a browser that disconnected itself, with anything waiting for it.
     public event Action<string>? BrowserRemoved;
@@ -108,15 +102,13 @@ sealed partial class ReceiverServer
             IsEssential = true,
         });
 
-    // /web, /web/session, and /web/signout. Returns the result to send.
+    // /web and /web/signout. Returns the result to send.
     async Task<IResult> HandleWebAsync(HttpContext context)
     {
         var request = context.Request;
         var path = request.Path.Value ?? "";
         if (HttpMethods.IsGet(request.Method) && WebFiles.TryGetValue(path, out var file))
             return WebFile(context, file.Resource, file.ContentType);
-        if (HttpMethods.IsPost(request.Method) && path.Equals("/web/session", StringComparison.OrdinalIgnoreCase))
-            return await WebSessionAsync(context);
         if (HttpMethods.IsPost(request.Method) && path.Equals("/web/signout", StringComparison.OrdinalIgnoreCase))
         {
             if (CookiePeer(request) is { } peer)
@@ -138,31 +130,6 @@ sealed partial class ReceiverServer
             + "frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'";
         var stream = typeof(ReceiverServer).Assembly.GetManifestResourceStream(resource);
         return stream is null ? Error("not found", StatusCodes.Status404NotFound) : Results.Stream(stream, contentType);
-    }
-
-    // { code, name } -> sets the cookie and answers { ok, name, device }.
-    async Task<IResult> WebSessionAsync(HttpContext context)
-    {
-        if (!IsFromPage(context.Request) || BrowserAccess is null || AddBrowser is null)
-            return Error("forbidden", StatusCodes.Status403Forbidden);
-        var (body, unreadable) = await ReadJsonAsync<WebSessionBody>(context, 4096, "{\"code\", \"name\"}");
-        if (unreadable is not null)
-            return unreadable;
-
-        switch (BrowserAccess.TryUse(body?.Code))
-        {
-            case BrowserAccess.Result.Wrong:
-                RequestLog.Note("browser access: wrong code");
-                return Error("wrong code", StatusCodes.Status403Forbidden);
-            case BrowserAccess.Result.Closed:
-                return Error("no code is open: choose Open in a browser on the computer", StatusCodes.Status403Forbidden);
-        }
-
-        var name = FileNames.DeviceName(body?.Name);
-        var token = SettingsStore.NewToken();
-        var saved = AddBrowser(new PairRequest(new PairTarget.New(), name.Length > 0 ? name : "Browser", DevicePlatform.Web, null, null, null, token));
-        SetWebCookie(context, token);
-        return Results.Json(new { ok = true, name = Settings.DeviceName, device = saved });
     }
 
     // GET /ping for a browser also says which peer it is, and keeps its cookie from expiring while it's used.

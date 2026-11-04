@@ -21,8 +21,8 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
 
         if (Application.Current is App app)
         {
-            // The join code works only while this window is open.
-            app.BrowserAccess.Open();
+            // The join code works only while this window is open (or a browser's Show QR code still holds it).
+            var lease = app.BrowserAccess.OpenJoin();
             app.BrowserHost?.ConfigChanged();
             app.DevicePaired += OnPaired;
             app.BrowserConnected += OnPaired;
@@ -34,7 +34,7 @@ public partial class PairWindow : Wpf.Ui.Controls.FluentWindow
                 app.BrowserConnected -= OnPaired;
                 if (app.BrowserHost is { } browserHost)
                     browserHost.Ready -= OnHostReady;
-                app.BrowserAccess.Close();
+                app.BrowserAccess.CloseJoin(lease);
                 app.BrowserHost?.ConfigChanged();
             };
         }

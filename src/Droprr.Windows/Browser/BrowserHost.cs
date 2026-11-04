@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -185,13 +185,13 @@ sealed class BrowserHost : IDisposable
                 OnlineChanged?.Invoke();
                 return (200, json, Json(new { ok = true }));
             case ("POST", "/api/invite"):
-                // A connected browser's Show QR code. host.js only asks for an accepted browser. Opens the join
-                // secret (10 minutes) unless one is already open, e.g. from Pair a phone.
-                if (_access.Secret is null)
-                {
-                    _access.Open();
+                // A connected browser's Show QR code. host.js only asks for an accepted browser. Holds the join
+                // secret for 10 minutes: the same secret if Pair a phone has it open, and closing that window
+                // doesn't end this one.
+                var wasOpen = _access.Secret is not null;
+                _access.OpenJoin();
+                if (!wasOpen)
                     ConfigChanged();
-                }
                 return JoinLink() is { } invite
                     ? (200, json, Json(new { ok = true, link = invite }))
                     : (503, json, Json(new { ok = false, error = "not ready" }));

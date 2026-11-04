@@ -1,42 +1,41 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace Droprr;
 
-// The one-time access code for Browser access (docs/PROTOCOL.md, "Browser access"). It exists only while the
-// "Open in a browser" window is open, for at most 10 minutes, and works once. Five wrong codes close it.
-// Never saved or logged.
+// The join secret for Browser access over the internet (docs/PROTOCOL.md, "The code"): 16 random bytes, base64url,
+// in the one code's link. Never saved or logged.
 sealed class BrowserAccess
 {
     static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
-    const int MaxWrong = 5;
-    const int Length = 8;
-
-    // Crockford base32: no I, L, O, or U, so a code read off a screen can't be mistyped as another letter.
-    const string Alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
-    public enum Result { Accepted, Wrong, Closed }
 
     readonly object _gate = new();
-    string? _code;
-    DateTime _expires;
-    int _wrong;
 
-    // Raised on a server thread when the code stops working: used, or closed after too many wrong tries.
-    public event Action<bool>? Ended;
-
-    // The website's code (Browser access over the internet): 16 random bytes, base64url, in the QR's link. Unlike
-    // the typed code it works for any number of browsers, but only while the window is open, for at most 10 minutes.
+    // It works for any number of browsers, and stays open while anyone holds a lease on it: the Pair window while
+    // it's open, and a connected browser's Show QR code for 10 minutes. Each lease ends on its own,
+    // so closing the window never cuts off a code a browser is still showing, and opening it never replaces one.
     string? _secret;
+    readonly Dictionary<JoinLease, DateTime> _leases = new();
+
+    // A lease on the join secret: the secret opens (or stays the same, if it's open already) until the lease is
+    // closed or its lifetime passes.
+    public sealed class JoinLease
+    {
+        internal JoinLease() { }
+    }
 
     public string? Secret
     {
         get
         {
             lock (_gate)
-                return _secret is not null && DateTime.UtcNow < _expires ? _secret : null;
+            {
+                PruneLeases();
+                return _secret;
+            }
         }
     }
 
@@ -47,68 +46,38 @@ sealed class BrowserAccess
             && CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(given), Encoding.ASCII.GetBytes(secret));
     }
 
-    // A fresh code, replacing any earlier one.
-    public string Open()
+    // Opens the join secret for at most `lifetime` (10 minutes by default), keeping the current one if it's open.
+    public JoinLease OpenJoin(TimeSpan? lifetime = null)
     {
-        var bytes = RandomNumberGenerator.GetBytes(Length);
-        var code = new string(bytes.Select(b => Alphabet[b % Alphabet.Length]).ToArray());
-        var secret = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var lease = new JoinLease();
         lock (_gate)
         {
-            _code = code;
-            _secret = secret;
-            _expires = DateTime.UtcNow + Lifetime;
-            _wrong = 0;
+            PruneLeases();
+            _secret ??= Convert.ToBase64String(RandomNumberGenerator.GetBytes(16)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            _leases[lease] = DateTime.UtcNow + (lifetime ?? Lifetime);
         }
-        return code;
+        return lease;
     }
 
-    public void Close()
+    // Ends one lease; the secret closes once no lease is left.
+    public void CloseJoin(JoinLease? lease)
     {
+        if (lease is null)
+            return;
         lock (_gate)
         {
-            _code = null;
+            _leases.Remove(lease);
+            PruneLeases();
+        }
+    }
+
+    // Under _gate: drops expired leases, and the secret with the last one.
+    void PruneLeases()
+    {
+        var now = DateTime.UtcNow;
+        foreach (var expired in _leases.Where(l => l.Value <= now).Select(l => l.Key).ToList())
+            _leases.Remove(expired);
+        if (_leases.Count == 0)
             _secret = null;
-        }
-    }
-
-    // "XXXX-XXXX", for showing and typing.
-    public static string Format(string code) => code.Length == Length ? $"{code[..4]}-{code[4..]}" : code;
-
-    // Upper case, without separators, with the letters Crockford reads as digits (O as 0, I and L as 1).
-    static string Normalize(string given) => new(given.ToUpperInvariant()
-        .Select(c => c switch { 'O' => '0', 'I' or 'L' => '1', _ => c })
-        .Where(c => Alphabet.Contains(c))
-        .ToArray());
-
-    public Result TryUse(string? given)
-    {
-        bool ended;
-        Result result;
-        lock (_gate)
-        {
-            if (_code is null || DateTime.UtcNow >= _expires)
-            {
-                _code = null;
-                return Result.Closed;
-            }
-            var match = CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(Normalize(given ?? "")), Encoding.ASCII.GetBytes(_code));
-            if (match)
-            {
-                _code = null;
-                result = Result.Accepted;
-                ended = true;
-            }
-            else
-            {
-                ended = ++_wrong >= MaxWrong;
-                if (ended)
-                    _code = null;
-                result = Result.Wrong;
-            }
-        }
-        if (ended)
-            Ended?.Invoke(result == Result.Accepted);
-        return result;
     }
 }

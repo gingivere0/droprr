@@ -34,7 +34,7 @@ Each device has one **main token** plus one **device token** per paired peer.
 | [`GET /inbox?for=<name>`](#get-inboxfordevice-name) | A phone lists items a desktop queued for it. |
 | [`GET /inbox/<id>`](#get-inboxid) | Download one queued item. |
 | [`DELETE /inbox/<id>`](#delete-inboxid) | Acknowledge a queued item so it's removed. |
-| [`GET /web`](#browser-access) | The [browser page](#browser-access); with `POST /web/session` and `POST /web/signout`, the only endpoints without a bearer token besides LAN pairing. |
+| [`GET /web`](#browser-access) | The [browser page](#browser-access); with `POST /web/signout`, the only endpoints without a bearer token besides LAN pairing. |
 
 Except where noted, all of them require the bearer token, and all use the error shape below.
 
@@ -454,30 +454,11 @@ A computer serves its own web page, so any phone's browser can send to it and re
 
 Plain HTTP stays Tailscale and loopback only, as everywhere else. The HTTPS port asks for a client certificate but doesn't require one, so browsers continue without one.
 
-**A receiver that can't make client certificates optional** (the Mac, whose Network.framework listener either requires them or never asks) serves the page on a third listener instead, at the HTTP port + 2 (**`53320`**). It uses the same certificate and the same allowed addresses as the HTTPS port, asks for no client certificate, and serves only the page, `/web/session`, `/web/signout`, and the endpoints the cookie works on (below); everything else is `404` there. Its Wi-Fi address is then `https://<private LAN address>:53320/web`. The QR code always carries the full address, so a browser never needs to know which port a receiver uses. Windows keeps serving the page on `53319`, which avoids a second firewall rule.
+**A receiver that can't make client certificates optional** (the Mac, whose Network.framework listener either requires them or never asks) serves the page on a third listener instead, at the HTTP port + 2 (**`53320`**). It uses the same certificate and the same allowed addresses as the HTTPS port, asks for no client certificate, and serves only the page, `/web/signout`, and the endpoints the cookie works on (below); everything else is `404` there. Its Wi-Fi address is then `https://<private LAN address>:53320/web`. The QR code always carries the full address, so a browser never needs to know which port a receiver uses. Windows keeps serving the page on `53319`, which avoids a second firewall rule.
 
 ### Connecting a browser
 
-1. On the computer, the person chooses **Open in a browser**. It shows a QR code of `<address>#<code>` and, to type by hand, the address and the code.
-2. **Access code:** 8 characters from Crockford's base32 alphabet (`0`–`9` and `A`–`Z` without `I`, `L`, `O`, and `U`), shown as `XXXX-XXXX`. Typing is forgiving: case, dashes, and spaces are ignored, `O` reads as `0`, and `I` and `L` as `1`. A code works **once**, only while that window is open, for at most **10 minutes**. Choosing **New code** replaces it. **Five wrong codes** close it until the person chooses New code. It's never saved or logged, and the QR keeps it in the URL fragment, which browsers never send.
-3. The page sends it:
-
-   ```http
-   POST /web/session
-   X-Droprr-Web: 1
-   Content-Type: application/json
-
-   { "code": "ABCD2345", "name": "iPhone (Safari)" }
-   ```
-
-   Response `200` `{ "ok": true, "name": "<computer name>", "device": "<the name this browser was saved as>" }`, with:
-
-   ```http
-   Set-Cookie: droprr=<device token>; Max-Age=2592000; Path=/; SameSite=Strict; HttpOnly[; Secure]
-   ```
-
-   `Secure` is added on HTTPS. Errors: `403` with `"wrong code"`, or with `"no code is open: …"` when there's no open code (expired, used, or closed), and `400` for a malformed body (over 4 KB is `413`).
-4. The computer adds a new peer with platform **`"web"`** under that name (made unique with a suffix), with the cookie's value as its `acceptToken`. Like a protocol 1 phone it's **queue-only**: everything sent to it waits in its [inbox](#inbox-phone-pull). The person can remove it like any other device, which revokes the cookie.
+New browsers connect with the [one code](#one-code), over [Browser access over the internet](#browser-access-over-the-internet). The page here keeps working for browsers that signed in with an access code before it was removed: they're **`"web"`** peers whose `acceptToken` is their cookie, **queue-only** like a protocol 1 phone, and the person can remove one like any other device, which revokes the cookie. There's no longer a way to get a new cookie; `POST /web/session` is gone.
 
 ### What the cookie works on
 
@@ -493,10 +474,10 @@ Never on `/pair` or the LAN pairing endpoints. `GET /inbox/<id>?inline=1` serves
 
 ### Security
 
-- **Cross-site requests.** The cookie is `SameSite=Strict` and `HttpOnly`. Anything other than a `GET` (including `/web/session`) also needs the header `X-Droprr-Web: 1`, which another site can only add after a CORS preflight that receivers never approve, and an `Origin`, when present, must be the request's own origin.
-- **DNS rebinding.** `/web/session` and cookie requests are refused unless the `Host` is an IP address, `localhost`, the computer's own name, or its MagicDNS name (full or short).
+- **Cross-site requests.** The cookie is `SameSite=Strict` and `HttpOnly`. Anything other than a `GET` also needs the header `X-Droprr-Web: 1`, which another site can only add after a CORS preflight that receivers never approve, and an `Origin`, when present, must be the request's own origin.
+- **DNS rebinding.** Cookie requests are refused unless the `Host` is an IP address, `localhost`, the computer's own name, or its MagicDNS name (full or short).
 - **The page** (`/web`, `/web/app.js`, `/web/app.css`, `/web/icon.png`) needs no token and holds no secrets. It's served with `Content-Security-Policy: default-src 'self'; …; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer`, and shows everything from the network as text, never HTML.
-- **Wi-Fi certificate warning.** A browser can't pin the computer's certificate the way the apps do, so the first visit trusts whichever certificate answers. Someone actively intercepting the Wi-Fi at that moment could read the code and pose as the computer. On a home network that's unlikely; on any network you don't trust, use the Tailscale address, which has no warning and no such gap.
+- **Wi-Fi certificate warning.** A browser can't pin the computer's certificate the way the apps do, so the first visit trusts whichever certificate answers. Someone actively intercepting the Wi-Fi at that moment could read the cookie and pose as the computer. On a home network that's unlikely; on any network you don't trust, use the Tailscale address, which has no warning and no such gap.
 
 ## Browser access over the internet
 
@@ -516,7 +497,7 @@ The page above needs a certificate warning on Wi-Fi. This variant has none, work
 
 - **Host key:** each computer makes 32 random bytes once and keeps them secret (encrypted like its tokens). Its **room** is the first 22 characters of `base64url(SHA-256(host key))` (132 bits). Base64url is always without padding.
 - **DTLS certificate:** the host page makes one ECDSA P-256 certificate with `RTCPeerConnection.generateCertificate` and keeps it in its own storage, so its fingerprint stays the same across restarts and updates. Browsers limit certificates to a year, so it's replaced a month before it expires; browsers that knew the old one must scan again. Its **fp** is the SHA-256 fingerprint's 32 bytes, base64url.
-- **Join secret:** 16 random bytes, base64url, made when **Open in a browser** opens, and valid for any number of browsers while that window is open, for at most 10 minutes. Never saved or logged.
+- **Join secret:** 16 random bytes, base64url, valid for any number of browsers. It's open while anyone holds it: **Pair a phone** while that window is open (for at most 10 minutes), and a connected browser's **Show QR code** for 10 minutes. Each one lets go on its own, so closing the window doesn't end a code a browser is showing, and opening it keeps the secret that's already open. Never saved or logged.
 - **The code:** the QR code is `<website>#<room>.<secret>.<fp>[.<app>]`, where `<fp>` is the first 22 characters of the DTLS fingerprint's base64url (132 bits, far beyond forging a certificate to match), so the QR code stays small. Older codes carry all 43 characters of the room and `fp`; everything that reads a code accepts both, and treats a 43-character room as its first 22. Scanning it with a phone's camera opens the website, which reads and then removes the fragment. The website can also scan it with its own camera button. It's the computer's only code; see [One code](#one-code).
 
 ### Relay

@@ -203,7 +203,6 @@ final class MacModel {
             if let peer = self.settings.peers.first(where: { $0.isBrowser && $0.name == name }) { self.added(peer.id) }
         }
         host.appInfo = { [weak self] in self?.appInfo }
-        receiver.addBrowser = { [weak self] in self?.addBrowser($0) ?? "Browser" }
         receiver.onBrowserRemoved = { [weak self] id in
             guard let self, let peer = self.settings.peers.first(where: { $0.id == id }) else { return }
             self.remove(peer)
@@ -338,6 +337,8 @@ final class MacModel {
 
     /// The one code's join secret; only open while Pair a phone is.
     @ObservationIgnored let browserAccess = BrowserAccess()
+    /// Pair a phone's hold on the join secret while it's open.
+    @ObservationIgnored private var oneCodeLease: BrowserAccess.JoinLease?
     /// Browser access over the internet: the hidden host page (website, relay and WebRTC).
     @ObservationIgnored private(set) var browserHost: BrowserHost!
     /// Bumped when the host page reports its fingerprint or who's connected.
@@ -357,24 +358,17 @@ final class MacModel {
     func openOneCode() {
         connectedBrowser = nil
         lastPaired = nil
-        browserAccess.openJoin()
+        browserAccess.closeJoin(oneCodeLease)
+        oneCodeLease = browserAccess.openJoin()
         browserHost.configChanged()   // the host page learns the new join secret
         browserHostVersion += 1       // and Pair a phone shows the code at once (the secret isn't observable)
     }
 
     func closeOneCode() {
-        browserAccess.close()
+        browserAccess.closeJoin(oneCodeLease)
+        oneCodeLease = nil
         browserHost.configChanged()
         browserHostVersion += 1
-    }
-
-    private func addBrowser(_ request: PairRequest) -> String {
-        let peer = Peer(name: settings.uniqueName(request.name), host: "", port: request.port, platform: "web",
-                        remoteName: request.name, token: nil, acceptToken: request.acceptToken)
-        settings.peers.append(peer)
-        connectedBrowser = peer.name
-        added(peer.id)
-        return peer.name
     }
 
     /// The device that was just added, for the Send window to select.

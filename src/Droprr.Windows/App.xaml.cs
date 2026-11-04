@@ -53,7 +53,7 @@ public partial class App : Application
     // Raised on the UI thread after a device pairs, with its saved peer entry.
     internal event Action<Peer>? DevicePaired;
 
-    // Raised on the UI thread after a browser uses the access code, with its saved peer entry.
+    // Raised on the UI thread after a browser connects with the one code, with its saved peer entry.
     internal event Action<Peer>? BrowserConnected;
 
     // Received items, newest first: the Send window's Received tile and the tray's Recent menu.
@@ -330,7 +330,7 @@ public partial class App : Application
         DevicePaired?.Invoke(peer);
     }
 
-    // Browser access: the code the "Open in a browser" window shows, kept across receiver restarts.
+    // Browser access: the one code's join secret, kept across receiver restarts.
     internal BrowserAccess BrowserAccess { get; } = new();
 
     PairWindow? _pairWindow;
@@ -372,7 +372,7 @@ public partial class App : Application
     }
 
     // A browser on the website introduced itself over its data channel. With a token from an earlier visit, it's the
-    // browser peer it was given to; with the code from the open "Open in a browser" window, it's added (or, for a
+    // browser peer it was given to; with the open join secret, it's added (or, for a
     // browser seen before, given a new token). Anything else is refused.
     BrowserHelloResult OnBrowserHello(BrowserHello hello)
     {
@@ -394,15 +394,6 @@ public partial class App : Application
         _tray?.Notify($"{saved.Name} connected", "It can send to this PC, and what you send to it goes to its Droprr page.");
         BrowserConnected?.Invoke(saved);
         return new BrowserHelloResult(true, saved.Id, minted);
-    }
-
-    // A browser used the access code: it's a new queue-only peer.
-    string OnBrowserConnected(PairRequest request)
-    {
-        var peer = SavePeer(request);
-        _tray?.Notify($"{peer.Name} connected", "Items you send to it wait here until its Droprr page picks them up.");
-        BrowserConnected?.Invoke(peer);
-        return peer.Name;
     }
 
     // A browser disconnected itself: its access and anything waiting for it go.
@@ -535,7 +526,6 @@ public partial class App : Application
         ReceiverServer Create(bool withoutLan)
         {
             var created = new ReceiverServer(() => Settings) { WithoutLan = withoutLan, BrowserAccess = BrowserAccess };
-            created.AddBrowser = request => Dispatcher.Invoke(() => OnBrowserConnected(request));
             created.BrowserRemoved += name => Dispatcher.BeginInvoke(() => RemoveBrowser(name));
             created.ItemReceived += item => Dispatcher.BeginInvoke(() => OnItemReceived(item));
             created.InboxPolled += device => Dispatcher.BeginInvoke(() => OnInboxPolled(device));
