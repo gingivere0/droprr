@@ -7,6 +7,9 @@
   const CHUNK = 16 * 1024;
   const HIGH_WATER = 1024 * 1024;
   const ICE_SERVERS = [{ urls: "stun:stun.cloudflare.com:3478" }];
+  // How long a sender waits for "saved" or "failed" once it has sent an item. The other side answers every item,
+  // so this only ends a wait that would otherwise last until the connection closes.
+  const REPLY_MS = 10 * 60 * 1000;
 
   function base64url(bytes) {
     let text = "";
@@ -95,6 +98,8 @@
   //   reply: { t: "saved", id } or { t: "failed", id, e }
   // Anything else (hello, welcome, …) goes to onControl. Until accepting() is true (the computer side: until the
   // browser's hello was accepted), items and file chunks are ignored, so nothing piles up in memory unasked.
+  // Receiving is idle (incoming is null) or collecting one file; every file that starts gets exactly one reply, even
+  // when another one interrupts it or its "done" doesn't match.
   class Link {
     constructor(channel, { onControl, onItem, onProgress, onClose, accepting = () => true } = {}) {
       this.channel = channel;
@@ -148,6 +153,7 @@
           this.deliver({ id: message.id, kind: message.kind === "url" ? "url" : "text", content: String(message.content ?? "") });
           break;
         case "file":
+          if (this.incoming) this.control({ t: "failed", id: this.incoming.id, e: "interrupted" });
           this.incoming = {
             id: message.id, name: String(message.name || "File"), size: Number(message.size) || 0,
             type: String(message.type || "application/octet-stream"), parts: [], received: 0,
@@ -156,7 +162,11 @@
         case "done": {
           const item = this.incoming;
           this.incoming = null;
-          if (!item || item.id !== message.id) return;
+          if (!item || item.id !== message.id) {
+            if (item) this.control({ t: "failed", id: item.id, e: "incomplete" });
+            this.control({ t: "failed", id: message.id, e: "unknown file" });
+            return;
+          }
           if (item.received !== item.size) {
             this.control({ t: "failed", id: item.id, e: "incomplete" });
             return;
@@ -188,7 +198,23 @@
     }
 
     reply(id) {
-      return new Promise((resolve, reject) => this.waiting.set(id, { resolve, reject }));
+      return new Promise((resolve, reject) => {
+        const waiter = { timer: null };
+        waiter.resolve = (value) => { clearTimeout(waiter.timer); resolve(value); };
+        waiter.reject = (error) => { clearTimeout(waiter.timer); reject(error); };
+        this.waiting.set(id, waiter);
+      });
+    }
+
+    // Starts the wait for an item's reply once all of it is sent (a big file can take longer than REPLY_MS to send).
+    deadline(id) {
+      const waiter = this.waiting.get(id);
+      if (!waiter) return;
+      waiter.timer = setTimeout(() => {
+        if (this.waiting.get(id) !== waiter) return;
+        this.waiting.delete(id);
+        waiter.reject(new Error("the other side didn't answer"));
+      }, REPLY_MS);
     }
 
     async drain() {
@@ -207,6 +233,7 @@
         const id = randomId(9);
         const saved = this.reply(id);
         this.control({ t: "text", id, kind: kind === "url" ? "url" : "text", content });
+        this.deadline(id);
         await saved;
       });
     }
@@ -223,6 +250,7 @@
           this.onProgress?.({ direction: "out", id, name, done: Math.min(offset + CHUNK, blob.size), total: blob.size });
         }
         this.control({ t: "done", id });
+        this.deadline(id);
         await saved;
       });
     }

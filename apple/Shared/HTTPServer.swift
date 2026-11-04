@@ -1,6 +1,24 @@
 import Foundation
 import Network
 
+/// What a listener is doing, for the status line: listening, or stopped with the reason to show.
+enum ListenerState: Equatable {
+    case listening(port: Int)
+    case stopped(String)
+
+    var isListening: Bool {
+        if case .listening = self { return true }
+        return false
+    }
+
+    var label: String {
+        switch self {
+        case .listening(let port): return "Listening on port \(port)"
+        case .stopped(let reason): return reason
+        }
+    }
+}
+
 /// A deliberately small HTTP/1.1 server: one request per connection, request bodies
 /// streamed to a temp file (Content-Length or chunked), `Expect: 100-continue` honoured.
 /// The plain HTTP server accepts only loopback and Tailscale (100.64.0.0/10, fd7a:115c:a1e0::/48)
@@ -66,7 +84,7 @@ final class HTTPServer {
     private var openConnections = 0
     private static let maxConnections = 64
     var handler: (Request) async -> Response = { _ in .json(404, ["ok": false, "error": "not found"]) }
-    var onStateChange: (String) -> Void = { _ in }
+    var onStateChange: (ListenerState) -> Void = { _ in }
 
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "droprr.http")
@@ -75,6 +93,8 @@ final class HTTPServer {
     func start(port: Int, service: NWListener.Service? = nil) throws {
         stop()
         stopped = false
+        generation += 1
+        let current = generation
         guard (1...65535).contains(port), let nwPort = NWEndpoint.Port(rawValue: UInt16(port)) else { return }
         let params: NWParameters
         if let identity {
@@ -94,13 +114,13 @@ final class HTTPServer {
         params.allowLocalEndpointReuse = true
         let listener = try NWListener(using: params, on: nwPort)
         listener.service = service
-        listener.stateUpdateHandler = { [weak self, weak listener] state in
+        listener.stateUpdateHandler = { [weak self] state in
             switch state {
-            case .ready: self?.onStateChange("Listening on port \(port)")
+            case .ready: self?.onStateChange(.listening(port: port))
             case .failed(let error):
-                self?.onStateChange("Receiver stopped: \(error.localizedDescription)")
+                self?.onStateChange(.stopped("Receiver stopped: \(error.localizedDescription)"))
                 // Network changes (Wi-Fi, Tailscale up or down) can fail a listener; start again shortly.
-                self?.retry(port: port, service: service, after: listener)
+                self?.retry(port: port, service: service, generation: current)
             default: break
             }
         }
@@ -122,15 +142,16 @@ final class HTTPServer {
         openConnections = max(0, openConnections - 1)
     }
 
-    /// Starts again a few seconds after a failure, and keeps trying if starting itself throws.
-    private func retry(port: Int, service: NWListener.Service?, after failed: NWListener?) {
+    /// Starts again a few seconds after a failure, and keeps trying if starting itself throws. Only for the
+    /// listener that failed: once anything else started or stopped the server (a new port, say), it gives up.
+    private func retry(port: Int, service: NWListener.Service?, generation: Int) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-            guard let self, !self.stopped, failed == nil || self.listener === failed else { return }
+            guard let self, !self.stopped, self.generation == generation else { return }
             do {
                 try self.start(port: port, service: service)
             } catch {
-                self.onStateChange("Receiver stopped: \(error.localizedDescription). Retrying…")
-                self.retry(port: port, service: service, after: nil)
+                self.onStateChange(.stopped("Receiver stopped: \(error.localizedDescription). Retrying…"))
+                self.retry(port: port, service: service, generation: self.generation)
             }
         }
     }
@@ -148,6 +169,8 @@ final class HTTPServer {
 
     /// Set by stop(), so a pending retry doesn't bring a stopped server back.
     private var stopped = false
+    /// Counts starts, so a retry only restarts the listener it was scheduled for. Main queue only.
+    private var generation = 0
 
     static func isAllowed(_ endpoint: NWEndpoint, policy: Policy = .tailnet) -> Bool {
         guard case .hostPort(let host, _) = endpoint else { return false }

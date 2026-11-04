@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Unit tests for the Windows app's Peers and Codes modules (src/Droprr.Windows/Peers, Codes). They only use the
+  <!-- Unit tests for the Windows app's Peers and Codes modules (src/Droprr.Windows/Peers, Codes), and the join secret. They only use the
        base class library, so their files are compiled in directly and the tests run anywhere .NET does, without
        Windows. A file there that reaches outside its module breaks this build: that's the point. -->
   <PropertyGroup>
@@ -14,6 +14,7 @@
   <ItemGroup>
     <Compile Include="..\..\src\Droprr.Windows\Peers\*.cs" Link="Peers\%(Filename)%(Extension)" />
     <Compile Include="..\..\src\Droprr.Windows\Codes\*.cs" Link="Codes\%(Filename)%(Extension)" />
+    <Compile Include="..\..\src\Droprr.Windows\Browser\BrowserAccess.cs" Link="Browser\BrowserAccess.cs" />
     <None Include="qr-style-vector.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

@@ -187,6 +187,11 @@ final class BrowserHost: NSObject, WKNavigationDelegate {
     /// The page crashed or was killed: load it again.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         hostLog.error("page process ended; loading it again")
+        // It's no longer talking to any browser.
+        if !online.isEmpty {
+            online = []
+            onChange()
+        }
         start()
     }
 
@@ -255,11 +260,12 @@ final class BrowserHost: NSObject, WKNavigationDelegate {
             }
             return .json(200, ["ok": true])
         case ("POST", "/api/invite"):
-            // A connected browser's Show QR code (host.js only asks for an accepted browser). Opens the join secret
-            // (10 minutes) unless one is already open, e.g. from Pair a phone.
+            // A connected browser's Show QR code (host.js only asks for an accepted browser). Holds the join secret
+            // for 10 minutes: the same secret if Pair a phone has it open, and closing that window doesn't end this one.
             return await MainActor.run {
-                if access.secret == nil {
-                    access.openJoin()
+                let wasOpen = access.secret != nil
+                access.openJoin()
+                if !wasOpen {
                     configChanged()
                     onChange()
                 }

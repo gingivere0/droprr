@@ -23,18 +23,11 @@
       <button class="link" id="signout" type="button" hidden>Disconnect</button>
     </header>
 
-    <!-- Shown until this browser has access: the code from the computer's "Open in a browser" window. -->
+    <!-- Shown when this browser isn't connected. Browsers connect with the computer's code on the Droprr website. -->
     <section id="signin" hidden>
       <h2>Connect this browser</h2>
-      <p class="caption">On your computer, open Droprr's menu and choose <strong>Open in a browser</strong>. Scan its code with your camera, or type the code here.</p>
-      <form id="signin-form" autocomplete="off">
-        <label for="code">Code</label>
-        <input id="code" name="code" inputmode="text" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" maxlength="9" required>
-        <label for="browser-name">Name this browser</label>
-        <input id="browser-name" name="name" maxlength="64" required>
-        <button class="primary" type="submit">Connect</button>
-        <p class="status" id="signin-status" role="status"></p>
-      </form>
+      <p class="caption">On your computer, choose <strong>Add a device</strong> in Droprr and scan its code with your phone's camera.</p>
+      <p class="status" id="signin-status" role="status"></p>
     </section>
 
     <div id="app" hidden>

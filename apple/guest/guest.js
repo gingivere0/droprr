@@ -71,9 +71,11 @@
     };
 
     current.relay = new RelaySocket(`${relay}/join/${room}`, {
+      // Each connection to the relay is a new guest there, so the offer goes again after a reconnect, until the
+      // answer arrives.
       onOpen: async () => {
-        if (pc.localDescription) return;
-        await pc.setLocalDescription(await pc.createOffer());
+        if (pc.remoteDescription) return;
+        if (!pc.localDescription) await pc.setLocalDescription(await pc.createOffer());
         current.relay.send({ m: { t: "offer", sdp: pc.localDescription.sdp } });
       },
       onMessage: async (data) => {
@@ -120,8 +122,11 @@
         onItem: (item) => deliver(room, item, () => `${room}:${++rid}`),
         onProgress: (p) => post({ t: "progress", room, direction: p.direction, done: p.done, total: p.total }),
         onClose: () => {
-          if (links.get(room) === current) links.delete(room);
           pc.close();
+          // Only this room's current connection reports closed. One that was replaced or closed on purpose
+          // (connect again, disconnect, bye, denied) says nothing, so it can't end the connection after it.
+          if (links.get(room) !== current) return;
+          links.delete(room);
           post({ t: "closed", room });
         },
       });
@@ -215,7 +220,13 @@
       pc.ondatachannel = (event) => {
         if (event.channel.label === "droprr" && !guest.link) accept(h, cid, guest, event.channel);
       };
-      setTimeout(() => { if (!guest.accepted) pc.close(); }, 30000);
+      // A device that doesn't say hello soon is dropped. Closing a connection fires no events, so it's also
+      // forgotten here.
+      setTimeout(() => {
+        if (guest.accepted) return;
+        pc.close();
+        if (h.guests.get(cid) === guest) h.guests.delete(cid);
+      }, 30000);
       await pc.setRemoteDescription({ type: "offer", sdp: m.sdp });
       for (const c of guest.pending.splice(0)) await pc.addIceCandidate(c || null).catch(() => {});
       await pc.setLocalDescription(await pc.createAnswer());
@@ -240,7 +251,10 @@
         const byToken = !!known && sameSecret(message.token, known);
         if (!/^[A-Za-z0-9_-]{22}$/.test(claimed) || !(byToken || (h.secret && sameSecret(message.secret, h.secret)))) {
           guest.link.control({ t: "denied", e: "scan this iPhone's code again" });
-          setTimeout(() => guest.pc.close(), 500);
+          setTimeout(() => {
+            guest.pc.close();
+            if (h.guests.get(cid) === guest) h.guests.delete(cid);
+          }, 500);
           return;
         }
         id = claimed;
@@ -255,7 +269,7 @@
       onItem: (item) => deliver(id, item, () => `${id}:${++rid}`),
       onProgress: (p) => post({ t: "progress", room: id, direction: p.direction, done: p.done, total: p.total }),
       onClose: () => {
-        h.guests.delete(cid);
+        if (h.guests.get(cid) === guest) h.guests.delete(cid);
         guest.pc.close();
         if (!id || links.get(id)?.link !== guest.link) return;
         links.delete(id);

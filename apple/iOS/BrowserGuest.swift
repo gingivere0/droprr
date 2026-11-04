@@ -7,7 +7,7 @@ import WebKit
 /// can fetch files to send from it); this class turns its messages into joins, sends and received items.
 /// Connections only last while both the app and the browser's page are open.
 @MainActor
-final class BrowserGuest: NSObject, WKScriptMessageHandler {
+final class BrowserGuest: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     static let shared = BrowserGuest()
     static let scheme = "droprr-guest"
 
@@ -69,6 +69,7 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler {
         config.setURLSchemeHandler(files, forURLScheme: Self.scheme)
         config.userContentController.add(WeakHandler(self), name: "droprr")
         let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: config)
+        webView.navigationDelegate = self
         // In the window (invisible), so iOS keeps the page running while the app is open.
         webView.alpha = 0.01
         webView.isUserInteractionEnabled = false
@@ -115,12 +116,18 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler {
             }
         }
         for var item in items {
+            try Task.checkCancellation()
             let req = UUID().uuidString
             item["req"] = req
             defer { if let out = item["out"] as? String { files.remove(out) } }
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                sends[req] = continuation
-                call("send", [room, item])
+            // Cancel (on the status line) ends the wait at once; the page's late answer is then ignored.
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    sends[req] = continuation
+                    call("send", [room, item])
+                }
+            } onCancel: {
+                Task { @MainActor in self.sends.removeValue(forKey: req)?.resume(throwing: CancellationError()) }
             }
         }
     }
@@ -147,6 +154,38 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler {
     func disconnect(_ room: String) {
         connected.remove(room)
         call("disconnect", [room])
+    }
+
+    // MARK: The page's process
+
+    /// iOS ended the page's process (memory pressure, or it crashed): every connection and pending call went with it.
+    /// Fail what's waiting, so nothing hangs, and load the page again; it reports ready once it's back.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        NSLog("Droprr guest: page process ended; loading it again")
+        ready = false
+        let gone = GuestError.failed("the connection was lost")
+        joins.values.forEach { $0.resume(throwing: gone) }
+        joins = [:]
+        sends.values.forEach { $0.resume(throwing: gone) }
+        sends = [:]
+        waitingForHost.forEach { $0.resume(returning: "") }
+        waitingForHost = []
+        let rooms = connected
+        connected = []
+        for key in incoming.keys { dropIncoming(key: key) }
+        rooms.forEach { onClosed($0) }
+        if let url = URL(string: "\(Self.scheme)://app/guest.html") { webView.load(URLRequest(url: url)) }
+    }
+
+    /// A file that was still arriving when its connection ended: close and delete it.
+    private func dropIncoming(room: String) {
+        for (key, part) in incoming where part.room == room { dropIncoming(key: key) }
+    }
+
+    private func dropIncoming(key: String) {
+        guard let part = incoming.removeValue(forKey: key) else { return }
+        try? part.handle.close()
+        try? FileManager.default.removeItem(at: part.url)
     }
 
     // MARK: Messages from the page
@@ -185,6 +224,7 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler {
             joins.removeValue(forKey: room)?.resume(throwing: GuestError.failed(body["e"] as? String ?? ""))
         case "closed":
             connected.remove(room)
+            dropIncoming(room: room)
             joins.removeValue(forKey: room)?.resume(throwing: GuestError.failed("closed"))
             onClosed(room)
         case "sent":

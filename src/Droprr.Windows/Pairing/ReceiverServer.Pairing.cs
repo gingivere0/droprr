@@ -68,12 +68,12 @@ sealed partial class ReceiverServer
     public Func<LanPairPrompt, CancellationToken, Task<bool>>? ConfirmLanPair { get; set; }
 
     // The one pairing in progress: from /pair/request until /pair/confirm answers, or SessionTimeout passes
-    // without a confirm.
+    // without a confirm. Prompting is set (under the same lock) once confirm has taken it, so the slot stays busy
+    // while the person is asked, and a new request can't slip in between. Same rules as the Apple apps.
     sealed record PairSession(string Id, IPAddress Remote, string Fingerprint, string DeviceId, string Name, DevicePlatform Platform,
-        string Commit, string Nonce, DateTime Created);
+        string Commit, string Nonce, DateTime Created, bool Prompting = false);
 
     PairSession? _session;
-    int _promptOpen;
     readonly Dictionary<IPAddress, List<DateTime>> _refusals = new();
 
     static IPAddress RemoteOf(HttpContext context)
@@ -144,7 +144,7 @@ sealed partial class ReceiverServer
             DeviceIdentity.NewNonce(), DateTime.UtcNow);
         lock (_refusals)
         {
-            if (Volatile.Read(ref _promptOpen) != 0 || _session is { } open && DateTime.UtcNow - open.Created < SessionTimeout)
+            if (_session is { } open && (open.Prompting || DateTime.UtcNow - open.Created < SessionTimeout))
                 return Error("another pairing request is waiting", StatusCodes.Status429TooManyRequests);
             _session = session;
         }
@@ -164,25 +164,23 @@ sealed partial class ReceiverServer
         lock (_refusals)
         {
             session = _session;
-            if (session is null || session.Id != body.Session || DateTime.UtcNow - session.Created >= SessionTimeout
+            if (session is null || session.Prompting || session.Id != body.Session || DateTime.UtcNow - session.Created >= SessionTimeout
                 || ClientFingerprint(context) != session.Fingerprint)
                 return Error("unknown or expired pairing session", StatusCodes.Status404NotFound);
-            _session = null;
+            _session = session = session with { Prompting = true };
         }
-        if (body.Nonce is not { } nonce || DeviceIdentity.Commit(nonce) != session.Commit)
-        {
-            Refused(remote);
-            return Error("nonce doesn't match the commit", StatusCodes.Status400BadRequest);
-        }
-        if (!body.PortsValid)
-            return Error("port must be from 1 to 65535", StatusCodes.Status400BadRequest);
-        // Pairing again: the same peer, with fresh tokens.
-        var repair = Settings.Peers.FindRepairable(session.DeviceId, session.Fingerprint, session.Platform)?.Name;
-
-        if (Interlocked.CompareExchange(ref _promptOpen, 1, 0) != 0)
-            return Error("another pairing request is waiting", StatusCodes.Status429TooManyRequests);
         try
         {
+            if (body.Nonce is not { } nonce || DeviceIdentity.Commit(nonce) != session.Commit)
+            {
+                Refused(remote);
+                return Error("nonce doesn't match the commit", StatusCodes.Status400BadRequest);
+            }
+            if (!body.PortsValid)
+                return Error("port must be from 1 to 65535", StatusCodes.Status400BadRequest);
+            // Pairing again: the same peer, with fresh tokens.
+            var repair = Settings.Peers.FindRepairable(session.DeviceId, session.Fingerprint, session.Platform)?.Name;
+
             var code = DeviceIdentity.PairingCode(DeviceIdentity.Fingerprint(Settings), session.Fingerprint, nonce, session.Nonce);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
             timeout.CancelAfter(PromptTimeout);
@@ -213,7 +211,12 @@ sealed partial class ReceiverServer
         }
         finally
         {
-            Volatile.Write(ref _promptOpen, 0);
+            // The session is used up whatever happened.
+            lock (_refusals)
+            {
+                if (_session?.Id == session.Id)
+                    _session = null;
+            }
         }
     }
 

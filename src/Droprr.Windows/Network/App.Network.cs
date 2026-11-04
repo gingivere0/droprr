@@ -119,12 +119,17 @@ public partial class App
                     keepOlderTokens = !(await Sender.TestAsync(PeerMerge.Preview(older, newer, newer.Token))).Ok
                         && (await Sender.TestAsync(PeerMerge.Preview(older, newer, older.Token))).Ok;
                 }
-                var (olderIndex, newerIndex) = (Settings.Peers.IndexOf(older), Settings.Peers.IndexOf(newer));
+                // Found again by name in the settings being saved: the tests above awaited the network, and the
+                // settings may have changed (and been reloaded) meanwhile.
+                var took = false;
                 Settings = SettingsStore.Update(s =>
                 {
-                    if (olderIndex < s.Peers.Count && newerIndex < s.Peers.Count && PeerMerge.SameDevice(s.Peers[olderIndex], s.Peers[newerIndex]))
-                        PeerMerge.Merge(s.Peers, s.Peers[olderIndex], s.Peers[newerIndex], keepOlderTokens);
+                    took = s.Peers.FindByName(older.Name) is { } o && s.Peers.FindByName(newer.Name) is { } n && o != n && PeerMerge.SameDevice(o, n);
+                    if (took)
+                        PeerMerge.Merge(s.Peers, s.Peers.FindByName(older.Name)!, s.Peers.FindByName(newer.Name)!, keepOlderTokens);
                 });
+                if (!took)
+                    break;
                 RequestLog.Note($"merged device \"{newer.Name}\" into \"{older.Name}\" (same device; kept {(keepOlderTokens ? "the older" : "the newer")} tokens)");
                 merged = true;
             }

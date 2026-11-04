@@ -96,10 +96,8 @@ final class DroprrReceiver {
     var secureServer: HTTPServer?
     /// Browser access over Wi-Fi: HTTPS on the HTTP port + 2, without a client certificate (desktops only).
     var browserServer: HTTPServer?
-    /// The "Open in a browser" code; nil (iPhone) turns Browser access off.
+    /// The one code's join secret; nil (iPhone) turns Browser access off.
     var browserAccess: BrowserAccess?
-    /// Saves a browser that used the code as a new "web" peer and returns its name. Called on the main queue.
-    var addBrowser: ((PairRequest) -> String)?
     /// A browser signed itself out. Called on the main queue with its peer id.
     var onBrowserRemoved: ((UUID) -> Void)?
     /// Browser access over the internet: the hidden host page's files (/host/…) and its /api bridge, on the
@@ -121,7 +119,7 @@ final class DroprrReceiver {
     var onItem: (ReceivedItem) -> Void = { _ in }
     /// Called on the main queue while a POST /send body arrives, and once more when it's done.
     var onReceiveProgress: (ReceiveProgress) -> Void = { _ in }
-    var onStateChange: (String) -> Void = { _ in }
+    var onStateChange: (ListenerState) -> Void = { _ in }
     /// Desktops serve the phone inbox from this; nil (iPhone) means /inbox is 404.
     var outbox: OutboxServing?
     /// Desktops handle POST /pair with this. Called on the main queue.
@@ -151,7 +149,7 @@ final class DroprrReceiver {
         do {
             try server.start(port: settings.port)
         } catch {
-            onStateChange("Couldn't listen on port \(settings.port): \(error.localizedDescription)")
+            onStateChange(.stopped("Couldn't listen on port \(settings.port): \(error.localizedDescription)"))
         }
         startSecure()
     }

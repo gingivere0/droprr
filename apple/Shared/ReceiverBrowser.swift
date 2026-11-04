@@ -22,11 +22,11 @@ extension DroprrReceiver {
         (request.path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? request.path).lowercased()
     }
 
-    /// GET of the page's files, and POST /web/session and /web/signout.
+    /// GET of the page's files, and POST /web/signout.
     static func isWebPath(_ request: HTTPServer.Request) -> Bool {
         let path = path(request)
         return (request.method == "GET" && webFiles[path] != nil)
-            || (request.method == "POST" && (path == "/web/session" || path == "/web/signout"))
+            || (request.method == "POST" && path == "/web/signout")
     }
 
     /// The endpoints a browser's cookie works on. Never /pair.
@@ -132,7 +132,6 @@ extension DroprrReceiver {
                 + "frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
             return response
         }
-        if path == "/web/session" { return webSession(request) }
         // Sign out: remove this browser's peer (and its queue) and clear the cookie.
         if let token = cookieToken(request), let peer = browserPeer(token), request.header("x-droprr-web") == "1" {
             let remove = onBrowserRemoved
@@ -140,31 +139,6 @@ extension DroprrReceiver {
         }
         var response = HTTPServer.Response.json(200, ["ok": true])
         response.headers["Set-Cookie"] = "\(Self.webCookie)=; Max-Age=0; Path=/; SameSite=Strict; HttpOnly" + (request.secure ? "; Secure" : "")
-        return response
-    }
-
-    /// { code, name }: on the right code, a new "web" peer with the cookie as its token.
-    func webSession(_ request: HTTPServer.Request) -> HTTPServer.Response {
-        guard isFromPage(request), let access = browserAccess, let addBrowser else {
-            return .json(403, ["ok": false, "error": "forbidden"])
-        }
-        guard let body = request.bodyFile, let data = try? Data(contentsOf: body), data.count <= 4096,
-              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            return .json(400, ["ok": false, "error": "body must be JSON: {\"code\", \"name\"}"])
-        }
-        switch access.use(json["code"] as? String) {
-        case .wrong: return .json(403, ["ok": false, "error": "wrong code"])
-        case .closed: return .json(403, ["ok": false, "error": "no code is open: choose Open in a browser on the computer"])
-        case .accepted: break
-        }
-        let name = PairRequest.displayName(json["name"] as? String ?? "")
-        let token = DroprrSettings.generateToken()
-        let saved = DispatchQueue.main.sync {
-            addBrowser(PairRequest(name: name.isEmpty ? "Browser" : name, platform: "web", host: "", port: settings.port,
-                                   token: nil, acceptToken: token, target: .new))
-        }
-        var response = HTTPServer.Response.json(200, ["ok": true, "name": settings.deviceName, "device": saved])
-        response.headers["Set-Cookie"] = Self.cookie(token, secure: request.secure)
         return response
     }
 }
