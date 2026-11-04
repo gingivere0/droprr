@@ -119,7 +119,7 @@ final class DroprrReceiver {
     var onItem: (ReceivedItem) -> Void = { _ in }
     /// Called on the main queue while a POST /send body arrives, and once more when it's done.
     var onReceiveProgress: (ReceiveProgress) -> Void = { _ in }
-    var onStateChange: (String) -> Void = { _ in }
+    var onStateChange: (ListenerState) -> Void = { _ in }
     /// Desktops serve the phone inbox from this; nil (iPhone) means /inbox is 404.
     var outbox: OutboxServing?
     /// Desktops handle POST /pair with this. Called on the main queue.
@@ -149,7 +149,7 @@ final class DroprrReceiver {
         do {
             try server.start(port: settings.port)
         } catch {
-            onStateChange("Couldn't listen on port \(settings.port): \(error.localizedDescription)")
+            onStateChange(.stopped("Couldn't listen on port \(settings.port): \(error.localizedDescription)"))
         }
         startSecure()
     }

@@ -187,8 +187,8 @@ final class MacModel {
         receiver.onPair = { [weak self] in self?.paired($0) }
         receiver.onPairRequest = { [weak self] in await self?.confirmPairing($0) ?? false }
         receiver.onStateChange = { [weak self] state in
-            self?.status = state
-            self?.isListening = state.hasPrefix("Listening")
+            self?.status = state.label
+            self?.isListening = state.isListening
         }
         receiver.onItem = { [weak self] in self?.received($0) }
         receiver.onReceiveProgress = { [weak self] in self?.receiveProgress($0) }
