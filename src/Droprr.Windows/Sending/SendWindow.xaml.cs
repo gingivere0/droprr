@@ -241,7 +241,10 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
 
     void OnDismissStatus(object sender, RoutedEventArgs e) => HideStatus();
 
+    // Set for exactly as long as a send runs; it's the window's one "busy" state.
     System.Threading.CancellationTokenSource? _sendCancel;
+
+    bool Sending => _sendCancel is not null;
 
     void OnCancelSend(object sender, RoutedEventArgs e) => _sendCancel?.Cancel();
 
@@ -264,10 +267,13 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
 
     // A device paired or a browser connected (from the one code): the same success tile as a send, with the new
     // device selected.
+    // While a send is running, its tile (with Cancel) stays: the new device is only selected for next time.
     internal void ShowAdded(Peer peer)
     {
         _settings = SettingsStore.Load();
         ShowPeers();
+        if (Sending)
+            return;
         PeerBox.SelectedItem = _peers.FirstOrDefault(p => p.Name == peer.Name) ?? PeerBox.SelectedItem;
         ShowStatus(InfoBarSeverity.Success, $"{peer.Name} added");
     }
@@ -430,7 +436,7 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
 
     async System.Threading.Tasks.Task SendAsync(List<string> paths, string text, bool clearWindow)
     {
-        if (!SendButton.IsEnabled)
+        if (Sending)
             return;
         if (PeerBox.SelectedItem is not Peer peer)
         {
@@ -471,6 +477,14 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         // An update waits for this send to finish.
         var app = (App)Application.Current;
         app.ActiveSends++;
+        // The files went through (direct or queued), even if the text after them didn't.
+        var filesDone = false;
+        // Files that already arrived leave the window, so trying again sends only the text.
+        void ForgetSentFiles()
+        {
+            if (filesDone && clearWindow)
+                _files.Clear();
+        }
         var stage = new Progress<string>(message =>
         {
             if (!cancel.IsCancellationRequested)
@@ -482,7 +496,10 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             {
                 SendOutcome? outcome = null;
                 if (paths.Count > 0)
+                {
                     outcome = await Sender.SendFilesAsync(peer, peer.Token, paths, progress, cancel.Token, stage);
+                    filesDone = true;
+                }
                 if (text.Length > 0)
                     outcome = await Sender.SendTextAsync(peer, peer.Token, text, cancel.Token, stage);
                 if (outcome is not null)
@@ -510,6 +527,7 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             {
                 foreach (var path in paths)
                     await Outbox.EnqueueFileAsync(peer.Name, path, progress, cancel.Token);
+                filesDone = paths.Count > 0;
                 if (text.Length > 0)
                     Outbox.EnqueueText(peer.Name, Sender.TextType(text), text);
                 // Queuing for a phone is quiet: its "N waiting" badge and the tray count show the result.
@@ -524,20 +542,24 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
-            ShowTile(SymbolRegular.Dismiss24, "Canceled. Nothing was sent.", busy: false);
+            ShowTile(SymbolRegular.Dismiss24, filesDone ? "Canceled. The files were sent, the text wasn't." : "Canceled. Nothing was sent.", busy: false);
             CancelSendButton.Visibility = Visibility.Collapsed;
+            ForgetSentFiles();
         }
         catch (Exception ex) when (cancel.IsCancellationRequested)
         {
             ShowTile(SymbolRegular.Dismiss24, "Canceled.", busy: false);
             CancelSendButton.Visibility = Visibility.Collapsed;
+            ForgetSentFiles();
             System.Diagnostics.Debug.WriteLine(ex);
         }
         catch (Exception ex)
         {
-            ShowStatus(InfoBarSeverity.Error, ex.Message.Contains(peer.Name, StringComparison.Ordinal)
+            var message = ex.Message.Contains(peer.Name, StringComparison.Ordinal)
                 ? ex.Message + SimilarReachableHint(peer)
-                : $"{peer.Name}: {ex.Message}{SimilarReachableHint(peer)}");
+                : $"{peer.Name}: {ex.Message}{SimilarReachableHint(peer)}";
+            ShowStatus(InfoBarSeverity.Error, filesDone ? $"The files were sent, but the text wasn't. {message}" : message);
+            ForgetSentFiles();
         }
         finally
         {
