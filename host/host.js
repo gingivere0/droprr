@@ -171,7 +171,10 @@ function accept(cid, guest, channel) {
       }
       if (!answer.ok) {
         guest.link.control({ t: "denied", e: answer.error || "not allowed" });
-        setTimeout(() => guest.pc.close(), 500);
+        setTimeout(() => {
+          guest.pc.close();
+          if (guests.get(cid) === guest) guests.delete(cid);
+        }, 500);
         return;
       }
       guest.peer = answer.peer;

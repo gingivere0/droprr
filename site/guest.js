@@ -119,9 +119,11 @@ function connect(target) {
   };
 
   current.relay = new RelaySocket(`${RELAY}/join/${target.room}`, {
+    // Each connection to the relay is a new guest there, so the offer goes again after a reconnect, until the
+    // answer arrives.
     onOpen: async () => {
-      if (pc.localDescription) return;
-      await pc.setLocalDescription(await pc.createOffer());
+      if (pc.remoteDescription) return;
+      if (!pc.localDescription) await pc.setLocalDescription(await pc.createOffer());
       current.relay.send({ m: { t: "offer", sdp: pc.localDescription.sdp } });
     },
     onMessage: async (data) => {
@@ -387,7 +389,13 @@ async function hostSignal(h, cid, m) {
     pc.ondatachannel = (event) => {
       if (event.channel.label === "droprr" && !guest.link) acceptGuest(h, cid, guest, event.channel);
     };
-    setTimeout(() => { if (!guest.accepted) pc.close(); }, 30000);
+    // A device that doesn't say hello soon is dropped. Closing a connection fires no events, so it's also
+    // forgotten here.
+    setTimeout(() => {
+      if (guest.accepted) return;
+      pc.close();
+      if (h.guests.get(cid) === guest) h.guests.delete(cid);
+    }, 30000);
     await pc.setRemoteDescription({ type: "offer", sdp: m.sdp });
     for (const c of guest.pending.splice(0)) await pc.addIceCandidate(c || null).catch(() => {});
     await pc.setLocalDescription(await pc.createAnswer());
@@ -411,7 +419,10 @@ function acceptGuest(h, cid, guest, channel) {
       const byToken = known && sameSecret(message.token, known.token);
       if (!/^[A-Za-z0-9_-]{22}$/.test(id) || !(byToken || (h.secret && sameSecret(message.secret, h.secret)))) {
         guest.link.control({ t: "denied", e: "scan this browser's code again" });
-        setTimeout(() => guest.pc.close(), 500);
+        setTimeout(() => {
+          guest.pc.close();
+          if (h.guests.get(cid) === guest) h.guests.delete(cid);
+        }, 500);
         return;
       }
       const token = byToken ? known.token : randomId(32);
@@ -434,7 +445,7 @@ function acceptGuest(h, cid, guest, channel) {
     onItem: async (item) => addReceived(item),
     onProgress: showProgress,
     onClose: () => {
-      h.guests.delete(cid);
+      if (h.guests.get(cid) === guest) h.guests.delete(cid);
       guest.pc.close();
       if (session !== current) return;
       link = null;
@@ -576,17 +587,21 @@ $("send-button").addEventListener("click", async () => {
     return;
   }
   const name = session?.name || "the computer";
+  // The connection this send started on; if another device replaces it, the rest doesn't go to that one.
+  const target = link;
   const button = $("send-button");
   button.disabled = true;
   let sent = 0;
   try {
     for (const file of files) {
-      await link.sendFile(file, file.name);
+      if (link !== target) throw new Error("disconnected");
+      await target.sendFile(file, file.name);
       sent++;
       chosen.remove(file);
     }
     if (text.trim()) {
-      await link.sendText(isWebUrl(text) ? text.trim() : text, isWebUrl(text) ? "url" : "text");
+      if (link !== target) throw new Error("disconnected");
+      await target.sendText(isWebUrl(text) ? text.trim() : text, isWebUrl(text) ? "url" : "text");
       sent++;
       $("text").value = "";
     }
