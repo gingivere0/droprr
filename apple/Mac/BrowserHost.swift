@@ -187,6 +187,11 @@ final class BrowserHost: NSObject, WKNavigationDelegate {
     /// The page crashed or was killed: load it again.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         hostLog.error("page process ended; loading it again")
+        // It's no longer talking to any browser.
+        if !online.isEmpty {
+            online = []
+            onChange()
+        }
         start()
     }
 

@@ -100,6 +100,7 @@ sealed class BrowserHost : IDisposable
         _core.NavigationStarting += (_, e) => e.Cancel = !e.Uri.StartsWith(Origin + "/", StringComparison.Ordinal);
         _core.NewWindowRequested += (_, e) => e.Handled = true;
         _core.WebMessageReceived += (_, _) => { };
+        _core.ProcessFailed += OnProcessFailed;
         _core.Navigate(Origin + "/host.html");
         // If the page never reports ready (it failed to load, or its script stopped), load it again.
         _watchdog = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
@@ -111,6 +112,36 @@ sealed class BrowserHost : IDisposable
                 _core?.Navigate(Origin + "/host.html");
         };
         _watchdog.Start();
+    }
+
+    // The page's process crashed or was killed: it's no longer in the room or talking to any browser, so it's not
+    // ready until it reports again. The watchdog reloads it until it does; if the whole browser engine went away,
+    // it starts over.
+    async void OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+    {
+        RequestLog.Note($"browser host: page process failed ({e.ProcessFailedKind}); loading it again");
+        Fingerprint = null;
+        if (Online.Count > 0)
+        {
+            Online = [];
+            OnlineChanged?.Invoke();
+        }
+        if (e.ProcessFailedKind == CoreWebView2ProcessFailedKind.BrowserProcessExited)
+        {
+            Dispose();
+            try
+            {
+                await StartAsync();
+            }
+            catch (Exception ex)
+            {
+                RequestLog.Note($"browser host: couldn't start again: {ex.Message.ReplaceLineEndings(" ")}");
+            }
+            return;
+        }
+        if (e.ProcessFailedKind is CoreWebView2ProcessFailedKind.RenderProcessExited or CoreWebView2ProcessFailedKind.RenderProcessUnresponsive)
+            _core?.Navigate(Origin + "/host.html");
+        _watchdog?.Start();
     }
 
     System.Windows.Threading.DispatcherTimer? _watchdog;
