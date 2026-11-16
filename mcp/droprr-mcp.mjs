@@ -234,6 +234,8 @@ function send(message) {
 export function serve() {
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
   lines.on("line", async (line) => {
+    // Some shells (Windows PowerShell 5.1) start piped input with a byte-order mark.
+    line = line.replace(/^\uFEFF/, "");
     if (!line.trim()) return;
     let message;
     try {

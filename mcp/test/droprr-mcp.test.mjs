@@ -65,7 +65,7 @@ function client(connectionFile) {
     while ((newline = buffer.indexOf("\n")) >= 0) {
       const message = JSON.parse(buffer.slice(0, newline));
       buffer = buffer.slice(newline + 1);
-      waiting.get(message.id)?.(message);
+      (waiting.get(message.id) ?? api.onRaw)?.(message);
     }
   });
   const request = (method, params) => new Promise((resolve) => {
@@ -74,7 +74,8 @@ function client(connectionFile) {
     child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
   });
   const tool = async (name, args) => (await request("tools/call", { name, arguments: args })).result;
-  return { request, tool, close: () => child.kill() };
+  const api = { request, tool, raw: (text) => child.stdin.write(text), onRaw: null, close: () => child.kill() };
+  return api;
 }
 
 const DEVICES = [
@@ -93,6 +94,12 @@ test("initializes and lists the tools", async () => {
     const tools = (await mcp.request("tools/list")).result.tools.map((t) => t.name);
     assert.deepEqual(tools, ["list_devices", "send_text", "send_files", "send_file_content"]);
     assert.equal((await mcp.request("nope")).error.code, -32601);
+    // A byte-order mark before the first message (Windows PowerShell 5.1 pipes) is ignored.
+    const bom = await new Promise((resolve) => {
+      mcp.onRaw = resolve;
+      mcp.raw("\uFEFF" + JSON.stringify({ jsonrpc: "2.0", id: 99, method: "ping" }) + "\n");
+    });
+    assert.deepEqual(bom.result, {});
   } finally {
     mcp.close();
     await app.close();
