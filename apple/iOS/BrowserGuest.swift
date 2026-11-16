@@ -27,6 +27,10 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler, WKNavigationDelegate
             case .failed("offline"): return "It isn't open right now. Open Droprr or its page there and try again."
             case .failed("wrong key"): return "That isn't the device whose code you scanned. Scan its code again."
             case .failed("refused"): return "It refused this iPhone. Scan its code again."
+            case .failed("the connection was lost"), .failed("disconnected"), .failed("not connected"), .failed("closed"):
+                return "The connection dropped. Keep Droprr open on both devices and try again."
+            case .failed("the other device stopped responding"):
+                return "The other device stopped responding. Keep Droprr open on both devices and try again."
             case .failed(let reason): return "Couldn't reach it (\(reason)). Both need to be online."
             }
         }
@@ -39,6 +43,10 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler, WKNavigationDelegate
     /// A browser's connection ended (its page closed or the network dropped).
     var onClosed: (_ room: String) -> Void = { _ in }
     var onProgress: (Double) -> Void = { _ in }
+    /// A file arriving from a connected device: how much of it is here (done once it's saved or given up).
+    var onReceiveProgress: (_ room: String, _ progress: ReceiveProgress) -> Void = { _, _ in }
+    /// A file that started arriving but didn't finish: its connection ended or the other side gave up.
+    var onReceiveFailed: (_ room: String, _ name: String, _ reason: String) -> Void = { _, _, _ in }
     /// A device connected to this phone's own room: new (it scanned the code) or back with its token.
     var onGuest: (_ id: String, _ name: String, _ token: String, _ kind: String, _ isNew: Bool) -> Void = { _, _, _, _, _ in }
 
@@ -50,7 +58,17 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler, WKNavigationDelegate
     private var sends: [String: CheckedContinuation<Void, Error>] = [:]
     private(set) var connected: Set<String> = []
     private let files = OutgoingFiles()
-    private var incoming: [String: (url: URL, handle: FileHandle, name: String, room: String)] = [:]
+    private var incoming: [String: Incoming] = [:]
+
+    private struct Incoming {
+        var id = UUID()
+        var url: URL
+        var handle: FileHandle
+        var name: String
+        var room: String
+        var size: Int
+        var received = 0
+    }
 
     /// This phone's id toward browsers (16 random bytes, base64url), the same for every browser.
     private var guestID: String {
@@ -172,20 +190,31 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler, WKNavigationDelegate
         waitingForHost = []
         let rooms = connected
         connected = []
-        for key in incoming.keys { dropIncoming(key: key) }
+        for key in incoming.keys { dropIncoming(key: key, reason: "the connection was lost") }
         rooms.forEach { onClosed($0) }
         if let url = URL(string: "\(Self.scheme)://app/guest.html") { webView.load(URLRequest(url: url)) }
     }
 
-    /// A file that was still arriving when its connection ended: close and delete it.
-    private func dropIncoming(room: String) {
-        for (key, part) in incoming where part.room == room { dropIncoming(key: key) }
+    /// A file that was still arriving when its connection ended: close and delete it, and say so.
+    private func dropIncoming(room: String, reason: String) {
+        for (key, part) in incoming where part.room == room { dropIncoming(key: key, reason: reason) }
     }
 
-    private func dropIncoming(key: String) {
+    private func dropIncoming(key: String, reason: String) {
         guard let part = incoming.removeValue(forKey: key) else { return }
         try? part.handle.close()
         try? FileManager.default.removeItem(at: part.url)
+        onReceiveProgress(part.room, ReceiveProgress(id: part.id, received: part.received, total: part.size, done: true))
+        onReceiveFailed(part.room, part.name, reason)
+    }
+
+    /// Why a file stopped arriving, from the page's words.
+    private static func abortReason(_ reason: String) -> String {
+        switch reason {
+        case "interrupted": return "another item started before it finished"
+        case "incomplete", "disconnected", "the connection was lost", "": return "the connection was lost"
+        default: return reason
+        }
     }
 
     // MARK: Messages from the page
@@ -224,15 +253,20 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler, WKNavigationDelegate
             joins.removeValue(forKey: room)?.resume(throwing: GuestError.failed(body["e"] as? String ?? ""))
         case "closed":
             connected.remove(room)
-            dropIncoming(room: room)
+            dropIncoming(room: room, reason: "the connection was lost")
             joins.removeValue(forKey: room)?.resume(throwing: GuestError.failed("closed"))
             onClosed(room)
         case "sent":
             guard let req = body["req"] as? String, let continuation = sends.removeValue(forKey: req) else { return }
             if let error = body["e"] as? String { continuation.resume(throwing: GuestError.failed(error)) } else { continuation.resume() }
         case "progress":
-            if body["direction"] as? String == "out", let done = body["done"] as? Double, let total = body["total"] as? Double, total > 0 {
+            guard let done = body["done"] as? Double, let total = body["total"] as? Double, total > 0 else { return }
+            if body["direction"] as? String == "out" {
                 onProgress(done / total)
+            } else if let key = incoming.first(where: { $0.value.room == room })?.key, var part = incoming[key] {
+                part.received = Int(done)
+                incoming[key] = part
+                onReceiveProgress(room, ReceiveProgress(id: part.id, received: part.received, total: part.size, done: false))
             }
         case "text":
             let content = body["content"] as? String ?? ""
@@ -243,17 +277,31 @@ final class BrowserGuest: NSObject, WKScriptMessageHandler, WKNavigationDelegate
             }
         case "fileStart":
             guard let key = body["key"] as? String else { return }
+            let name = body["name"] as? String ?? "File"
             let url = FileManager.default.temporaryDirectory.appendingPathComponent("droprr-browser-\(UUID().uuidString)")
             FileManager.default.createFile(atPath: url.path, contents: nil)
-            guard let handle = try? FileHandle(forWritingTo: url) else { return }
-            incoming[key] = (url, handle, body["name"] as? String ?? "File", room)
+            guard let handle = try? FileHandle(forWritingTo: url) else {
+                onReceiveFailed(room, name, "this iPhone couldn't save it")
+                return
+            }
+            let part = Incoming(url: url, handle: handle, name: name, room: room, size: (body["size"] as? NSNumber)?.intValue ?? 0)
+            incoming[key] = part
+            onReceiveProgress(room, ReceiveProgress(id: part.id, received: 0, total: part.size, done: false))
         case "filePart":
             guard let key = body["key"] as? String, let part = incoming[key], let text = body["data"] as? String,
                   let data = Data(base64Encoded: text) else { return }
-            part.handle.write(data)
+            do {
+                try part.handle.write(contentsOf: data)
+            } catch {
+                dropIncoming(key: key, reason: "this iPhone couldn't save it (\(error.localizedDescription))")
+            }
+        case "fileAbort":
+            guard let key = body["key"] as? String else { return }
+            dropIncoming(key: key, reason: Self.abortReason(body["e"] as? String ?? ""))
         case "fileEnd":
             guard let key = body["key"] as? String, let part = incoming.removeValue(forKey: key) else { return }
             try? part.handle.close()
+            onReceiveProgress(part.room, ReceiveProgress(id: part.id, received: part.size, total: part.size, done: true))
             // The name rides along in the temporary file's name; the model moves it into Received.
             let named = part.url.deletingLastPathComponent().appendingPathComponent("droprr-browser-\(UUID().uuidString)")
                 .appendingPathComponent(part.name.isEmpty ? "File" : (part.name as NSString).lastPathComponent)

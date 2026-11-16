@@ -74,7 +74,18 @@ final class PhoneModel {
         guest.onReceive = { [weak self] room, item in self?.receivedFromBrowser(room, item) }
         guest.onProgress = { [weak self] value in if self?.sending == true { self?.progress = value } }
         guest.onBye = { [weak self] room in self?.browserDisconnected(room) }
+        guest.onReceiveProgress = { [weak self] _, progress in self?.showReceiving(progress) }
+        guest.onReceiveFailed = { [weak self] room, name, reason in self?.receiveFailed(room, name: name, reason: reason) }
         guest.onGuest = { [weak self] id, name, token, kind, isNew in self?.guestConnected(id, name: name, token: token, kind: kind, isNew: isNew) }
+    }
+
+    /// The "Receiving…" bar for a large item, from either the Wi-Fi receiver or a connected device.
+    private func showReceiving(_ progress: ReceiveProgress) {
+        if progress.done {
+            if receiving?.id == progress.id { receiving = nil }
+        } else if progress.isWorthShowing {
+            receiving = progress
+        }
     }
 
     // MARK: Local network (protocol 2)
@@ -85,14 +96,7 @@ final class PhoneModel {
         if receiver == nil {
             let receiver = DroprrReceiver(settings: settings, inbox: Self.inbox)
             receiver.onItem = { [weak self] item in self?.record(item, from: nil) }
-            receiver.onReceiveProgress = { [weak self] progress in
-                guard let self else { return }
-                if progress.done {
-                    if self.receiving?.id == progress.id { self.receiving = nil }
-                } else if progress.isWorthShowing {
-                    self.receiving = progress
-                }
-            }
+            receiver.onReceiveProgress = { [weak self] progress in self?.showReceiving(progress) }
             receiver.onPair = { [weak self] in self?.paired($0) }
             receiver.onPairRequest = { [weak self] request in await self?.ask(request) ?? false }
             self.receiver = receiver
@@ -599,11 +603,23 @@ final class PhoneModel {
         #endif
     }
 
+    /// A file from a connected device that stopped arriving partway: say so on the Received tab instead of
+    /// leaving nothing behind.
+    private func receiveFailed(_ room: String, name: String, reason: String) {
+        let source = settings.peers.first { $0.isBrowser && $0.deviceID == room }?.name ?? "the other device"
+        let file = (name as NSString).lastPathComponent
+        lastCollect = "Couldn't receive \(file.isEmpty ? "a file" : file) from \(source): \(reason)."
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+    }
+
     private func receivedFromBrowser(_ room: String, _ item: ReceivedItem) {
         let source = settings.peers.first { $0.isBrowser && $0.deviceID == room }?.name
         if case .file(let temp) = item.kind {
             let destination = Self.uniqueDestination(for: temp.lastPathComponent)
-            guard (try? FileManager.default.moveItem(at: temp, to: destination)) != nil else { return }
+            guard (try? FileManager.default.moveItem(at: temp, to: destination)) != nil else {
+                receiveFailed(room, name: temp.lastPathComponent, reason: "this iPhone couldn't save it")
+                return
+            }
             try? FileManager.default.removeItem(at: temp.deletingLastPathComponent())
             record(ReceivedItem(kind: .file(destination)), from: source)
         } else {

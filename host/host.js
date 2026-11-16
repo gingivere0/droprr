@@ -145,6 +145,7 @@ async function addCandidate(pc, candidate) {
 
 function accept(cid, guest, channel) {
   guest.link = new Link(channel, {
+    pc: guest.pc,
     onControl: async (message) => {
       // A connected browser's Show QR code: a code another phone can join this computer with.
       if (message.t === "invite" && guest.peer) {

@@ -154,6 +154,7 @@ function connect(target) {
     clearTimeout(timeout);
     current.relay.close();
     link = new Link(channel, {
+      pc,
       onControl: (message) => {
         if (message.t === "welcome") {
           current.done = true;
@@ -411,6 +412,7 @@ async function hostSignal(h, cid, m) {
 function acceptGuest(h, cid, guest, channel) {
   const current = { name: "", pc: guest.pc, done: false, hosted: true };
   guest.link = new Link(channel, {
+    pc: guest.pc,
     onControl: (message) => {
       if (message.t !== "hello" || guest.hello) return;
       guest.hello = true;
