@@ -1,0 +1,11 @@
+{
+  "name": "droprr-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that lets AI assistants send text, links, and files to your devices with Droprr.",
+  "type": "module",
+  "bin": { "droprr-mcp": "droprr-mcp.mjs" },
+  "files": ["droprr-mcp.mjs"],
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node --test test/*.test.mjs" },
+  "private": true
+}

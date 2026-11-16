@@ -359,7 +359,7 @@ final class DroprrSettings {
         return found
     }
 
-    private static func constantTimeEqual(_ a: String, _ b: String) -> Bool {
+    static func constantTimeEqual(_ a: String, _ b: String) -> Bool {
         let x = Array(a.utf8), y = Array(b.utf8)
         guard x.count == y.count else { return false }
         return zip(x, y).reduce(0) { $0 | ($1.0 ^ $1.1) } == 0

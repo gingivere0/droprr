@@ -28,4 +28,5 @@ The words Droprr's code, docs, and commits use for its domain. The protocol itse
 
 - **Path**: how a send reaches a peer: **Wi-Fi** (the local network, HTTPS on the HTTP port + 1, pinned) or **Tailscale** (plain HTTP to a Tailscale address only). Wi-Fi first when the peer was seen recently, never both for one send.
 - **Browser access**: sending to and from a phone's browser. Either the computer's own page (`/web`, on the same Wi-Fi or Tailscale) or the **website** (site/), which meets the computer through the **relay** and then talks to it directly over WebRTC.
+- **Local API**: `/local/` on a computer's plain HTTP port, for tools on that same computer, such as the **MCP server** (`mcp/`) that lets AI assistants list devices and send. Loopback only, with a **local token** that's new each time the app starts and is written to `local-api.json`.
 - **Room**: a computer's place on the relay, named from its **host key**. The relay only introduces; it never sees what's sent.

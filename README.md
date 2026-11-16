@@ -47,6 +47,7 @@ Then, on the computer, choose **Add a device** (the plus after the device tiles 
 - **Wi-Fi pairing.** Devices on the same network show up under **Nearby on this network** in Settings. Choosing **Pair** shows the same six-digit code on both screens; accept on the other device only if its code matches, and only if you started the pairing. No token is shown or typed. The code is built so nobody in between can make two different codes match. Pairing a device again simply replaces the old pairing and connects, once the device proves it's the same one. Settings also shows the path each device last used, and the **Local network** switch turns all of this off.
 - **Safer receiving.** Received files are marked as coming from another computer (Mark of the Web on Windows, quarantine on the Mac). On Windows, only common media, document, and text files open with a click, and anything else is shown in Explorer instead. Only `http` and `https` links ever open, and any other "link" is received as text.
 - **Disk space checks.** A computer turns down a file that would leave less than about 1 GB free, with a "not enough disk space" error, instead of filling up the disk.
+- **AI assistants.** An [MCP server](#ai-assistants-mcp) lets Claude and other assistants list your devices and send them text, links, and files through Droprr.
 - **Crash logs.** If something goes wrong, Droprr writes what happened (never tokens or file contents) to `crash.log` in `%APPDATA%\Droprr` on Windows, and in `~/Library/Logs/Droprr` on the Mac, so it's easy to find and attach to a bug report.
 
 ## Setup
@@ -134,6 +135,50 @@ Next time, open the website and choose your computer under **Recent computers**,
 
 Without the iPhone app, you can still send to a computer from the share sheet, and collect queued items, with two Shortcuts. See [docs/ios-shortcut.md](docs/ios-shortcut.md).
 
+## AI assistants (MCP)
+
+Droprr comes with an [MCP](https://modelcontextprotocol.io) server, so an AI assistant such as Claude Desktop or Claude Code can send things to your devices for you: "send this recipe to my phone", "put the link on my Mac". It works through the Droprr app on the same computer, so it sends exactly as the Send window does, to the same paired devices, over Wi-Fi or Tailscale, with items for a phone waiting until Droprr opens there.
+
+It has four tools:
+
+| Tool | What it does |
+| --- | --- |
+| `list_devices` | Lists the devices this computer can send to. |
+| `send_text` | Sends text or a link. A single `http(s)` link arrives as a link. |
+| `send_files` | Sends files from this computer, by absolute path. |
+| `send_file_content` | Makes a file from text or base64 content the assistant wrote, and sends it. |
+
+**Set it up:**
+
+1. Install [Node.js](https://nodejs.org) 18 or later, and keep Droprr running on the computer.
+2. Download [`mcp/droprr-mcp.mjs`](mcp/droprr-mcp.mjs) (or clone this repository). It has no dependencies.
+3. Add it to your assistant, with the full path to the file:
+
+   - **Claude Desktop:** open **Settings › Developer › Edit Config** and add Droprr to `claude_desktop_config.json`, then restart Claude Desktop:
+
+     ```json
+     {
+       "mcpServers": {
+         "droprr": {
+           "command": "node",
+           "args": ["<full path to>/droprr-mcp.mjs"]
+         }
+       }
+     }
+     ```
+
+     On Windows, write the path with double backslashes, like `"C:\\Users\\<you>\\droprr-mcp.mjs"`.
+
+   - **Claude Code:** run this once to make it available in every project:
+
+     ```sh
+     claude mcp add --scope user droprr -- node "<full path to>/droprr-mcp.mjs"
+     ```
+
+   - **Other MCP clients:** run `node droprr-mcp.mjs` as a stdio server.
+
+There's nothing to copy or pair: the server finds Droprr through `local-api.json`, which the app writes next to its settings each time it starts. It holds a token that works only from this computer and only for listing devices and sending, so the assistant never sees your pairing tokens. The [local API](docs/PROTOCOL.md#local-api) describes it.
+
 ## Troubleshooting
 
 - **The phone or another computer can't connect (timeout):** check that Tailscale is connected on both devices and that the Windows Firewall rule exists. On the phone, opening `http://<pc-name>:53318/ping` in Safari should immediately show an "unauthorized" error, which means the PC is reachable.
@@ -143,6 +188,7 @@ Without the iPhone app, you can still send to a computer from the share sheet, a
 - **A device says Missing Token:** click it and enter the token from that computer's Settings, or pair again.
 - **Droprr doesn't show up in Windows Search:** check that **Show in the Start menu and Windows Search** is on in Settings.
 - **The tray icon is hidden:** Windows puts new tray icons behind the **^** arrow. Drag Droprr onto the taskbar to keep it visible.
+- **The assistant says "Droprr isn't running":** start Droprr on the same computer as the assistant. Droprr 0.3.3 and older don't have the local API yet, so update it first.
 - **Developing with an AI agent or another sandboxed tool:** processes started from inside a packaged (MSIX) app have their AppData writes redirected into that app's private storage. A Droprr launched that way gets a separate settings file and token that you won't see. Start Droprr yourself, and let `scripts\deploy.ps1` plus the self-update hand new builds to it.
 
 ## Repository layout
@@ -158,6 +204,7 @@ Without the iPhone app, you can still send to a computer from the share sheet, a
 | `docs/PROTOCOL.md` | The HTTP protocol every Droprr app speaks |
 | `docs/adr/`, `GLOSSARY.md` | Decisions about how the code is organized, and the words the code and docs use |
 | `docs/ios-shortcut.md` | Optional iPhone Shortcuts |
+| `mcp/` | The MCP server for AI assistants (Node, no dependencies); `npm test` in that folder runs its tests |
 | `scripts/` | `build-installer.ps1` (the Windows installer), `deploy.ps1` (publishes a Windows build for the self-updating app), `make-app-icon.ps1`, and `make-app-icons.py` (the full-bleed app icons) |
 | `file-swap-icon-pack/` | App, tray, and per-theme icons for every platform |
 
