@@ -312,9 +312,12 @@ struct DroprrClient {
     }
 
     /// Downloads a file item to a temporary location; the caller moves it into place.
-    func download(_ item: InboxItem) async throws -> URL {
+    /// `progress` gets (bytes so far, total when known) on the main queue while the download runs.
+    func download(_ item: InboxItem, progress: ((Int, Int?) -> Void)? = nil) async throws -> URL {
         let request = try makeRequest(path: "/inbox/\(item.id)", method: "GET")
-        let (temp, response) = try await session.download(for: request)
+        let delegate = progress.map(DownloadProgress.init)
+        defer { delegate?.stop() }
+        let (temp, response) = try await session.download(for: request, delegate: delegate)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw DroprrError.server(http.statusCode, (try? String(contentsOf: temp, encoding: .utf8)) ?? "")
         }
@@ -392,5 +395,32 @@ private final class UploadProgress: NSObject, URLSessionTaskDelegate {
         guard totalBytesExpectedToSend > 0 else { return }
         let fraction = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
         DispatchQueue.main.async { self.report(fraction) }
+    }
+}
+
+/// Reports a download's bytes while it runs. The async download API doesn't call the per-task
+/// didWriteData callback, so this reads the task's counters a few times a second instead.
+private final class DownloadProgress: NSObject, URLSessionTaskDelegate {
+    let report: (Int, Int?) -> Void
+    private var timer: DispatchSourceTimer?
+    init(_ report: @escaping (Int, Int?) -> Void) { self.report = report }
+
+    func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now(), repeating: .milliseconds(200))
+        timer.setEventHandler { [weak self, weak task] in
+            guard let self, let task else { return }
+            let expected = task.countOfBytesExpectedToReceive
+            self.report(Int(task.countOfBytesReceived), expected > 0 ? Int(expected) : nil)
+        }
+        DispatchQueue.main.async {
+            self.timer?.cancel()
+            self.timer = timer
+            timer.resume()
+        }
+    }
+
+    func stop() {
+        DispatchQueue.main.async { self.timer?.cancel(); self.timer = nil }
     }
 }

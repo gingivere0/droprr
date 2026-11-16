@@ -630,19 +630,22 @@ private struct ReceivedTab: View {
     var body: some View {
         List {
             Section {
-                HStack(spacing: Space.md) {
-                    GlyphCircle(symbol: "arrow.down.circle", size: 36)
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        Text(model.collecting ? "Checking your computers…" : (model.lastCollect ?? "Pull down to check"))
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(.primary)
-                    }
-                    Spacer()
-                    if model.collecting { ProgressView() }
-                }
-                .listRowBackground(Look.container)
+                // While a large item downloads, its bar replaces the row; the spinner only means
+                // "waiting for your computers to answer".
                 if model.receiving != nil {
                     ReceivingStatusView(progress: model.receiving).listRowBackground(Look.container)
+                } else {
+                    HStack(spacing: Space.md) {
+                        GlyphCircle(symbol: "arrow.down.circle", size: 36)
+                        VStack(alignment: .leading, spacing: Space.xs) {
+                            Text(model.collecting ? "Checking your computers…" : (model.lastCollect ?? "Pull down to check"))
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(.primary)
+                        }
+                        Spacer()
+                        if model.collecting { ProgressView() }
+                    }
+                    .listRowBackground(Look.container)
                 }
             } header: {
                 TabTitle(title: "Received").listRowInsets(EdgeInsets()).padding(.bottom, Space.sm)

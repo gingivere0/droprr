@@ -652,7 +652,15 @@ final class PhoneModel {
                     let item: ReceivedItem
                     switch entry.type {
                     case "file":
-                        let temp = try await client.download(entry)
+                        // A large file shows a bar while it downloads; small ones finish before a bar would help.
+                        let id = UUID()
+                        if entry.size >= ReceiveProgress.largeBytes { receiving = ReceiveProgress(id: id, received: 0, total: entry.size, done: false) }
+                        defer { if receiving?.id == id { receiving = nil } }
+                        let temp = try await client.download(entry) { [weak self] received, total in
+                            // Only while this download owns the bar, so a late tick can't bring it back.
+                            guard let self, self.receiving?.id == id else { return }
+                            self.receiving = ReceiveProgress(id: id, received: received, total: total ?? entry.size, done: false)
+                        }
                         let dest = Self.uniqueDestination(for: entry.name)
                         try FileManager.default.moveItem(at: temp, to: dest)
                         item = ReceivedItem(kind: .file(dest))
