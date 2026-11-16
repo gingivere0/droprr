@@ -22,18 +22,57 @@
     return btoa(text);
   }
 
-  // Files go to the app in parts, then it saves them.
-  async function deliver(room, item, nextKey) {
-    if (item.kind !== "file") {
-      post({ t: "text", room, kind: item.kind, content: item.content });
-      return;
-    }
-    const key = nextKey();
-    post({ t: "fileStart", room, key, name: item.name, size: item.blob.size });
-    for (let offset = 0; offset < item.blob.size; offset += PART) {
-      post({ t: "filePart", key, data: toBase64(await item.blob.slice(offset, offset + PART).arrayBuffer()) });
-    }
-    post({ t: "fileEnd", key });
+  // What a Link receives goes to the app as it arrives: files in parts of about PART bytes (so a big one never sits
+  // whole in this page's memory), then fileEnd once all of it came, or fileAbort if it didn't. roomOf() names the
+  // connection (a hosted guest's id is only known after its hello).
+  function receiving(roomOf) {
+    let rid = 0;
+    let shown = null;
+    const flush = (file) => {
+      if (!file.buffered) return;
+      const bytes = new Uint8Array(file.buffered);
+      let at = 0;
+      for (const part of file.buffer) {
+        bytes.set(part, at);
+        at += part.byteLength;
+      }
+      file.buffer = [];
+      file.buffered = 0;
+      post({ t: "filePart", key: file.key, data: toBase64(bytes) });
+    };
+    return {
+      onFileStart: (file) => {
+        file.key = `${roomOf()}:${++rid}`;
+        file.buffer = [];
+        file.buffered = 0;
+        post({ t: "fileStart", room: roomOf(), key: file.key, name: file.name, size: file.size });
+      },
+      onFileData: (file, data) => {
+        file.buffer.push(new Uint8Array(data));
+        file.buffered += data.byteLength;
+        if (file.buffered >= PART) flush(file);
+      },
+      onFileAbort: (file, reason) => {
+        file.buffer = [];
+        file.buffered = 0;
+        post({ t: "fileAbort", key: file.key, e: String(reason || "") });
+      },
+      onItem: async (item) => {
+        if (item.kind !== "file") {
+          post({ t: "text", room: roomOf(), kind: item.kind, content: item.content });
+          return;
+        }
+        flush(item);
+        post({ t: "fileEnd", key: item.key });
+      },
+      // Progress both ways, about once a percent (every 16 KB chunk would flood the app).
+      onProgress: (p) => {
+        const step = Math.max(256 * 1024, p.total / 100);
+        if (shown && shown.id === p.id && shown.direction === p.direction && p.done < p.total && p.done - shown.done < step) return;
+        shown = { id: p.id, direction: p.direction, done: p.done };
+        post({ t: "progress", room: roomOf(), direction: p.direction, done: p.done, total: p.total });
+      },
+    };
   }
 
   function close(room) {
@@ -102,8 +141,9 @@
     channel.onopen = () => {
       clearTimeout(timeout);
       current.relay.close();
-      let rid = 0;
       current.link = new Link(channel, {
+        pc,
+        ...receiving(() => room),
         onControl: (message) => {
           if (message.t === "welcome") {
             current.done = true;
@@ -119,8 +159,6 @@
             post({ t: "denied", room, e: String(message.e || "") });
           }
         },
-        onItem: (item) => deliver(room, item, () => `${room}:${++rid}`),
-        onProgress: (p) => post({ t: "progress", room, direction: p.direction, done: p.done, total: p.total }),
         onClose: () => {
           pc.close();
           // Only this room's current connection reports closed. One that was replaced or closed on purpose
@@ -239,9 +277,10 @@
 
   // A device that scanned this phone's code (its secret) or reconnects (the token it was given).
   function accept(h, cid, guest, channel) {
-    let rid = 0;
     let id = null;
     guest.link = new Link(channel, {
+      pc: guest.pc,
+      ...receiving(() => id),
       accepting: () => guest.accepted,
       onControl: (message) => {
         if (message.t !== "hello" || guest.hello) return;
@@ -266,8 +305,6 @@
         guest.link.control({ t: "welcome", name: h.name, token, kind: "ios" });
         post({ t: "guest", room: id, name: String(message.name || "").slice(0, 64), token, kind: message.kind === "ios" ? "ios" : "web", isNew: !byToken });
       },
-      onItem: (item) => deliver(id, item, () => `${id}:${++rid}`),
-      onProgress: (p) => post({ t: "progress", room: id, direction: p.direction, done: p.done, total: p.total }),
       onClose: () => {
         if (h.guests.get(cid) === guest) h.guests.delete(cid);
         guest.pc.close();
