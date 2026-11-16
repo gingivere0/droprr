@@ -421,19 +421,6 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         await SendAsync(_files.Select(f => f.FullPath).ToList(), text, clearWindow: true);
     }
 
-    // Saved per device, so Settings can show which path it last took.
-    static void RememberPath(Peer peer, SendPath path)
-    {
-        if (peer.LastPath == path)
-            return;
-        peer.LastPath = path;
-        SettingsStore.Update(s =>
-        {
-            if (s.Peers.FindByName(peer.Name) is { } saved)
-                saved.LastPath = path;
-        });
-    }
-
     async System.Threading.Tasks.Task SendAsync(List<string> paths, string text, bool clearWindow)
     {
         if (Sending)
@@ -477,12 +464,11 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         // An update waits for this send to finish.
         var app = (App)Application.Current;
         app.ActiveSends++;
-        // The files went through (direct or queued), even if the text after them didn't.
-        var filesDone = false;
+        var delivery = new Delivery(peer, paths, text);
         // Files that already arrived leave the window, so trying again sends only the text.
         void ForgetSentFiles()
         {
-            if (filesDone && clearWindow)
+            if (delivery.FilesDone && clearWindow)
                 _files.Clear();
         }
         var stage = new Progress<string>(message =>
@@ -492,47 +478,18 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         });
         try
         {
-            async System.Threading.Tasks.Task SendDirectAsync()
+            var result = await delivery.RunAsync(progress, cancel.Token, stage);
+            if (result.Queued)
             {
-                SendOutcome? outcome = null;
-                if (paths.Count > 0)
-                {
-                    outcome = await Sender.SendFilesAsync(peer, peer.Token, paths, progress, cancel.Token, stage);
-                    filesDone = true;
-                }
-                if (text.Length > 0)
-                    outcome = await Sender.SendTextAsync(peer, peer.Token, text, cancel.Token, stage);
-                if (outcome is not null)
-                    RememberPath(peer, outcome.Path);
-                ShowStatus(InfoBarSeverity.Success, $"Sent to {peer.Name} ({outcome?.Label}).");
-                if (outcome is { IdentityChanged: true })
-                    app.Notify($"{peer.Name}'s identity changed", "Droprr used Tailscale instead of Wi-Fi. Pair again to use Wi-Fi.");
-            }
-
-            // A phone that gave this PC a token and is open on this network takes the items directly. It can close
-            // Droprr at any moment, so if nothing got through, the items are queued for it instead.
-            var queue = peer.IsPhone && !(peer.Token.Length > 0 && await Sender.IsOnLanAsync(peer, cancel.Token));
-            if (!queue)
-            {
-                try
-                {
-                    await SendDirectAsync();
-                }
-                catch (System.Net.Http.HttpRequestException) when (peer.IsPhone && !cancel.IsCancellationRequested && done == 0)
-                {
-                    queue = true;
-                }
-            }
-            if (queue)
-            {
-                foreach (var path in paths)
-                    await Outbox.EnqueueFileAsync(peer.Name, path, progress, cancel.Token);
-                filesDone = paths.Count > 0;
-                if (text.Length > 0)
-                    Outbox.EnqueueText(peer.Name, Sender.TextType(text), text);
                 // Queuing for a phone is quiet: its "N waiting" badge and the tray count show the result.
                 HideStatus();
                 ShowPeers();
+            }
+            else
+            {
+                ShowStatus(InfoBarSeverity.Success, $"Sent to {peer.Name} ({result.Outcome?.Label}).");
+                if (result.Outcome is { IdentityChanged: true })
+                    app.Notify($"{peer.Name}'s identity changed", "Droprr used Tailscale instead of Wi-Fi. Pair again to use Wi-Fi.");
             }
             if (clearWindow)
             {
@@ -542,7 +499,7 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
-            ShowTile(SymbolRegular.Dismiss24, filesDone ? "Canceled. The files were sent, the text wasn't." : "Canceled. Nothing was sent.", busy: false);
+            ShowTile(SymbolRegular.Dismiss24, delivery.FilesDone ? "Canceled. The files were sent, the text wasn't." : "Canceled. Nothing was sent.", busy: false);
             CancelSendButton.Visibility = Visibility.Collapsed;
             ForgetSentFiles();
         }
@@ -558,7 +515,7 @@ public partial class SendWindow : Wpf.Ui.Controls.FluentWindow
             var message = ex.Message.Contains(peer.Name, StringComparison.Ordinal)
                 ? ex.Message + SimilarReachableHint(peer)
                 : $"{peer.Name}: {ex.Message}{SimilarReachableHint(peer)}";
-            ShowStatus(InfoBarSeverity.Error, filesDone ? $"The files were sent, but the text wasn't. {message}" : message);
+            ShowStatus(InfoBarSeverity.Error, delivery.FilesDone ? $"The files were sent, but the text wasn't. {message}" : message);
             ForgetSentFiles();
         }
         finally

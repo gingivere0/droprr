@@ -34,6 +34,7 @@ Each device has one **main token** plus one **device token** per paired peer.
 | [`GET /inbox?for=<name>`](#get-inboxfordevice-name) | A phone lists items a desktop queued for it. |
 | [`GET /inbox/<id>`](#get-inboxid) | Download one queued item. |
 | [`DELETE /inbox/<id>`](#delete-inboxid) | Acknowledge a queued item so it's removed. |
+| [`GET /local/devices`, `POST /local/send`](#local-api) | Tools on this computer list its devices and send through the app. Loopback only, with the local token. |
 | [`GET /web`](#browser-access) | The [browser page](#browser-access); with `POST /web/signout`, the only endpoints without a bearer token besides LAN pairing. |
 
 Except where noted, all of them require the bearer token, and all use the error shape below.
@@ -606,10 +607,38 @@ A computer's name, `id`, full fingerprint, and MagicDNS name aren't in the code:
 
 The [pairing QR](#pairing-qr) and the computer's own page's typed codes still work for older apps and for computers without the website, but computers no longer show them by default.
 
+## Local API
+
+Tools on the same computer, such as the [Droprr MCP server](../mcp/) that lets AI assistants send things, use the computer app to list its devices and send to them. This is between an app and tools on its own computer: other devices never call it.
+
+- **Where:** the plain HTTP port, from loopback only. A request from any other address, over HTTPS, or with an `Origin` header (a web page) gets `404`.
+- **Local token:** a fresh random token each time the app starts, in the same format as other tokens. It works only for `/local/`, and the main token and device tokens don't work there (`401`).
+- **Connection file:** when its receiver starts, the app writes `{"url": "http://127.0.0.1:<port>", "token": "<local token>"}` to `local-api.json`, readable only by the signed-in user: `%APPDATA%\Droprr\local-api.json` on Windows and `~/Library/Application Support/Droprr/local-api.json` on the Mac. Tools read it on every call, since the token changes when the app restarts.
+
+### `GET /local/devices`
+
+```json
+{ "ok": true, "name": "<this computer>", "devices": [
+  { "name": "<device>", "platform": "ios", "kind": "phone", "paired": true, "waiting": 2 }
+] }
+```
+
+`platform` is `windows`, `macos`, `ios`, `web`, or `unknown`. `kind` says how a send reaches the device: `computer` directly, `phone` or `browser` usually through its queue, where `waiting` items wait so far. `paired` is false for a computer without a token, which can't be sent to.
+
+### `POST /local/send`
+
+```json
+{ "to": "<device name>", "text": "...", "files": ["<absolute path>", "..."] }
+```
+
+`to` matches a device name ignoring case. `text`, `files`, or both; files are sent first. Text that is a single `http` or `https` URL, with no spaces or line breaks, is sent as a link. Files must be absolute paths to files (not folders) on this computer. The app delivers it exactly as its Send window would: straight to a computer, over Wi-Fi first and then Tailscale, and to a phone or browser's queue unless the phone is open on this network.
+
+The answer: `{ "ok": true, "to": "<device name>", "path": "wifi" | "tailscale" | "queued" }`. Errors use the [usual shape](#errors): `400` for a malformed body, nothing to send, or a file that isn't there; `404` for an unknown device (the message lists the device names); `409` for a computer that isn't paired; `502` when the device couldn't be reached, with the reason.
+
 ## Implementation notes
 
 - **Binding:** a listener may bind to all interfaces (`0.0.0.0` or `::`) instead of specific addresses, as long as it immediately drops any connection whose source address isn't loopback, in `100.64.0.0/10` (Tailscale IPv4), or in `fd7a:115c:a1e0::/48` (Tailscale IPv6). This helps on platforms where the Tailscale address is hard to find or changes often.
 - **Peer platforms:** a desktop records each peer's `platform` from `POST /pair` or its last successful `/ping`, and its peer editor has an "iPhone" toggle that sets `"platform": "ios"`. When `GET /inbox?for=<name>` arrives with a name that isn't a known peer, the desktop adds it as an `"ios"` peer, so it can be picked as a send target. None of this changes the wire format.
-- **Private endpoints:** an app may add loopback-only endpoints for its own parts, such as the Mac share extension handing items to the Mac app's outbox. They aren't part of this protocol, and other devices must not rely on them.
+- **Private endpoints:** an app may add loopback-only endpoints for its own parts, such as the Mac share extension handing items to the Mac app's outbox. They aren't part of this protocol, and other devices must not rely on them. The [local API](#local-api) is the one documented for tools to use.
 - **Windows hardening:** the Windows app stores every token encrypted for the signed-in user (DPAPI), marks received files with the Mark of the Web (`Zone.Identifier`, internet zone), opens only common media, document, and text types directly (anything else is shown in Explorer), and keeps clipboard writes out of clipboard history and cloud clipboard. None of this changes the wire format.
 - **Link files:** platforms may save links in their native shortcut format. Windows saves `Link <date time>.url`, and macOS saves `Link <date time>.webloc`.

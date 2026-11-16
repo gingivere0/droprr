@@ -131,6 +131,22 @@ sealed partial class ReceiverServer : IAsyncDisposable
         });
         app.Use(async (context, next) =>
         {
+            // The local API has its own token, and answers only this PC.
+            if (IsLocalPath(context.Request.Path))
+            {
+                IResult result;
+                try
+                {
+                    result = await HandleLocalAsync(context);
+                }
+                catch (Exception ex) when (!context.RequestAborted.IsCancellationRequested)
+                {
+                    RequestLog.WriteError(context, ex);
+                    result = Error("receiver error", StatusCodes.Status500InternalServerError);
+                }
+                await result.ExecuteAsync(context);
+                return;
+            }
             // LAN pairing is the one exchange without a token, and only over HTTPS.
             var pairRequest = context.Request.Path.Equals("/pair/request", StringComparison.OrdinalIgnoreCase);
             if (pairRequest || context.Request.Path.Equals("/pair/confirm", StringComparison.OrdinalIgnoreCase))
@@ -214,6 +230,7 @@ sealed partial class ReceiverServer : IAsyncDisposable
         await app.StartAsync();
         _app = app;
         LanListening = certificate is not null;
+        WriteLocalConnectionFile();
     }
 
     // Accepts the main token or any peer's device token, comparing against every one in constant time.

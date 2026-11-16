@@ -192,6 +192,10 @@ final class MacModel {
         }
         receiver.onItem = { [weak self] in self?.received($0) }
         receiver.onReceiveProgress = { [weak self] in self?.receiveProgress($0) }
+        receiver.localApiSend = { [weak self] peer, payloads in
+            guard let self else { throw CancellationError() }
+            return try await self.deliver(payloads, to: peer)
+        }
         receiver.browserAccess = browserAccess
         browserHost = BrowserHost(settings: settings, access: browserAccess, outbox: outbox)
         let host = browserHost!
@@ -464,6 +468,32 @@ final class MacModel {
             if let result = lastSendResult, result.hasPrefix("Couldn't") || result.hasPrefix("Canceled") { return false }
         }
         return true
+    }
+
+    /// A send through the local API (an AI assistant using the MCP server, for example): the same rules as the
+    /// Send window, without its status line. Returns the path it took: "wifi", "tailscale", or "queued".
+    func deliver(_ payloads: [SendPayload], to peer: Peer) async throws -> String {
+        func queue() throws -> String {
+            for payload in payloads { try outbox.enqueue(payload, for: peer) }
+            return "queued"
+        }
+        if peer.isBrowser || peer.isPhone && !(LANDiscovery.shared.isAdvertising(peer) && !(peer.token ?? "").isEmpty) {
+            return try queue()
+        }
+        var sentAny = false
+        do {
+            let (client, _) = try await DroprrClient.connect(peer)
+            for payload in payloads {
+                try await payload.send(with: client)
+                sentAny = true
+            }
+            if let i = settings.peers.firstIndex(where: { $0.id == peer.id }) { settings.peers[i].lastPath = client.path.rawValue }
+            return client.path == .lan ? "wifi" : "tailscale"
+        } catch {
+            // A phone that stopped answering (Droprr closed) still gets it, as from the Send window.
+            if peer.isPhone, !sentAny, !Task.isCancelled { return try queue() }
+            throw error
+        }
     }
 
     @ObservationIgnored private var sendTask: Task<Void, Never>?

@@ -41,7 +41,7 @@ public partial class App : Application
 
     internal AppSettings Settings { get; private set; } = null!;
 
-    // Sends in progress from the Send window; an update waits for them (and for anything arriving).
+    // Sends in progress from the Send window or the local API; an update waits for them (and for anything arriving).
     internal int ActiveSends { get; set; }
 
     // Raised on the UI thread after settings change (saved in Settings, or a device paired), so open windows can refresh.
@@ -525,7 +525,7 @@ public partial class App : Application
 
         ReceiverServer Create(bool withoutLan)
         {
-            var created = new ReceiverServer(() => Settings) { WithoutLan = withoutLan, BrowserAccess = BrowserAccess };
+            var created = new ReceiverServer(() => Settings) { WithoutLan = withoutLan, BrowserAccess = BrowserAccess, LocalApiSend = LocalApiSendAsync };
             created.BrowserRemoved += name => Dispatcher.BeginInvoke(() => RemoveBrowser(name));
             created.ItemReceived += item => Dispatcher.BeginInvoke(() => OnItemReceived(item));
             created.InboxPolled += device => Dispatcher.BeginInvoke(() => OnInboxPolled(device));
@@ -567,6 +567,21 @@ public partial class App : Application
             LanDiscovery.Stop();
             _tray?.SetStatus("Receiver stopped");
             _tray?.Notify("Droprr couldn't start receiving", ex.Message);
+        }
+    }
+
+    // A send through the local API (an AI assistant using the MCP server, for example), the same as one from the
+    // Send window. An update waits for it too.
+    async Task<DeliveryResult> LocalApiSendAsync(Peer peer, IReadOnlyList<string> paths, string text, CancellationToken cancel)
+    {
+        await Dispatcher.InvokeAsync(() => ActiveSends++);
+        try
+        {
+            return await new Delivery(peer, paths, text).RunAsync(cancel: cancel);
+        }
+        finally
+        {
+            _ = Dispatcher.InvokeAsync(() => ActiveSends--);
         }
     }
 

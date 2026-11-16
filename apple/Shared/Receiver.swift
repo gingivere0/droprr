@@ -12,6 +12,8 @@ protocol OutboxServing: AnyObject {
     func remove(id: String, peerID: UUID?) -> Bool
     /// Queues already-received items for the phone peer with this id (Mac share extension hand-off).
     func enqueue(_ items: [ReceivedItem], forPeerID id: String) throws
+    /// How many items wait for this peer.
+    func count(for peer: Peer) -> Int
 }
 
 /// A device introducing itself after scanning this desktop's pairing code (POST /pair).
@@ -127,6 +129,9 @@ final class DroprrReceiver {
     /// Asks the person to confirm a LAN pairing; true to accept. Called on the main queue.
     /// The receiver answers 408 itself if this hasn't returned after 60 seconds.
     var onPairRequest: ((LANPairRequest) async -> Bool)?
+    /// The local API (ReceiverLocal.swift): sends to a peer the way the Send window does, and returns the path it
+    /// took ("wifi", "tailscale", or "queued"). Called on the main actor. nil (iPhone) turns /local/ off.
+    var localApiSend: ((Peer, [SendPayload]) async throws -> String)?
 
     init(settings: DroprrSettings, inbox: URL) {
         self.settings = settings
@@ -148,6 +153,7 @@ final class DroprrReceiver {
     func start() {
         do {
             try server.start(port: settings.port)
+            writeLocalConnectionFile()
         } catch {
             onStateChange(.stopped("Couldn't listen on port \(settings.port): \(error.localizedDescription)"))
         }
@@ -240,6 +246,8 @@ final class DroprrReceiver {
     // MARK: - Routing
 
     func precheck(_ request: HTTPServer.Request) -> HTTPServer.Response? {
+        // The local API has its own token, and answers only this Mac.
+        if Route(request).segments.first == "local" { return precheckLocal(request) }
         // Browser access: the page and its sign-in need no token; the browser port serves nothing else
         // except the endpoints a browser's cookie works on.
         if Self.isWebPath(request) { return browserAccess == nil ? .json(404, ["ok": false, "error": "not found"]) : nil }
@@ -348,6 +356,7 @@ final class DroprrReceiver {
 
     func handle(_ request: HTTPServer.Request) async -> HTTPServer.Response {
         let route = Route(request)
+        if route.segments.first == "local" { return await handleLocal(request, route) }
         if Self.isWebPath(request) { return await handleWeb(request, route as Any) }
         if request.path.hasPrefix("/host/") || request.path.hasPrefix("/api/"), let hostBridge {
             return await hostBridge(request)
